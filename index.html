@@ -18,11 +18,26 @@
     </header>
 
     <main id="appShell" class="app-shell">
-      <aside class="sidebar" aria-label="Team and game setup">
-        <section class="panel">
+      <section class="workspace">
+        <div class="chart-team-switch" aria-label="Chart side">
+          <button class="side-tab active" type="button" data-side="home">My Team</button>
+          <button class="side-tab" type="button" data-side="away">Opponent</button>
+        </div>
+
+        <nav class="tabs" aria-label="Main views">
+          <button class="tab" type="button" data-view="setupView">Setup</button>
+          <button class="tab active" type="button" data-view="chartView">Chart</button>
+          <button class="tab" type="button" data-view="rosterView">Roster</button>
+          <button class="tab" type="button" data-view="pitchingView">Pitching</button>
+          <button class="tab" type="button" data-view="gameLogView">Game Log</button>
+          <button class="tab" type="button" data-view="dataView">Data</button>
+        </nav>
+
+        <section id="setupView" class="view">
+          <div class="setup-page" aria-label="Team and game setup">
+            <section class="panel">
           <div class="panel-heading">
             <h2>Game</h2>
-            <button id="collapseSetupButton" type="button" class="muted">Collapse</button>
           </div>
           <p id="saveState" class="save-state">Saved locally</p>
           <label>
@@ -41,74 +56,73 @@
             Chart notes
             <textarea id="gameNotes" rows="5" placeholder="Weather, umpire tendencies, broadcast angles, coach notes..."></textarea>
           </label>
-        </section>
+            </section>
 
-        <section class="panel">
+            <section class="panel">
           <div class="panel-heading">
             <h2>Loaded Data</h2>
             <span id="playerCount">0 players</span>
           </div>
           <div id="sourceList" class="source-list"></div>
-        </section>
+            </section>
 
-        <section class="panel supabase-panel">
+            <section class="panel supabase-panel">
           <div class="panel-heading">
             <h2>Cloud Sync</h2>
             <span>Ready later</span>
           </div>
           <p>This version stores everything in your browser. The data model is shaped so Supabase can replace local storage for teams, players, games, and events.</p>
+            </section>
+          </div>
         </section>
-      </aside>
-
-      <section class="workspace">
-        <div class="chart-team-switch" aria-label="Chart side">
-          <button class="side-tab active" type="button" data-side="home">My Team</button>
-          <button class="side-tab" type="button" data-side="away">Opponent</button>
-        </div>
-
-        <nav class="tabs" aria-label="Main views">
-          <button class="tab active" type="button" data-view="chartView">Chart</button>
-          <button class="tab" type="button" data-view="rosterView">Roster</button>
-          <button class="tab" type="button" data-view="pitchingView">Pitching</button>
-          <button class="tab" type="button" data-view="gameLogView">Game Log</button>
-          <button class="tab" type="button" data-view="dataView">Data</button>
-        </nav>
 
         <section id="chartView" class="view active">
           <section id="chartHud" class="chart-hud" aria-label="Game chart HUD"></section>
 
           <section class="scorecard-board">
-            <div class="section-title">
-              <div>
-                <h2>Diamond Chart</h2>
-                <p class="section-subtitle">Tap bases to shade runner movement, then write the count/result just like your paper chart.</p>
+            <div id="statHud" class="stat-hud">
+              <div class="section-title">
+                <div>
+                  <h2>Stat HUD</h2>
+                  <p class="section-subtitle">Keep the live batter, inning, base state, and chart controls visible while you work the scorecard.</p>
+                </div>
               </div>
-              <div class="scorecard-actions">
-                <label>
-                  Current inning
-                  <select id="currentInning"></select>
-                </label>
-                <label>
-                  Innings
-                  <select id="inningCount"></select>
-                </label>
-                <button id="toggleFullChartButton" type="button" class="muted">Show Full Chart</button>
-                <button id="clearScorecardButton" type="button" class="danger">Clear Chart</button>
-              </div>
+              <div id="upNextStrip" class="up-next-strip" aria-label="Active batter, on deck, in the hole"></div>
+              <div id="inningTotals" class="inning-totals"></div>
             </div>
-            <div id="upNextStrip" class="up-next-strip" aria-label="Active batter, on deck, in the hole"></div>
-            <div id="inningTotals" class="inning-totals"></div>
-            <div id="scorecardGrid" class="scorecard-grid" aria-label="Baseball diamond scorecard"></div>
-            <div class="chart-nav-actions">
-              <button id="prevInningButton" type="button" class="muted">Previous Inning</button>
-              <button id="nextInningButton" type="button">Next Inning</button>
-            </div>
-            <div id="fullScorecardPanel" class="full-scorecard-panel" hidden>
+            <div class="diamond-chart-area">
               <div class="section-title compact-title">
-                <h2>All Innings To Date</h2>
-                <span>Outcome, count, RBI</span>
+                <div>
+                  <h2>Diamond Chart</h2>
+                  <p class="section-subtitle">Tap bases to shade runner movement, then write the count/result just like your paper chart.</p>
+                </div>
               </div>
-              <div id="fullScorecardGrid" class="full-scorecard-grid"></div>
+              <div class="diamond-scorebox">
+                <div id="diamondLineScore" class="diamond-line-score"></div>
+                <div class="diamond-chart-controls">
+                  <label>
+                    Current inning
+                    <select id="currentInning"></select>
+                  </label>
+                  <label>
+                    Innings
+                    <select id="inningCount"></select>
+                  </label>
+                  <div class="chart-nav-actions">
+                    <button id="prevInningButton" type="button" class="muted">Previous Inning</button>
+                    <button id="nextInningButton" type="button">Next Inning</button>
+                  </div>
+                  <button id="clearScorecardButton" type="button" class="danger">Clear Chart</button>
+                </div>
+              </div>
+              <div id="scorecardGrid" class="scorecard-grid" aria-label="Baseball diamond scorecard"></div>
+              <div id="fullScorecardPanel" class="full-scorecard-panel" hidden>
+                <div class="section-title compact-title">
+                  <h2>All Innings To Date</h2>
+                  <span>Outcome, count, RBI</span>
+                </div>
+                <div id="fullScorecardGrid" class="full-scorecard-grid"></div>
+              </div>
             </div>
           </section>
 
@@ -177,7 +191,8 @@
                 <label>First <input id="playerFirst" type="text" /></label>
                 <label>Last <input id="playerLast" type="text" /></label>
                 <label>Pronunciation <input id="playerPronunciation" type="text" placeholder="juh-KOH-bee RATH-bun" /></label>
-                <label>Position <input id="playerPosition" type="text" placeholder="SS / RHP" /></label>
+                <label>Hometown <input id="playerHometown" type="text" placeholder="Garden City, KS" /></label>
+                <label>Position <input id="playerPosition" type="text" placeholder="SS / RHP / 6 / 7 / DH / DP / FLEX" /></label>
                 <label>Class <input id="playerClass" type="text" placeholder="Fr., So., Jr." /></label>
               </div>
               <div class="form-grid stats-edit">

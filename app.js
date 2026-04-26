@@ -48,9 +48,12 @@ const els = {
   currentInning: document.querySelector("#currentInning"),
   pitchingChangeButton: document.querySelector("#pitchingChangeButton"),
   chartHud: document.querySelector("#chartHud"),
+  statHud: document.querySelector("#statHud"),
   clearScorecardButton: document.querySelector("#clearScorecardButton"),
+  pinChartButton: document.querySelector("#pinChartButton"),
   toggleFullChartButton: document.querySelector("#toggleFullChartButton"),
   inningTotals: document.querySelector("#inningTotals"),
+  diamondLineScore: document.querySelector("#diamondLineScore"),
   upNextStrip: document.querySelector("#upNextStrip"),
   prevInningButton: document.querySelector("#prevInningButton"),
   nextInningButton: document.querySelector("#nextInningButton"),
@@ -199,9 +202,11 @@ function normalizeState() {
   state.sources = state.sources || [];
   state.boxScores = state.boxScores || [];
   state.events = state.events || [];
+  state.pinStatHud = state.pinStatHud ?? Boolean(state.pinScorecard);
   state.players = state.players || [];
   state.players.forEach((player) => {
     player.side = player.side || "home";
+    player.hometown = player.hometown || "";
   });
 }
 
@@ -271,8 +276,45 @@ function calcStats(stats) {
   };
 }
 
+function advancedStats(stats) {
+  const rates = calcStats(stats);
+  const paDenom = stats.AB + stats.BB + stats.HBP + stats.SF;
+  const iso = (toNumber(rates.SLG) - toNumber(rates.AVG)).toFixed(3).replace(/^0/, "");
+  const bbPct = paDenom ? `${((stats.BB / paDenom) * 100).toFixed(1)}%` : "--";
+  const kPct = paDenom ? `${((stats.SO / paDenom) * 100).toFixed(1)}%` : "--";
+  const babipDenom = stats.AB - stats.SO - stats.HR + stats.SF;
+  const babip = babipDenom > 0 ? formatRate((stats.H - stats.HR) / babipDenom) : ".000";
+  const xbh = stats["2B"] + stats["3B"] + stats.HR;
+  return { ...rates, ISO: iso, BBP: bbPct, KP: kPct, BABIP: babip, XBH: xbh };
+}
+
 function fullName(player) {
   return [player.first, player.last].filter(Boolean).join(" ") || "Unnamed player";
+}
+
+const positionLabels = {
+  1: "P",
+  2: "C",
+  3: "1B",
+  4: "2B",
+  5: "3B",
+  6: "SS",
+  7: "LF",
+  8: "CF",
+  9: "RF",
+  DH: "DH",
+  DP: "DP",
+  FLEX: "FLEX"
+};
+
+function displayPosition(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return raw
+    .split(/[\/, ]+/)
+    .filter(Boolean)
+    .map((part) => positionLabels[part.toUpperCase()] || positionLabels[part] || part.toUpperCase())
+    .join(" / ");
 }
 
 function sortedPlayers() {
@@ -355,6 +397,7 @@ function importPlayersFromCsv(text, filename) {
       last,
       pronunciation: "",
       position: "",
+      hometown: valueFrom(row, headers, "Hometown").trim(),
       classYear: "",
       notes: "",
       side: state.activeSide,
@@ -403,6 +446,7 @@ function importPlayersFromCsv(text, filename) {
         ...player,
         id: byKey.get(key).id,
         pronunciation: byKey.get(key).pronunciation || "",
+        hometown: byKey.get(key).hometown || player.hometown || "",
         position: byKey.get(key).position || "",
         classYear: byKey.get(key).classYear || "",
         notes: byKey.get(key).notes || ""
@@ -595,13 +639,16 @@ function normalizedNotation(text) {
 
 function notationActionKey(text) {
   const normalized = normalizedNotation(text);
+  if (/^[FGLP][1-9]$/.test(normalized)) return "OUT";
+  if (/^[1-9](?:-[1-9U])+$/.test(normalized)) return "OUT";
+  if (["FO", "GO", "LO", "DP", "TP", "PO"].includes(normalized)) return "OUT";
   return notationStatMap[normalized] || "";
 }
 
 const chartActions = {
   BB: { label: "BB", result: "walk", notation: "BB", pitcher: { BB: 1, BF: 1 } },
   K: { label: "K", result: "strikeout", notation: "K", pitcher: { K: 1, BF: 1 } },
-  KC: { label: "Kc", result: "strikeout", notation: "Kc", pitcher: { K: 1, BF: 1 } },
+  KC: { label: "ꓘ", result: "strikeout", notation: "Kc", pitcher: { K: 1, BF: 1 } },
   "1B": { label: "1B", result: "single", notation: "1B", pitcher: { H: 1, BF: 1 } },
   "2B": { label: "2B", result: "double", notation: "2B", pitcher: { H: 1, BF: 1 } },
   "3B": { label: "3B", result: "triple", notation: "3B", pitcher: { H: 1, BF: 1 } },
@@ -847,6 +894,17 @@ function renderSetup() {
     const value = index + 1;
     return `<option value="${value}" ${value === Number(activeChart().currentInning) ? "selected" : ""}>${value}</option>`;
   }).join("");
+  if (els.statHud) {
+    const isPinned = Boolean(state.pinStatHud);
+    els.statHud.classList.toggle("is-pinned", isPinned);
+    els.statHud.classList.remove("is-compact");
+    els.statHud.dataset.hudMode = "compact";
+  }
+  if (els.pinChartButton) {
+    const isPinned = Boolean(state.pinStatHud);
+    els.pinChartButton.classList.toggle("active", isPinned);
+    els.pinChartButton.textContent = isPinned ? "Unpinned HUD" : "Pinned HUD";
+  }
 
   els.sourceList.innerHTML = state.sources.length
     ? state.sources.map((source) => `
@@ -1062,10 +1120,13 @@ function blankInningTotals() {
   return { H: 0, R: 0, E: 0, LOB: 0, RISP: 0 };
 }
 
-function getInningTotals(inning = activeChart().currentInning) {
-  const chart = activeChart();
+function getChartInningTotals(chart, inning = chart.currentInning) {
   chart.inningTotals[inning] = chart.inningTotals[inning] || blankInningTotals();
   return chart.inningTotals[inning];
+}
+
+function getInningTotals(inning = activeChart().currentInning) {
+  return getChartInningTotals(activeChart(), inning);
 }
 
 function tonightLineForPlayer(playerId) {
@@ -1081,6 +1142,44 @@ function tonightLineForPlayer(playerId) {
   return { line, events: tonightEvents };
 }
 
+function currentInningOuts(inning = activeChart().currentInning) {
+  const chart = activeChart();
+  return Object.values(chart.scorecard || {}).reduce((outs, cell) => {
+    if (cellActualInning(cell, inning) !== Number(inning)) return outs;
+    if (cell.result === "strikeout" || cell.result === "out" || cell.result === "sacFly") return outs + 1;
+    return outs;
+  }, 0) % 3;
+}
+
+function recentPaText(events, limit = 4) {
+  const items = events.slice(0, limit).map((event) => {
+    const label = event.context?.split(": ").pop() || resultLabel(event.result);
+    return label.replace("strikeout", "K");
+  });
+  return items.length ? items.join(" / ") : "No PA yet";
+}
+
+function hudStatClass(value, type = "neutral") {
+  if (value === undefined || value === null || value === "" || String(value).includes("--")) return "stat-neutral";
+  const n = toNumber(value);
+  if (type === "avg") return n >= 0.3 ? "stat-good" : n >= 0.24 ? "stat-average" : "stat-bad";
+  if (type === "obp") return n >= 0.38 ? "stat-good" : n >= 0.32 ? "stat-average" : "stat-bad";
+  if (type === "slg") return n >= 0.48 ? "stat-good" : n >= 0.36 ? "stat-average" : "stat-bad";
+  if (type === "ops") return n >= 0.85 ? "stat-good" : n >= 0.68 ? "stat-average" : "stat-bad";
+  if (type === "iso") return n >= 0.18 ? "stat-good" : n >= 0.1 ? "stat-average" : "stat-bad";
+  if (type === "bbp") return n >= 10 ? "stat-good" : n >= 6 ? "stat-average" : "stat-bad";
+  if (type === "kp") return n <= 15 ? "stat-good" : n <= 25 ? "stat-average" : "stat-bad";
+  if (type === "era") return n <= 3 ? "stat-good" : n <= 5 ? "stat-average" : "stat-bad";
+  if (type === "whip") return n <= 1.25 ? "stat-good" : n <= 1.6 ? "stat-average" : "stat-bad";
+  if (type === "baa") return n <= 0.23 ? "stat-good" : n <= 0.3 ? "stat-average" : "stat-bad";
+  if (type === "count") return n > 0 ? "stat-good" : "stat-neutral";
+  return "stat-neutral";
+}
+
+function hudStatChip(label, value, type = "neutral") {
+  return `<span class="hud-stat-chip ${hudStatClass(value, type)}"><b>${escapeHtml(String(value))}</b><i>${escapeHtml(label)}</i></span>`;
+}
+
 function batterDetailHtml() {
   const slot = getCurrentSlot();
   const player = playerAtSlot(slot);
@@ -1089,6 +1188,8 @@ function batterDetailHtml() {
   }
   const stats = player.stats;
   const rates = calcStats(stats);
+  const advanced = advancedStats(stats);
+  const positionText = displayPosition(activeChart().lineupPositions?.[slot - 1] || player.position) || "POS --";
   const singles = Math.max(0, stats.H - stats["2B"] - stats["3B"] - stats.HR);
   const iso = (toNumber(rates.SLG) - toNumber(rates.AVG)).toFixed(3).replace(/^0/, "");
   const paDenom = stats.AB + stats.BB + stats.HBP + stats.SF;
@@ -1097,9 +1198,14 @@ function batterDetailHtml() {
   const babipDenom = stats.AB - stats.SO - stats.HR + stats.SF;
   const babip = babipDenom > 0 ? formatRate((stats.H - stats.HR) / babipDenom) : ".000";
   const xbh = stats["2B"] + stats["3B"] + stats.HR;
+  const sbAttempts = stats.SB + stats.CS;
 
   const { line, events } = tonightLineForPlayer(player.id);
   const recentEvents = events.slice(0, 4);
+  const recentBoxLines = boxScoreLinesForPlayer(player.id).slice(0, 3);
+  const recentGameText = recentBoxLines.length
+    ? recentBoxLines.map(({ box, line: boxLine }) => `${formatBoxDate(box.gameDate)} ${boxLine.H}/${boxLine.AB}${boxLine.HR ? ` ${boxLine.HR}HR` : ""}${boxLine.RBI ? ` ${boxLine.RBI}RBI` : ""}`).join(" | ")
+    : "No recent games";
 
   const tonightSummary = line.PA > 0
     ? `${line.H}/${line.AB}, ${line.RBI} RBI, ${line.BB} BB, ${line.SO} K`
@@ -1107,6 +1213,40 @@ function batterDetailHtml() {
 
   return `
     <div class="batter-detail-card">
+      <div class="compact-player-identity">
+        <strong>#${escapeHtml(player.number)} ${escapeHtml(fullName(player))}</strong>
+        <em>${escapeHtml(positionText)}</em>
+        <span>${escapeHtml(player.pronunciation || "No pronunciation provided")}</span>
+        <span>${escapeHtml(player.hometown || "No hometown provided")}</span>
+      </div>
+      <div class="compact-batter-line">
+        ${hudStatChip("AVG", rates.AVG, "avg")}
+        ${hudStatChip("OBP", rates.OBP, "obp")}
+        ${hudStatChip("SLG", rates.SLG, "slg")}
+        ${hudStatChip("OPS", rates.OPS, "ops")}
+        ${hudStatChip("H/AB", `${stats.H}/${stats.AB}`)}
+        ${hudStatChip("XBH", advanced.XBH, "count")}
+        ${hudStatChip("RBI", stats.RBI, "count")}
+        ${hudStatChip("HR", stats.HR, "count")}
+        ${hudStatChip("BB/K", `${stats.BB}/${stats.SO}`)}
+        ${hudStatChip("SB", `${stats.SB}/${sbAttempts}`)}
+      </div>
+      <div class="compact-analytics-line">
+        ${hudStatChip("ISO", advanced.ISO, "iso")}
+        ${hudStatChip("BB%", advanced.BBP, "bbp")}
+        ${hudStatChip("K%", advanced.KP, "kp")}
+        ${hudStatChip("BABIP", advanced.BABIP)}
+        ${hudStatChip("TB", advanced.TB || rates.TB)}
+        ${hudStatChip("PA", stats.PA || stats.AB + stats.BB + stats.HBP + stats.SF)}
+        ${hudStatChip("SO", stats.SO)}
+        ${hudStatChip("R", stats.R, "count")}
+      </div>
+      <div class="compact-storyline-line">
+        <span class="hud-context-chip">Today ${escapeHtml(tonightSummary)}</span>
+        <span class="hud-context-chip">Prev PA ${escapeHtml(recentPaText(events))}</span>
+        <span class="hud-context-chip">Recent ${escapeHtml(recentGameText)}</span>
+        <span class="hud-context-chip">Note ${escapeHtml(player.notes || "No storyline note")}</span>
+      </div>
       <div class="batter-detail-head">
         <div class="batter-detail-title">
           <span class="batter-detail-slot">SLOT ${slot}</span>
@@ -1181,33 +1321,44 @@ function formatBoxDate(iso) {
 function renderInningTotals() {
   const inning = Number(activeChart().currentInning || 1);
   const chart = activeChart();
-  const totals = getInningTotals(inning);
-  const lineTotals = Array.from({ length: Number(state.inningCount || 9) }, (_, index) => getInningTotals(index + 1))
-    .reduce((acc, item) => {
-      ["R", "H", "E", "LOB", "RISP"].forEach((key) => {
-        acc[key] = toNumber(acc[key]) + toNumber(item[key]);
-      });
-      return acc;
-    }, blankInningTotals());
+  const activeCellLocation = getActiveCellLocation();
+  const activeCell = chart.scorecard[activeCellLocation.key] || {};
+  const activeCount = activeCell.count || "0-0";
   const runners = ["first", "second", "third"].map((base) => {
     const player = state.players.find((item) => item.id === chart.baseState[base]);
     return { base, player };
   });
-  els.inningTotals.innerHTML = `
-    <div class="line-score-card">
-      <div class="totals-label">Line Score</div>
-      <div class="line-score-grid">
-        ${Array.from({ length: Number(state.inningCount || 9) }, (_, index) => {
-          const inn = index + 1;
-          const item = getInningTotals(inn);
-          return `<div class="${inn === inning ? "active" : ""}"><b>${inn}</b><span>R ${item.R || 0}</span><span>H ${item.H || 0}</span><span>E ${item.E || 0}</span><span>LOB ${item.LOB || 0}</span><span>RISP ${item.RISP || 0}</span></div>`;
-        }).join("")}
-        <div class="line-total"><b>T</b><span>R ${lineTotals.R || 0}</span><span>H ${lineTotals.H || 0}</span><span>E ${lineTotals.E || 0}</span><span>LOB ${lineTotals.LOB || 0}</span><span>RISP ${lineTotals.RISP || 0}</span></div>
+  const pitcher = state.players.find((player) => player.id === chart.activePitcherId);
+  const liveLine = getPitchingLine(chart);
+  const pitcherRates = pitcher ? calcStats(pitcher.stats) : null;
+  const outs = currentInningOuts(inning);
+  const pitcherCard = pitcher
+    ? `
+      <div class="compact-pitcher-card">
+        <strong>P #${escapeHtml(pitcher.number)} ${escapeHtml(pitcher.last)}</strong>
+        ${hudStatChip("P/S", `${liveLine.pitches}/${liveLine.strikes}`)}
+        ${hudStatChip("K", liveLine.K, "count")}
+        ${hudStatChip("BB", liveLine.BB, liveLine.BB <= 1 ? "count" : "neutral")}
+        ${hudStatChip("H", liveLine.H)}
+        ${hudStatChip("R", liveLine.R)}
+        ${hudStatChip("ERA", pitcher.stats.ERA || 0, "era")}
+        ${hudStatChip("WHIP", pitcher.stats.WHIP || 0, "whip")}
+        ${hudStatChip("AVG", pitcher.stats.BAA || pitcherRates?.AVG || 0, "baa")}
       </div>
-    </div>
+    `
+    : `<div class="compact-pitcher-card empty">P --</div>`;
+  const compactBases = runners.map(({ base, player }) => {
+    const label = base === "first" ? "1B" : base === "second" ? "2B" : "3B";
+    return `${label} ${player ? `#${player.number} ${player.last}` : "--"}`;
+  }).join(" | ");
+  els.inningTotals.innerHTML = `
     ${batterDetailHtml()}
     <div class="base-state-card">
       <div class="totals-label">Bases</div>
+      <div class="compact-run-state">
+        <div class="compact-bases-line">${escapeHtml(compactBases)}</div>
+        <div class="compact-count-line">Count ${escapeHtml(activeCount)} | Outs ${outs}/3</div>
+      </div>
       <div class="mini-diamond">
         <svg class="mini-diamond-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
           <polygon class="diamond-frame-shape" points="50,92 92,50 50,8 8,50" />
@@ -1223,38 +1374,81 @@ function renderInningTotals() {
           </button>`;
         }).join("")}
       </div>
-      <div class="runner-actions">
-        <button type="button" data-steal="second" ${chart.baseState.first ? "" : "disabled"}>Steal 2B</button>
-        <button type="button" data-steal="third" ${chart.baseState.second ? "" : "disabled"}>Steal 3B</button>
-      </div>
-      <div class="inning-total-card">
-        <div class="totals-label">Edit Inning ${inning}</div>
-        ${["H", "R", "E", "LOB", "RISP"].map((key) => `
-          <label>${key}<select data-inning-total="${key}">
-            ${Array.from({ length: 21 }, (_, value) => `<option value="${value}" ${value === toNumber(totals[key]) ? "selected" : ""}>${value}</option>`).join("")}
-          </select></label>
-        `).join("")}
-      </div>
+      ${pitcherCard}
     </div>
   `;
   els.inningTotals.style.setProperty("--innings", Number(state.inningCount || 9) + 1);
+}
+
+function renderDiamondLineScore() {
+  if (!els.diamondLineScore) return;
+  const inning = Number(activeChart().currentInning || 1);
+  const innings = Number(state.inningCount || 9);
+  const totals = getInningTotals(inning);
+  const sideLabel = (side) => side === "home" ? (state.game.teamName || "My Team") : (state.game.opponentName || "Opponent");
+  const totalKeys = ["R", "H", "E", "LOB", "RISP"];
+  const sideLineTotals = (chart) => Array.from({ length: innings }, (_, index) => getChartInningTotals(chart, index + 1))
+    .reduce((acc, item) => {
+      totalKeys.forEach((key) => {
+        acc[key] = toNumber(acc[key]) + toNumber(item[key]);
+      });
+      return acc;
+    }, blankInningTotals());
+
+  els.diamondLineScore.innerHTML = `
+    <div class="traditional-line-score">
+      <table>
+        <thead>
+          <tr>
+            <th>Team</th>
+            ${Array.from({ length: innings }, (_, index) => `<th class="${index + 1 === inning ? "active" : ""}">${index + 1}</th>`).join("")}
+            ${totalKeys.map((key) => `<th class="metric-total">${key}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${["home", "away"].map((side) => {
+            const chart = state.charts[side];
+            const lineTotals = sideLineTotals(chart);
+            return `
+              <tr class="${side === state.activeSide ? "active-side" : ""}">
+                <th>${escapeHtml(sideLabel(side))}</th>
+                ${Array.from({ length: innings }, (_, index) => {
+                  const item = getChartInningTotals(chart, index + 1);
+                  return `<td class="${index + 1 === inning ? "active" : ""}">${item.R || 0}</td>`;
+                }).join("")}
+                ${totalKeys.map((key) => `<td class="metric-total">${lineTotals[key] || 0}</td>`).join("")}
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="diamond-inning-editor">
+      <span>Edit Inning ${inning}</span>
+      ${["H", "R", "E", "LOB", "RISP"].map((key) => `
+        <label>${key}<select data-inning-total="${key}">
+          ${Array.from({ length: 21 }, (_, value) => `<option value="${value}" ${value === toNumber(totals[key]) ? "selected" : ""}>${value}</option>`).join("")}
+        </select></label>
+      `).join("")}
+    </div>
+  `;
 }
 
 function upNextEntryHtml(slot, label, modifier) {
   const player = playerAtSlot(slot);
   const rates = player ? calcStats(player.stats) : null;
   const nameLine = player
-    ? `#${escapeHtml(player.number)} ${escapeHtml(fullName(player))}`
+    ? `#${escapeHtml(player.number)} ${escapeHtml(fullName(player))}${player.hometown ? ` - ${escapeHtml(player.hometown)}` : ""}`
     : `Lineup ${slot} (empty)`;
-  const ratesLine = player
-    ? `AVG ${rates.AVG} / OBP ${rates.OBP} / OPS ${rates.OPS}`
-    : "Set this slot in the Lineup Board";
+  const ratesLine = player && modifier !== "now"
+    ? `AVG ${rates.AVG} OBP ${rates.OBP} OPS ${rates.OPS} SLG ${rates.SLG}`
+    : "";
   return `
     <div class="up-next-entry up-next-${modifier}">
-      <div class="up-next-tag">${escapeHtml(label)}</div>
       <div class="up-next-slot">${slot}</div>
       <div class="up-next-name">${nameLine}</div>
-      <div class="up-next-rates">${ratesLine}</div>
+      ${ratesLine ? `<div class="up-next-rates">${ratesLine}</div>` : ""}
+      <div class="up-next-tag">${escapeHtml(label)}</div>
     </div>
   `;
 }
@@ -1283,6 +1477,8 @@ function renderUpNextStrip() {
         <button type="button" data-view-mode="focused" class="${activeChart().viewMode !== "all" ? "is-on" : ""}" title="Show only the active and adjacent batters">FOCUS 3</button>
         <button type="button" data-view-mode="all" class="${activeChart().viewMode === "all" ? "is-on" : ""}" title="Show every batter for editing">EDIT ALL</button>
       </div>
+      <button id="pinChartButton" type="button" class="muted ${Boolean(state.pinStatHud) ? "active" : ""}">${Boolean(state.pinStatHud) ? "Unpinned HUD" : "Pinned HUD"}</button>
+      <button id="toggleFullChartButton" type="button" class="muted">${els.fullScorecardPanel?.hidden === false ? "Hide Full Chart" : "Show Full Chart"}</button>
     </div>
   `;
 }
@@ -1310,10 +1506,18 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
       <button type="button" class="runner-btn runner-out" data-runner-out="${cellKey}" title="Runner out">OUT</button>
     </div>
   ` : "";
+  const stealControls = `
+    <div class="steal-controls" role="group" aria-label="Steal base">
+      <button type="button" data-steal-cell="${cellKey}" data-steal-terminal="toFirst">Steal 1B</button>
+      <button type="button" data-steal-cell="${cellKey}" data-steal-terminal="toSecond">Steal 2B</button>
+      <button type="button" data-steal-cell="${cellKey}" data-steal-terminal="toThird">Steal 3B</button>
+      <button type="button" data-steal-cell="${cellKey}" data-steal-terminal="toHome">Steal HP</button>
+    </div>
+  `;
 
-  const actionButtons = ["BB", "K", "KC", "1B", "2B", "3B", "HR", "ROE", "ERR"].map((key) => `
+  const actionButtons = ["BB", "K", "KC", "1B", "2B", "3B", "HR"].map((key) => `
     <button type="button" data-chart-action="${key}">${chartActions[key].label}</button>
-  `).join("");
+  `).join("") + `<button type="button" data-clear-cell="${cellKey}" class="danger clear-action-button" title="Clear cell">Clear</button>`;
 
   const displacedBadge = isDisplaced ? `<div class="displaced-tag">FROM INN ${actualInning}</div>` : "";
 
@@ -1328,15 +1532,12 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
 
   const fullEntry = (opts.isActive || !opts.isCompact) ? `
     <div class="pitch-buttons">
-      <button type="button" data-pitch="ball">B</button>
-      <button type="button" data-pitch="strike">S</button>
-      <button type="button" data-pitch="foul">F</button>
+      <button type="button" data-pitch="ball">Ball</button>
+      <button type="button" data-pitch="strike">Strike</button>
+      <button type="button" data-pitch="foul">Foul</button>
     </div>
     <div class="result-buttons">${actionButtons}</div>
-    <div class="score-result-row">
-      <button type="button" data-clear-cell="${cellKey}" class="muted" title="Clear cell">Clear</button>
-      ${abIndex > 0 ? `<button type="button" data-remove-ab="${cellKey}" class="muted remove-ab-button" title="Remove extra at-bat">Remove AB</button>` : ""}
-    </div>
+    ${abIndex > 0 ? `<div class="score-result-row"><button type="button" data-remove-ab="${cellKey}" class="muted remove-ab-button" title="Remove extra at-bat">Remove AB</button></div>` : ""}
   ` : "";
 
   const notationValue = cell.notation || cell.result || "";
@@ -1348,28 +1549,33 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
     <div class="${cellClasses.join(" ")}" data-score-cell="${cellKey}">
       ${displacedBadge}
       ${entrySurface}
-      <div class="diamond" aria-label="Runner diamond">
-        ${diamondSvg(cell.bases)}
-        <div class="diamond-result">
-          <input
-            class="${noteInputClasses.join(" ")}"
-            data-score-field="notation"
-            data-notation-cell="${cellKey}"
-            type="text"
-            inputmode="text"
-            autocomplete="off"
-            list="notation-suggestions"
-            value="${escapeHtml(notationValue)}"
-            placeholder="-"
-            aria-label="Play notation"
-          />
+      <div class="score-cell-body">
+        <div class="diamond" aria-label="Runner diamond">
+          ${diamondSvg(cell.bases)}
+          ${stealControls}
+          <div class="diamond-result">
+            <input
+              class="${noteInputClasses.join(" ")}"
+              data-score-field="notation"
+              data-notation-cell="${cellKey}"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+              list="notation-suggestions"
+              value="${escapeHtml(notationValue)}"
+              placeholder="-"
+              aria-label="Play notation"
+            />
+          </div>
+          ${["toFirst", "toSecond", "toThird", "toHome"].map((base) => `
+            <button type="button" class="base-toggle ${base} ${cell.bases?.[base] ? "active" : ""}" data-base="${base}" aria-label="${base.replace("to", "")}"><span class="base-marker"></span></button>
+          `).join("")}
         </div>
-        ${["toFirst", "toSecond", "toThird", "toHome"].map((base) => `
-          <button type="button" class="base-toggle ${base} ${cell.bases?.[base] ? "active" : ""}" data-base="${base}" aria-label="${base.replace("to", "")}"><span class="base-marker"></span></button>
-        `).join("")}
+        <div class="score-action-panel">
+          ${fullEntry}
+        </div>
       </div>
       ${runnerControls}
-      ${fullEntry}
     </div>
   `;
 }
@@ -1411,7 +1617,7 @@ function renderScorecard() {
       .concat(sortedPlayers().map((item) => `<option value="${item.id}" ${item.id === sub.playerId ? "selected" : ""}>#${escapeHtml(item.number)} ${escapeHtml(fullName(item))}</option>`))
       .join("");
     const playerLabel = player ? `#${escapeHtml(player.number)} ${escapeHtml(fullName(player))}` : `Lineup ${slotNumber}`;
-    const playerMeta = player ? escapeHtml([chart.lineupPositions?.[slotIndex], player.pronunciation].filter(Boolean).join(" - ")) : "Select player in Lineup Board";
+    const playerMeta = player ? escapeHtml([displayPosition(chart.lineupPositions?.[slotIndex] || player.position), player.pronunciation].filter(Boolean).join(" - ")) : "Select player in Lineup Board";
     const rates = player ? calcStats(player.stats) : null;
 
     const isActive = slotNumber === currentSlot;
@@ -1622,7 +1828,7 @@ function renderLineup() {
       <div class="lineup-slot">
         <div class="slot-number">${index + 1}</div>
         <select data-lineup-index="${index}" aria-label="Lineup spot ${index + 1}">${options}</select>
-        <input data-lineup-pos="${index}" type="text" placeholder="POS" value="${escapeHtml(chart.lineupPositions?.[index] || "")}" />
+        <input data-lineup-pos="${index}" type="text" placeholder="POS/#" value="${escapeHtml(chart.lineupPositions?.[index] || "")}" />
         <button type="button" class="move-lineup muted" data-move-lineup="${index}" data-direction="-1" title="Move up">^</button>
         <button type="button" class="move-lineup muted" data-move-lineup="${index}" data-direction="1" title="Move down">v</button>
       </div>
@@ -1744,11 +1950,11 @@ const notationDocsData = [
   { token: "E / ERR", desc: "Error (out, no AB credit on E charged)", stat: true },
   { token: "FC", desc: "Fielder's choice", stat: true },
   { token: "SF / SAC", desc: "Sacrifice fly / bunt", stat: true },
-  { token: "F1-F9 / L1-L9 / G1-G9", desc: "Fly / line / ground out, by position", stat: false },
-  { token: "P3-P6", desc: "Popup, by position", stat: false },
-  { token: "1-3 / 6-3 / 4-3 / 5-3", desc: "Groundout, fielding sequence", stat: false },
-  { token: "6-4-3 / 4-6-3", desc: "Double play, fielding sequence", stat: false },
-  { token: "DP / TP", desc: "Double play / triple play modifier", stat: false },
+  { token: "F1-F9 / L1-L9 / G1-G9", desc: "Fly / line / ground out, by position", stat: true },
+  { token: "P3-P6", desc: "Popup, by position", stat: true },
+  { token: "1-3 / 6-3 / 4-3 / 5-3", desc: "Groundout, fielding sequence", stat: true },
+  { token: "6-4-3 / 4-6-3", desc: "Double play, fielding sequence", stat: true },
+  { token: "DP / TP", desc: "Double play / triple play modifier", stat: true },
   { token: "SB2 / SB3 / SB H", desc: "Stolen base — 2nd, 3rd, home", stat: false },
   { token: "CS2 / CS3 / CS H", desc: "Caught stealing", stat: false },
   { token: "WP / PB / BK", desc: "Wild pitch / passed ball / balk", stat: false },
@@ -1806,6 +2012,7 @@ function render() {
   renderChartHud();
   renderUpNextStrip();
   renderInningTotals();
+  renderDiamondLineScore();
   renderScorecard();
   renderDataView();
   renderLineup();
@@ -1881,6 +2088,7 @@ function fillPlayerForm(player) {
   document.querySelector("#playerFirst").value = player?.first || "";
   document.querySelector("#playerLast").value = player?.last || "";
   document.querySelector("#playerPronunciation").value = player?.pronunciation || "";
+  document.querySelector("#playerHometown").value = player?.hometown || "";
   document.querySelector("#playerPosition").value = player?.position || "";
   document.querySelector("#playerClass").value = player?.classYear || "";
   document.querySelector("#playerNotes").value = player?.notes || "";
@@ -1904,6 +2112,7 @@ function savePlayerFromForm(event) {
     first: document.querySelector("#playerFirst").value.trim(),
     last: document.querySelector("#playerLast").value.trim(),
     pronunciation: document.querySelector("#playerPronunciation").value.trim(),
+    hometown: document.querySelector("#playerHometown").value.trim(),
     position: document.querySelector("#playerPosition").value.trim(),
     classYear: document.querySelector("#playerClass").value.trim(),
     notes: document.querySelector("#playerNotes").value.trim(),
@@ -2042,10 +2251,12 @@ function removeExtraAtBat(cellKey) {
 }
 
 function setupEvents() {
-  els.collapseSetupButton.addEventListener("click", () => {
-    els.appShell.classList.toggle("setup-collapsed");
-    els.collapseSetupButton.textContent = els.appShell.classList.contains("setup-collapsed") ? "Expand" : "Collapse";
-  });
+  if (els.collapseSetupButton) {
+    els.collapseSetupButton.addEventListener("click", () => {
+      els.appShell.classList.toggle("setup-collapsed");
+      els.collapseSetupButton.textContent = els.appShell.classList.contains("setup-collapsed") ? "Expand" : "Collapse";
+    });
+  }
 
   document.querySelectorAll(".side-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -2237,6 +2448,14 @@ function setupEvents() {
     saveState();
   });
 
+  els.diamondLineScore.addEventListener("input", (event) => {
+    const key = event.target.dataset.inningTotal;
+    if (!key) return;
+    getInningTotals()[key] = toNumber(event.target.value);
+    saveState();
+    renderDiamondLineScore();
+  });
+
   els.inningTotals.addEventListener("click", (event) => {
     const clearBase = event.target.closest("[data-clear-base]")?.dataset.clearBase;
     const steal = event.target.closest("[data-steal]")?.dataset.steal;
@@ -2281,6 +2500,7 @@ function setupEvents() {
     saveState();
     renderScorecard();
     renderInningTotals();
+    renderDiamondLineScore();
     renderUpNextStrip();
   });
 
@@ -2301,6 +2521,14 @@ function setupEvents() {
         chart.viewMode = target.dataset.viewMode === "all" ? "all" : "focused";
         saveState();
         render();
+      } else if (target.id === "pinChartButton") {
+        state.pinStatHud = !state.pinStatHud;
+        saveState();
+        render();
+      } else if (target.id === "toggleFullChartButton") {
+        els.fullScorecardPanel.hidden = !els.fullScorecardPanel.hidden;
+        if (!els.fullScorecardPanel.hidden) renderFullScorecard();
+        renderUpNextStrip();
       }
     });
   }
@@ -2319,6 +2547,12 @@ function setupEvents() {
     render();
   });
 
+  els.pinChartButton?.addEventListener("click", () => {
+    state.pinStatHud = !state.pinStatHud;
+    saveState();
+    renderSetup();
+  });
+
   els.clearScorecardButton.addEventListener("click", () => {
     if (!confirm("Clear every diamond, count, and result on the visual chart?")) return;
     activeChart().scorecard = {};
@@ -2329,7 +2563,7 @@ function setupEvents() {
     render();
   });
 
-  els.toggleFullChartButton.addEventListener("click", () => {
+  els.toggleFullChartButton?.addEventListener("click", () => {
     els.fullScorecardPanel.hidden = !els.fullScorecardPanel.hidden;
     els.toggleFullChartButton.textContent = els.fullScorecardPanel.hidden ? "Show Full Chart" : "Hide Full Chart";
     if (!els.fullScorecardPanel.hidden) renderFullScorecard();
@@ -2363,10 +2597,12 @@ function setupEvents() {
     const field = event.target.dataset.scoreField;
     if (!cellEl || field !== "notation") return;
     const cell = getScoreCellFromKey(cellEl.dataset.scoreCell);
-    cell.notation = event.target.value;
-    const actionKey = notationActionKey(event.target.value);
+    const typedNotation = event.target.value.trim();
+    cell.notation = typedNotation;
+    const actionKey = notationActionKey(typedNotation);
     if (actionKey && cell.actionKey !== actionKey) {
       applyChartAction(cellEl.dataset.scoreCell, actionKey);
+      getScoreCellFromKey(cellEl.dataset.scoreCell).notation = typedNotation;
       saveState();
       render();
       return;
@@ -2386,6 +2622,8 @@ function setupEvents() {
     const runnerAdvanceKey = event.target.closest("[data-runner-advance]")?.dataset.runnerAdvance;
     const runnerScoreKey = event.target.closest("[data-runner-score]")?.dataset.runnerScore;
     const runnerOutKey = event.target.closest("[data-runner-out]")?.dataset.runnerOut;
+    const stealCellKey = event.target.closest("[data-steal-cell]")?.dataset.stealCell;
+    const stealTerminal = event.target.closest("[data-steal-cell]")?.dataset.stealTerminal;
     const focusSlot = event.target.closest("[data-focus-slot]")?.dataset.focusSlot;
     if (focusSlot) {
       const chart = activeChart();
@@ -2421,6 +2659,16 @@ function setupEvents() {
     }
     if (runnerOutKey) {
       applyTerminalChange(runnerOutKey, "");
+      saveState();
+      render();
+    }
+    if (stealCellKey && stealTerminal) {
+      applyTerminalChange(stealCellKey, stealTerminal);
+      const { slot } = parseScoreCellKey(stealCellKey);
+      const runner = state.players.find((player) => player.id === activeChart().lineup[slot - 1]);
+      if (runner && stealTerminal !== "toFirst") {
+        runner.stats.SB = toNumber(runner.stats.SB) + 1;
+      }
       saveState();
       render();
     }
