@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PxP Baseball Chart</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Radio chart workspace</p>
+        <h1>PxP Baseball Chart</h1>
+      </div>
+      <div class="top-actions">
+        <label class="file-button">
+          Import CSV
+          <input id="csvInput" type="file" accept=".csv,text/csv" />
+        </label>
+        <label class="file-button muted">
+          Attach PDF
+          <input id="pdfInput" type="file" accept="application/pdf,.pdf" />
+        </label>
+        <button id="exportButton" type="button">Export JSON</button>
+        <button id="resetButton" type="button" class="danger">Reset</button>
+      </div>
+    </header>
+
+    <main id="appShell" class="app-shell">
+      <aside class="sidebar" aria-label="Team and game setup">
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Game</h2>
+            <button id="collapseSetupButton" type="button" class="muted">Collapse</button>
+          </div>
+          <p id="saveState" class="save-state">Saved locally</p>
+          <label>
+            Team
+            <input id="teamName" type="text" placeholder="Garden City CC" />
+          </label>
+          <label>
+            Opponent
+            <input id="opponentName" type="text" placeholder="Opponent" />
+          </label>
+          <label>
+            Game date
+            <input id="gameDate" type="date" />
+          </label>
+          <label>
+            Chart notes
+            <textarea id="gameNotes" rows="5" placeholder="Weather, umpire tendencies, broadcast angles, coach notes..."></textarea>
+          </label>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>Loaded Data</h2>
+            <span id="playerCount">0 players</span>
+          </div>
+          <div id="sourceList" class="source-list"></div>
+        </section>
+
+        <section class="panel supabase-panel">
+          <div class="panel-heading">
+            <h2>Cloud Sync</h2>
+            <span>Ready later</span>
+          </div>
+          <p>This version stores everything in your browser. The data model is shaped so Supabase can replace local storage for teams, players, games, and events.</p>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <div class="chart-team-switch" aria-label="Chart side">
+          <button class="side-tab active" type="button" data-side="home">My Team</button>
+          <button class="side-tab" type="button" data-side="away">Opponent</button>
+        </div>
+
+        <nav class="tabs" aria-label="Main views">
+          <button class="tab active" type="button" data-view="chartView">Chart</button>
+          <button class="tab" type="button" data-view="rosterView">Roster</button>
+          <button class="tab" type="button" data-view="pitchingView">Pitching</button>
+          <button class="tab" type="button" data-view="gameLogView">Game Log</button>
+        </nav>
+
+        <section id="chartView" class="view active">
+          <section id="chartHud" class="chart-hud" aria-label="Game chart HUD"></section>
+
+          <section class="scorecard-board">
+            <div class="section-title">
+              <div>
+                <h2>Diamond Chart</h2>
+                <p class="section-subtitle">Tap bases to shade runner movement, then write the count/result just like your paper chart.</p>
+              </div>
+              <div class="scorecard-actions">
+                <label>
+                  Current inning
+                  <select id="currentInning"></select>
+                </label>
+                <label>
+                  Innings
+                  <select id="inningCount"></select>
+                </label>
+                <button id="toggleFullChartButton" type="button" class="muted">Show Full Chart</button>
+                <button id="clearScorecardButton" type="button" class="danger">Clear Chart</button>
+              </div>
+            </div>
+            <div id="upNextStrip" class="up-next-strip" aria-label="Active batter, on deck, in the hole"></div>
+            <div id="inningTotals" class="inning-totals"></div>
+            <div id="scorecardGrid" class="scorecard-grid" aria-label="Baseball diamond scorecard"></div>
+            <div class="chart-nav-actions">
+              <button id="prevInningButton" type="button" class="muted">Previous Inning</button>
+              <button id="nextInningButton" type="button">Next Inning</button>
+            </div>
+            <div id="fullScorecardPanel" class="full-scorecard-panel" hidden>
+              <div class="section-title compact-title">
+                <h2>All Innings To Date</h2>
+                <span>Outcome, count, RBI</span>
+              </div>
+              <div id="fullScorecardGrid" class="full-scorecard-grid"></div>
+            </div>
+          </section>
+
+          <div class="chart-grid">
+            <section class="lineup-board">
+              <div class="section-title">
+                <h2>Lineup Board</h2>
+                <div class="inline-actions">
+                  <button id="autoLineupButton" type="button">Auto-fill</button>
+                  <button id="addLineupSlotButton" type="button" class="muted">Add Sub</button>
+                </div>
+              </div>
+              <div id="lineupSlots" class="lineup-slots"></div>
+            </section>
+
+            <section class="spotlight">
+              <div class="section-title">
+                <h2>Player Snapshot</h2>
+                <select id="spotlightSelect" aria-label="Select spotlight player"></select>
+              </div>
+              <div id="spotlightCard" class="spotlight-card empty">
+                Import a CSV or add a player to begin.
+              </div>
+            </section>
+          </div>
+
+          <section class="table-panel">
+            <div class="section-title">
+              <h2>Live Stat Sheet</h2>
+              <input id="playerSearch" type="search" placeholder="Search player, number, note..." />
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Player</th>
+                    <th>Pronunciation</th>
+                    <th>AVG</th>
+                    <th>OBP</th>
+                    <th>OPS</th>
+                    <th>AB</th>
+                    <th>H</th>
+                    <th>RBI</th>
+                    <th>BB</th>
+                    <th>SO</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody id="playerTable"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section id="rosterView" class="view">
+          <section class="editor-layout">
+            <form id="playerForm" class="panel player-form">
+              <div class="panel-heading">
+                <h2>Add / Edit Player</h2>
+                <button id="newPlayerButton" type="button">New</button>
+              </div>
+              <input id="editingId" type="hidden" />
+              <div class="form-grid">
+                <label>Number <input id="playerNumber" type="text" /></label>
+                <label>First <input id="playerFirst" type="text" /></label>
+                <label>Last <input id="playerLast" type="text" /></label>
+                <label>Pronunciation <input id="playerPronunciation" type="text" placeholder="juh-KOH-bee RATH-bun" /></label>
+                <label>Position <input id="playerPosition" type="text" placeholder="SS / RHP" /></label>
+                <label>Class <input id="playerClass" type="text" placeholder="Fr., So., Jr." /></label>
+              </div>
+              <div class="form-grid stats-edit">
+                <label>AB <input id="statAB" type="number" min="0" /></label>
+                <label>H <input id="statH" type="number" min="0" /></label>
+                <label>2B <input id="stat2B" type="number" min="0" /></label>
+                <label>3B <input id="stat3B" type="number" min="0" /></label>
+                <label>HR <input id="statHR" type="number" min="0" /></label>
+                <label>BB <input id="statBB" type="number" min="0" /></label>
+                <label>HBP <input id="statHBP" type="number" min="0" /></label>
+                <label>SF <input id="statSF" type="number" min="0" /></label>
+                <label>RBI <input id="statRBI" type="number" min="0" /></label>
+                <label>SO <input id="statSO" type="number" min="0" /></label>
+                <label>SB <input id="statSB" type="number" min="0" /></label>
+                <label>CS <input id="statCS" type="number" min="0" /></label>
+              </div>
+              <label>
+                Broadcast notes
+                <textarea id="playerNotes" rows="4" placeholder="Backstory, approach, recent stretch, coach quotes..."></textarea>
+              </label>
+              <button type="submit">Save Player</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Roster Cards</h2>
+                <span id="rosterSummary">No players yet</span>
+              </div>
+              <div id="rosterCards" class="roster-cards"></div>
+            </section>
+          </section>
+        </section>
+
+        <section id="pitchingView" class="view">
+          <section class="pitching-layout">
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Pitchers / Bullpen</h2>
+                <span id="activePitcherLabel">No active pitcher</span>
+              </div>
+              <label>
+                Starting pitcher
+                <select id="startingPitcher"></select>
+              </label>
+              <label>
+                New / current pitcher
+                <select id="activePitcher"></select>
+              </label>
+              <div class="inline-actions bullpen-controls">
+                <button id="pitchingChangeButton" type="button">Make Pitching Change</button>
+                <button id="resetPitchingButton" type="button" class="danger">Reset Pitching</button>
+              </div>
+              <div class="inline-actions bullpen-controls">
+                <select id="bullpenSelect" aria-label="Add bullpen pitcher"></select>
+                <button id="addBullpenButton" type="button">Add Bullpen</button>
+              </div>
+              <div id="pitcherCards" class="pitcher-cards"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Pitch Log</h2>
+                <span id="pitchLogSummary">0 pitches</span>
+              </div>
+              <div id="pitchLog" class="event-list"></div>
+            </section>
+          </section>
+        </section>
+
+        <section id="gameLogView" class="view">
+          <section class="game-log-layout">
+            <form id="eventForm" class="panel">
+              <div class="panel-heading">
+                <h2>Log Plate Appearance</h2>
+                <span>Updates stats live</span>
+              </div>
+              <label>
+                Batter
+                <select id="eventPlayer"></select>
+              </label>
+              <div class="form-grid">
+                <label>
+                  Result
+                  <select id="eventResult">
+                    <option value="single">Single</option>
+                    <option value="double">Double</option>
+                    <option value="triple">Triple</option>
+                    <option value="hr">Home run</option>
+                    <option value="walk">Walk</option>
+                    <option value="hbp">Hit by pitch</option>
+                    <option value="strikeout">Strikeout</option>
+                    <option value="out">Out in play</option>
+                    <option value="sacFly">Sac fly</option>
+                    <option value="reachedError">Reached on error</option>
+                    <option value="fieldersChoice">Fielder's choice</option>
+                  </select>
+                </label>
+                <label>RBI <input id="eventRbi" type="number" min="0" value="0" /></label>
+                <label>SB <input id="eventSb" type="number" min="0" value="0" /></label>
+                <label>CS <input id="eventCs" type="number" min="0" value="0" /></label>
+              </div>
+              <label>
+                Context
+                <textarea id="eventContext" rows="4" placeholder="2-1 FB, hard line drive to RCF; good note for next AB..."></textarea>
+              </label>
+              <button type="submit">Add Event</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Events</h2>
+                <button id="clearEventsButton" type="button" class="danger">Clear Game Events</button>
+              </div>
+              <div id="eventList" class="event-list"></div>
+            </section>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
