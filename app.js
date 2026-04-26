@@ -80,7 +80,14 @@ const els = {
   activePitcherLabel: document.querySelector("#activePitcherLabel"),
   pitcherCards: document.querySelector("#pitcherCards"),
   pitchLog: document.querySelector("#pitchLog"),
-  pitchLogSummary: document.querySelector("#pitchLogSummary")
+  pitchLogSummary: document.querySelector("#pitchLogSummary"),
+  dataSourceList: document.querySelector("#dataSourceList"),
+  boxScoreInput: document.querySelector("#boxScoreInput"),
+  boxScoreDate: document.querySelector("#boxScoreDate"),
+  boxScoreOpponent: document.querySelector("#boxScoreOpponent"),
+  boxScoreResultNote: document.querySelector("#boxScoreResultNote"),
+  boxScoreList: document.querySelector("#boxScoreList"),
+  notationDocs: document.querySelector("#notationDocs")
 };
 
 function loadState() {
@@ -108,7 +115,8 @@ function loadState() {
       home: newChartState(),
       away: newChartState()
     },
-    sources: []
+    sources: [],
+    boxScores: []
   };
 }
 
@@ -189,6 +197,7 @@ function normalizeState() {
     };
   });
   state.sources = state.sources || [];
+  state.boxScores = state.boxScores || [];
   state.events = state.events || [];
   state.players = state.players || [];
   state.players.forEach((player) => {
@@ -416,6 +425,82 @@ function importPlayersFromCsv(text, filename) {
   render();
 }
 
+function importBoxScoreFromCsv(text, filename, meta = {}) {
+  const rows = parseCsv(text);
+  const headerRowIndex = rows.findIndex((row) => row.includes("Number") && row.includes("Last") && row.includes("First"));
+  if (headerRowIndex < 0) {
+    throw new Error("Could not find a header row with Number, Last, and First columns.");
+  }
+  const headers = rows[headerRowIndex].map((header) => header.trim());
+  const lines = [];
+
+  rows.slice(headerRowIndex + 1).forEach((row) => {
+    const number = valueFrom(row, headers, "Number").trim();
+    const last = valueFrom(row, headers, "Last").trim();
+    const first = valueFrom(row, headers, "First").trim();
+    if (!number && !last && !first) return;
+
+    const matchKey = `${state.activeSide}-${number}-${first}-${last}`.toLowerCase();
+    const existing = state.players.find((p) => `${p.side || "home"}-${p.number}-${p.first}-${p.last}`.toLowerCase() === matchKey);
+
+    lines.push({
+      playerId: existing ? existing.id : "",
+      number,
+      first,
+      last,
+      AB: toNumber(valueFrom(row, headers, "AB")),
+      H: toNumber(valueFrom(row, headers, "H", 1)),
+      "2B": toNumber(valueFrom(row, headers, "2B")),
+      "3B": toNumber(valueFrom(row, headers, "3B")),
+      HR: toNumber(valueFrom(row, headers, "HR", 1)),
+      BB: toNumber(valueFrom(row, headers, "BB", 1)),
+      SO: toNumber(valueFrom(row, headers, "SO", 1)),
+      RBI: toNumber(valueFrom(row, headers, "RBI")),
+      R: toNumber(valueFrom(row, headers, "R")),
+      SB: toNumber(valueFrom(row, headers, "SB", 1)),
+      HBP: toNumber(valueFrom(row, headers, "HBP", 1)),
+      IP: toNumber(valueFrom(row, headers, "IP"))
+    });
+  });
+
+  if (!lines.length) {
+    throw new Error("No player rows found in this CSV.");
+  }
+
+  const box = {
+    id: uid("box"),
+    side: state.activeSide,
+    gameDate: meta.gameDate || new Date().toISOString().slice(0, 10),
+    opponent: meta.opponent || "",
+    resultNote: meta.resultNote || "",
+    filename,
+    importedAt: new Date().toISOString(),
+    lines
+  };
+  state.boxScores.unshift(box);
+
+  state.sources.unshift({
+    id: uid("source"),
+    type: "box-score",
+    name: filename,
+    importedAt: box.importedAt,
+    detail: `${lines.length} players, ${box.opponent || "opponent unknown"} ${box.gameDate}`
+  });
+
+  saveState();
+  render();
+}
+
+function boxScoreLinesForPlayer(playerId) {
+  const out = [];
+  state.boxScores.forEach((box) => {
+    const line = box.lines.find((l) => l.playerId === playerId);
+    if (line) out.push({ box, line });
+  });
+  out.sort((a, b) => (a.box.gameDate < b.box.gameDate ? 1 : -1));
+  return out;
+}
+
 function autoFillLineup() {
   const candidates = [...activePlayers()].sort((a, b) => {
     const bCalc = calcStats(b.stats);
@@ -480,6 +565,37 @@ function resultLabel(result) {
     reachedError: "Reached on error",
     fieldersChoice: "Fielder's choice"
   }[result] || result;
+}
+
+const notationStatMap = {
+  "1B": "1B", "2B": "2B", "3B": "3B", "HR": "HR",
+  "BB": "BB", "K": "K", "KC": "KC", "KL": "KC",
+  "HBP": "HBP", "ROE": "ROE", "E": "ERR", "ERR": "ERR",
+  "FC": "FC", "SF": "SF",
+  "SAC": "SF", "SH": "SF"
+};
+
+const notationSuggestions = [
+  "1B", "2B", "3B", "HR", "BB", "IBB", "HBP", "K", "Kc",
+  "ROE", "E", "FC", "SF", "SAC", "SH",
+  "F7", "F8", "F9", "L7", "L8", "L9",
+  "G1", "G3", "G4", "G5", "G6",
+  "P3", "P4", "P5", "P6",
+  "1-3", "3-1", "3-U", "4-3", "5-3", "6-3", "U-3",
+  "6-4-3", "4-6-3", "5-4-3", "DP", "TP",
+  "SB2", "SB3", "SB H",
+  "CS2", "CS3", "CS H",
+  "WP", "PB", "BK", "PO",
+  "FO", "GO", "LO", "SAC bunt", "SAC fly"
+];
+
+function normalizedNotation(text) {
+  return String(text || "").trim().toUpperCase();
+}
+
+function notationActionKey(text) {
+  const normalized = normalizedNotation(text);
+  return notationStatMap[normalized] || "";
 }
 
 const chartActions = {
@@ -1026,9 +1142,40 @@ function batterDetailHtml() {
           </ul>
         ` : ""}
       </div>
+      ${recentBoxScoresHtml(player.id)}
       ${player.notes ? `<div class="batter-notes"><span class="totals-label small">Notes</span><p>${escapeHtml(player.notes)}</p></div>` : ""}
     </div>
   `;
+}
+
+function recentBoxScoresHtml(playerId) {
+  const boxes = boxScoreLinesForPlayer(playerId).slice(0, 5);
+  if (!boxes.length) return "";
+  return `
+    <div class="batter-recent-games">
+      <span class="totals-label small">Recent Games</span>
+      <ul class="batter-recent-list">
+        ${boxes.map(({ box, line }) => {
+          const opponent = box.opponent ? `vs ${escapeHtml(box.opponent)}` : "vs ?";
+          const date = box.gameDate ? formatBoxDate(box.gameDate) : "";
+          const slash = `${line.H}/${line.AB}`;
+          const extras = [];
+          if (line.HR) extras.push(`${line.HR} HR`);
+          if (line.RBI) extras.push(`${line.RBI} RBI`);
+          if (line.BB) extras.push(`${line.BB} BB`);
+          if (line.SO) extras.push(`${line.SO} K`);
+          if (line.SB) extras.push(`${line.SB} SB`);
+          return `<li><b>${date}</b> <span>${opponent}</span> <em>${slash}</em>${extras.length ? ` &middot; ${escapeHtml(extras.join(", "))}` : ""}</li>`;
+        }).join("")}
+      </ul>
+    </div>
+  `;
+}
+
+function formatBoxDate(iso) {
+  const parts = String(iso).split("-");
+  if (parts.length === 3) return `${Number(parts[1])}/${Number(parts[2])}`;
+  return iso;
 }
 
 function renderInningTotals() {
@@ -1132,7 +1279,10 @@ function renderUpNextStrip() {
     <div class="up-next-actions">
       <button type="button" id="prevAtBatButton" class="muted" title="Step pointer back">&larr; Prev</button>
       <button type="button" id="nextAtBatButton" class="next-ab-button">Next At Bat &rarr;</button>
-      <button type="button" id="viewModeToggleButton" class="muted" title="Toggle visible batters">${activeChart().viewMode === "all" ? "FOCUS 3" : "SHOW ALL"}</button>
+      <div class="segmented-toggle" role="group" aria-label="Visible batters">
+        <button type="button" data-view-mode="focused" class="${activeChart().viewMode !== "all" ? "is-on" : ""}" title="Show only the active and adjacent batters">FOCUS 3</button>
+        <button type="button" data-view-mode="all" class="${activeChart().viewMode === "all" ? "is-on" : ""}" title="Show every batter for editing">EDIT ALL</button>
+      </div>
     </div>
   `;
 }
@@ -1184,13 +1334,15 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
     </div>
     <div class="result-buttons">${actionButtons}</div>
     <div class="score-result-row">
-      <select class="notation-select" data-score-field="notation" aria-label="Detailed result">
-        ${["", "G3", "G4", "G5", "G6", "F7", "F8", "F9", "L3", "L4", "L5", "L6", "1-3", "4-3", "5-3", "6-3", "6-4-3", "4-6-3", "SB2", "SB3", "CS2", "CS3", "SAC Bunt", "SAC Fly"].map((item) => `<option value="${item}" ${item === (cell.notation || "") ? "selected" : ""}>${item || "More"}</option>`).join("")}
-      </select>
-      <button type="button" data-clear-cell="${cellKey}" class="muted" title="Clear cell">x</button>
-      ${abIndex > 0 ? `<button type="button" data-remove-ab="${cellKey}" class="muted remove-ab-button" title="Remove extra at-bat">-</button>` : ""}
+      <button type="button" data-clear-cell="${cellKey}" class="muted" title="Clear cell">Clear</button>
+      ${abIndex > 0 ? `<button type="button" data-remove-ab="${cellKey}" class="muted remove-ab-button" title="Remove extra at-bat">Remove AB</button>` : ""}
     </div>
   ` : "";
+
+  const notationValue = cell.notation || cell.result || "";
+  const knownNotation = notationValue && (notationActionKey(notationValue) || notationSuggestions.some((token) => normalizedNotation(token) === normalizedNotation(notationValue)));
+  const noteInputClasses = ["diamond-result-input"];
+  if (notationValue && !knownNotation) noteInputClasses.push("is-unknown");
 
   return `
     <div class="${cellClasses.join(" ")}" data-score-cell="${cellKey}">
@@ -1198,7 +1350,20 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
       ${entrySurface}
       <div class="diamond" aria-label="Runner diamond">
         ${diamondSvg(cell.bases)}
-        <div class="diamond-result">${escapeHtml(cellResult || "-")}</div>
+        <div class="diamond-result">
+          <input
+            class="${noteInputClasses.join(" ")}"
+            data-score-field="notation"
+            data-notation-cell="${cellKey}"
+            type="text"
+            inputmode="text"
+            autocomplete="off"
+            list="notation-suggestions"
+            value="${escapeHtml(notationValue)}"
+            placeholder="-"
+            aria-label="Play notation"
+          />
+        </div>
         ${["toFirst", "toSecond", "toThird", "toHome"].map((base) => `
           <button type="button" class="base-toggle ${base} ${cell.bases?.[base] ? "active" : ""}" data-base="${base}" aria-label="${base.replace("to", "")}"><span class="base-marker"></span></button>
         `).join("")}
@@ -1279,7 +1444,7 @@ function renderScorecard() {
       const abCount = abCountForSlotInning(slotIndex, col);
       const cells = Array.from({ length: abCount }, (_, ab) => {
         const isThisActiveCell = isActive && activeLoc && activeLoc.column === col && activeLoc.abIndex === ab;
-        const isCompactCell = !isActive && !hasRunner;
+        const isCompactCell = focusMode && !isActive && !hasRunner;
         return renderScoreCellHtml(slotIndex, col, ab, {
           isActive: isThisActiveCell,
           isCompact: isCompactCell
@@ -1569,12 +1734,80 @@ function renderEvents() {
     : `<p class="meta">Game events will appear here as you log plate appearances.</p>`;
 }
 
+const notationDocsData = [
+  { token: "1B / 2B / 3B / HR", desc: "Single, double, triple, home run", stat: true },
+  { token: "BB", desc: "Walk", stat: true },
+  { token: "HBP", desc: "Hit by pitch", stat: true },
+  { token: "K", desc: "Strikeout (swinging)", stat: true },
+  { token: "Kc / KL", desc: "Strikeout looking", stat: true },
+  { token: "ROE", desc: "Reached on error", stat: true },
+  { token: "E / ERR", desc: "Error (out, no AB credit on E charged)", stat: true },
+  { token: "FC", desc: "Fielder's choice", stat: true },
+  { token: "SF / SAC", desc: "Sacrifice fly / bunt", stat: true },
+  { token: "F1-F9 / L1-L9 / G1-G9", desc: "Fly / line / ground out, by position", stat: false },
+  { token: "P3-P6", desc: "Popup, by position", stat: false },
+  { token: "1-3 / 6-3 / 4-3 / 5-3", desc: "Groundout, fielding sequence", stat: false },
+  { token: "6-4-3 / 4-6-3", desc: "Double play, fielding sequence", stat: false },
+  { token: "DP / TP", desc: "Double play / triple play modifier", stat: false },
+  { token: "SB2 / SB3 / SB H", desc: "Stolen base — 2nd, 3rd, home", stat: false },
+  { token: "CS2 / CS3 / CS H", desc: "Caught stealing", stat: false },
+  { token: "WP / PB / BK", desc: "Wild pitch / passed ball / balk", stat: false },
+  { token: "SAC bunt 1-3", desc: "Free-form annotation; anything not in the list above is recorded as flavor text only", stat: false }
+];
+
+function renderDataView() {
+  if (els.dataSourceList) {
+    if (state.sources.length) {
+      els.dataSourceList.innerHTML = state.sources.map((source) => `
+        <div class="source-item">
+          <strong>${escapeHtml(source.name)}</strong>
+          <p class="meta">${escapeHtml(source.type.toUpperCase())} &middot; ${escapeHtml(source.detail || "")} &middot; ${new Date(source.importedAt).toLocaleString()}</p>
+        </div>
+      `).join("");
+    } else {
+      els.dataSourceList.innerHTML = `<p class="meta">No imports yet.</p>`;
+    }
+  }
+
+  if (els.boxScoreList) {
+    const boxes = state.boxScores.filter((b) => (b.side || "home") === state.activeSide);
+    if (boxes.length) {
+      els.boxScoreList.innerHTML = boxes.map((box) => `
+        <div class="source-item">
+          <strong>${escapeHtml(box.opponent || "Opponent unknown")} &middot; ${escapeHtml(box.gameDate || "no date")}</strong>
+          <p class="meta">${box.lines.length} player rows${box.resultNote ? ` &middot; ${escapeHtml(box.resultNote)}` : ""} &middot; <span class="source-action" data-delete-box="${box.id}">delete</span></p>
+        </div>
+      `).join("");
+    } else {
+      els.boxScoreList.innerHTML = `<p class="meta">No box scores imported for this side yet. Use the form above to import a per-game CSV.</p>`;
+    }
+  }
+
+  if (els.notationDocs) {
+    els.notationDocs.innerHTML = `
+      <table class="notation-table">
+        <thead><tr><th>Token</th><th>Meaning</th><th>Updates stats?</th></tr></thead>
+        <tbody>
+          ${notationDocsData.map((row) => `
+            <tr>
+              <td><code>${escapeHtml(row.token)}</code></td>
+              <td>${escapeHtml(row.desc)}</td>
+              <td>${row.stat ? `<span class="notation-stat-yes">YES</span>` : `<span class="notation-stat-no">no</span>`}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+  }
+}
+
 function render() {
   renderSetup();
   renderChartHud();
   renderUpNextStrip();
   renderInningTotals();
   renderScorecard();
+  renderDataView();
   renderLineup();
   renderPlayerSelects();
   renderSpotlight();
@@ -1851,6 +2084,47 @@ function setupEvents() {
     }
   });
 
+  if (els.boxScoreInput) {
+    els.boxScoreInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        importBoxScoreFromCsv(await file.text(), file.name, {
+          gameDate: els.boxScoreDate?.value || "",
+          opponent: els.boxScoreOpponent?.value || "",
+          resultNote: els.boxScoreResultNote?.value || ""
+        });
+        if (els.boxScoreOpponent) els.boxScoreOpponent.value = "";
+        if (els.boxScoreResultNote) els.boxScoreResultNote.value = "";
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        event.target.value = "";
+      }
+    });
+  }
+
+  document.querySelectorAll(".data-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".data-tab").forEach((t) => t.classList.toggle("active", t === tab));
+      const target = tab.dataset.dataSection;
+      document.querySelectorAll(".data-section").forEach((section) => {
+        section.classList.toggle("active", section.id === target);
+      });
+    });
+  });
+
+  if (els.boxScoreList) {
+    els.boxScoreList.addEventListener("click", (event) => {
+      const deleteId = event.target.closest("[data-delete-box]")?.dataset.deleteBox;
+      if (deleteId && confirm("Delete this box score?")) {
+        state.boxScores = state.boxScores.filter((b) => b.id !== deleteId);
+        saveState();
+        render();
+      }
+    });
+  }
+
   els.pdfInput.addEventListener("change", (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -2022,9 +2296,9 @@ function setupEvents() {
         rewindBatter();
         saveState();
         render();
-      } else if (target.id === "viewModeToggleButton") {
+      } else if (target.dataset.viewMode) {
         const chart = activeChart();
-        chart.viewMode = chart.viewMode === "all" ? "focused" : "all";
+        chart.viewMode = target.dataset.viewMode === "all" ? "all" : "focused";
         saveState();
         render();
       }
@@ -2090,8 +2364,15 @@ function setupEvents() {
     if (!cellEl || field !== "notation") return;
     const cell = getScoreCellFromKey(cellEl.dataset.scoreCell);
     cell.notation = event.target.value;
+    const actionKey = notationActionKey(event.target.value);
+    if (actionKey && cell.actionKey !== actionKey) {
+      applyChartAction(cellEl.dataset.scoreCell, actionKey);
+      saveState();
+      render();
+      return;
+    }
     saveState();
-    renderFullScorecard();
+    render();
   });
 
   els.scorecardGrid.addEventListener("click", (event) => {
@@ -2270,6 +2551,15 @@ function setupEvents() {
   });
 }
 
+function populateNotationDatalist() {
+  const datalist = document.querySelector("#notation-suggestions");
+  if (!datalist) return;
+  datalist.innerHTML = notationSuggestions
+    .map((token) => `<option value="${escapeHtml(token)}"></option>`)
+    .join("");
+}
+
 normalizeState();
+populateNotationDatalist();
 setupEvents();
 render();

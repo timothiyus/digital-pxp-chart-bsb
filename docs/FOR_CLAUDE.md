@@ -135,6 +135,17 @@ Each has 12 players so the user can test subs and pitchers without reusing Garde
 
 ## Recent Changelog
 
+### Data tab, freetext diamond notation, segmented toggle, SHOW-ALL fix
+
+- **New top-level Data tab** next to Chart/Roster/Pitching/Game Log. Sub-tabs: Season Stats / Box Scores / Export / Settings & Help.
+- **Season Stats** subsection holds the existing Import CSV + Attach PDF flow, moved out of the top header. Top header now contains only the Reset button.
+- **Box Scores** subsection: new CSV import format for per-game lines (`Number, Last, First, AB, H, 2B, 3B, HR, BB, SO, RBI, ...`). Captures `gameDate`, `opponent`, and a `resultNote` per import. Stored in `state.boxScores: [{ id, side, gameDate, opponent, resultNote, lines: [{ playerId, AB, H, ... }] }]`. Listed in the subsection with delete affordance.
+- **Active Batter Detail "Recent Games" strip** surfaces the last 5 box-score lines for the active batter (e.g., `4/15  vs Pratt  2/4 · 1 HR, 2 RBI`). Pulls automatically from box scores filtered by `playerId`.
+- **Settings & Help subsection** contains the notation cheat sheet (token / meaning / stat-bearing flag) plus a storage explanation.
+- **Freetext notation in the diamond center.** The static "1B/-/F8" display became an `<input>` with a shared `<datalist id="notation-suggestions">`. Type any token; on blur or Enter, known stat-bearing tokens (1B/2B/3B/HR/BB/K/Kc/HBP/ROE/E/FC/SF/SAC/SH) trigger `applyChartAction` automatically. Unknown tokens (F8, 6-4-3 DP, "weak grounder to short") are kept as flavor text and shown in gold (`is-unknown` class). New helpers: `notationStatMap`, `notationSuggestions`, `notationActionKey`, `populateNotationDatalist`. The old bottom-row notation `<select>` is removed; the score-result-row now just holds Clear and Remove-AB.
+- **Segmented toggle** replaces the FOCUS/SHOW-ALL single button. Pill-shaped two-button group with active state and shadow; lives next to Prev / Next At Bat.
+- **SHOW ALL semantic fixed.** In `viewMode === "all"`, every visible row gets the full count/pitch/result/notation surface (the compact treatment is now gated on `focusMode && !isActive && !hasRunner`). In `focused` mode, only the active row is full-size.
+
 ### Paper-fidelity overhaul: no auto-advance, bat-around column displacement, focused view, batter detail
 
 - **Auto-advance removed.** `applyChartAction` no longer chain-moves runners on 1B/2B/3B/HR/BB. The result button only sets the batter's path on the diamond + the batter's stats + the inning H/R count for the batter. Existing runners on base stay where they are; the broadcaster manually advances each via the runner's diamond or per-row ADV/SCORED/OUT buttons. Strict paper fidelity.

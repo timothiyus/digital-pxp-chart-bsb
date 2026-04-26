@@ -13,15 +13,6 @@
         <h1>PxP Baseball Chart</h1>
       </div>
       <div class="top-actions">
-        <label class="file-button">
-          Import CSV
-          <input id="csvInput" type="file" accept=".csv,text/csv" />
-        </label>
-        <label class="file-button muted">
-          Attach PDF
-          <input id="pdfInput" type="file" accept="application/pdf,.pdf" />
-        </label>
-        <button id="exportButton" type="button">Export JSON</button>
         <button id="resetButton" type="button" class="danger">Reset</button>
       </div>
     </header>
@@ -80,6 +71,7 @@
           <button class="tab" type="button" data-view="rosterView">Roster</button>
           <button class="tab" type="button" data-view="pitchingView">Pitching</button>
           <button class="tab" type="button" data-view="gameLogView">Game Log</button>
+          <button class="tab" type="button" data-view="dataView">Data</button>
         </nav>
 
         <section id="chartView" class="view active">
@@ -254,6 +246,95 @@
           </section>
         </section>
 
+        <section id="dataView" class="view">
+          <nav class="data-tabs" aria-label="Data sections">
+            <button class="data-tab active" type="button" data-data-section="seasonStatsSection">Season Stats</button>
+            <button class="data-tab" type="button" data-data-section="boxScoreSection">Box Scores</button>
+            <button class="data-tab" type="button" data-data-section="exportSection">Export</button>
+            <button class="data-tab" type="button" data-data-section="helpSection">Settings &amp; Help</button>
+          </nav>
+
+          <section id="seasonStatsSection" class="data-section active">
+            <div class="panel">
+              <div class="panel-heading">
+                <h2>Season Stats Import</h2>
+                <span>CSV with Number, First, Last + season totals</span>
+              </div>
+              <p class="meta">Imports a full-season GameChanger-style CSV into the active side&apos;s roster. Existing players (by side + number + name) get updated; new ones are added.</p>
+              <div class="data-actions">
+                <label class="file-button">
+                  Import Season CSV
+                  <input id="csvInput" type="file" accept=".csv,text/csv" />
+                </label>
+                <label class="file-button muted">
+                  Attach PDF reference
+                  <input id="pdfInput" type="file" accept="application/pdf,.pdf" />
+                </label>
+              </div>
+              <div id="dataSourceList" class="source-list"></div>
+            </div>
+          </section>
+
+          <section id="boxScoreSection" class="data-section">
+            <div class="panel">
+              <div class="panel-heading">
+                <h2>Box Score Import</h2>
+                <span>One CSV per game; per-player line</span>
+              </div>
+              <p class="meta">A box score CSV captures one game&apos;s line for each player who appeared. Imported box scores show up as a Recent Games strip in the Active Batter Detail and on each player&apos;s roster card. Required headers: <code>Number, Last, First</code> plus stat columns (<code>AB, H, 2B, 3B, HR, BB, SO, RBI, ...</code>). Optional: <code>Game Date</code>, <code>Opponent</code>.</p>
+              <form id="boxScoreForm" class="data-form">
+                <label>
+                  Game date
+                  <input id="boxScoreDate" type="date" />
+                </label>
+                <label>
+                  Opponent
+                  <input id="boxScoreOpponent" type="text" placeholder="Pratt CC" />
+                </label>
+                <label>
+                  Result note
+                  <input id="boxScoreResultNote" type="text" placeholder="W 7-3, 9 IP" />
+                </label>
+                <label class="file-button">
+                  Import Box Score CSV
+                  <input id="boxScoreInput" type="file" accept=".csv,text/csv" />
+                </label>
+              </form>
+              <div id="boxScoreList" class="source-list"></div>
+            </div>
+          </section>
+
+          <section id="exportSection" class="data-section">
+            <div class="panel">
+              <div class="panel-heading">
+                <h2>Export</h2>
+                <span>Download the workspace</span>
+              </div>
+              <p class="meta">JSON export contains every team, player, lineup, scorecard cell, pitching line, and box score. Save it as a backup or for moving between devices.</p>
+              <div class="data-actions">
+                <button id="exportButton" type="button">Export Workspace JSON</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="helpSection" class="data-section">
+            <div class="panel">
+              <div class="panel-heading">
+                <h2>Notation cheat sheet</h2>
+                <span>Type in the diamond center</span>
+              </div>
+              <p class="meta">Type any of these tokens in the freetext field at the center of a diamond. Stat-bearing tokens (bold) auto-update the batter&apos;s stat line and the inning totals. Anything else is recorded as flavor text and shown on the chart with a gold tint.</p>
+              <div id="notationDocs" class="notation-docs"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-heading">
+                <h2>Storage</h2>
+              </div>
+              <p class="meta">Everything saves to your browser&apos;s localStorage under <code>pxp-baseball-chart-v1</code>. Use Reset (top right) to wipe and start over. The Export JSON option above gets you a portable backup.</p>
+            </div>
+          </section>
+        </section>
+
         <section id="gameLogView" class="view">
           <section class="game-log-layout">
             <form id="eventForm" class="panel">
@@ -305,6 +386,7 @@
       </section>
     </main>
 
+    <datalist id="notation-suggestions"></datalist>
     <script src="./app.js"></script>
   </body>
 </html>
