@@ -1602,6 +1602,16 @@ textarea {
   margin: 0;
 }
 
+.full-chart-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 16px 8px;
+}
+
+.full-chart-line-score {
+  padding: 0 16px 10px;
+}
+
 .full-scorecard-grid {
   display: grid;
   grid-template-columns: 168px repeat(var(--innings, 9), minmax(92px, 1fr));
@@ -2070,41 +2080,35 @@ textarea {
   color: var(--accent-strong);
 }
 
-.summary-diamond {
+.summary-diamond-shell {
   width: 44px;
   height: 44px;
   justify-self: center;
   position: relative;
-  border: 1px solid #8c9892;
-  transform: rotate(45deg);
 }
 
-.summary-diamond strong {
+.summary-diamond-shell .diamond-svg {
+  position: absolute;
+  inset: 0;
+}
+
+.summary-diamond-shell .diamond-frame-shape {
+  fill: #fff;
+}
+
+.summary-diamond-shell .diamond-path-active {
+  stroke-width: 7;
+}
+
+.summary-diamond-shell strong {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  transform: rotate(-45deg);
   font-size: 0.68rem;
   color: var(--accent-strong);
+  z-index: 2;
 }
-
-.summary-diamond span {
-  position: absolute;
-  width: 14px;
-  height: 4px;
-  border-radius: 99px;
-  background: transparent;
-}
-
-.summary-diamond span.active {
-  background: var(--accent);
-}
-
-.summary-diamond span.toFirst { right: -3px; top: 12px; }
-.summary-diamond span.toSecond { right: 12px; top: -3px; transform: rotate(90deg); }
-.summary-diamond span.toThird { left: -3px; bottom: 12px; }
-.summary-diamond span.toHome { left: 12px; bottom: -3px; transform: rotate(90deg); }
 
 .score-cell input {
   height: 28px;
@@ -2220,7 +2224,7 @@ textarea {
 
 .steal-controls {
   position: absolute;
-  inset: -38px;
+  inset: -58px;
   z-index: 4;
   pointer-events: none;
 }
@@ -2588,27 +2592,20 @@ textarea {
 .result-buttons button {
   width: 100%;
   min-height: 28px;
-  padding: 0;
+  padding: 2px 3px;
   font-size: 0.82rem;
   font-weight: 900;
+  line-height: 1.05;
   background: #fff8e8;
   color: #765200;
   border-color: #e2c77c;
+  white-space: normal;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
 
-.result-buttons button .result-main,
-.result-buttons button .result-detail {
+.result-buttons button .result-main {
   display: block;
-  line-height: 1.05;
-}
-
-.result-buttons button .result-detail {
-  margin-top: 1px;
-  font-size: 0.48rem;
-  font-weight: 800;
-  color: #6c5624;
 }
 
 .result-buttons .clear-action-button {
@@ -3143,6 +3140,30 @@ tr:hover td {
   margin: 0;
   line-height: 1.4;
 }
+
+#pdfBridgeStatus {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#pdfBridgeStatus::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #888;
+}
+
+#pdfBridgeStatus[data-status="ready"]::before { background: #2eb872; }
+#pdfBridgeStatus[data-status="offline"]::before { background: #d04a4a; }
+#pdfBridgeStatus[data-status="busy"]::before { background: #e0a83b; }
+#pdfBridgeStatus[data-status="ready"]   { color: #2eb872; }
+#pdfBridgeStatus[data-status="offline"] { color: #d04a4a; }
+#pdfBridgeStatus[data-status="busy"]    { color: #e0a83b; }
 
 .card-actions {
   display: flex;

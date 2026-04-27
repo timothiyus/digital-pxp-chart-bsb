@@ -5,6 +5,7 @@ Local-first baseball charting app for play-by-play radio prep and live game use.
 ## What works now
 
 - Import GameChanger-style CSV stat exports.
+- Drop stats / roster / box-score PDFs (Prestosports, Sidearm, etc.) directly into the Data tab — a local Python bridge (`python -m pdf_to_csv.server`) parses them in real time. See [`tools/pdf_to_csv/README.md`](tools/pdf_to_csv/README.md).
 - Manage editable rosters, player numbers, pronunciation guides, positions, class years, and broadcast notes.
 - Build and reorder a lineup board, including substitute rows.
 - Switch between separate charts for your team and the opponent.
@@ -51,7 +52,6 @@ Those can map cleanly into Supabase tables later. The browser `localStorage` cal
 
 ## Next build targets
 
-- PDF text extraction for roster/stat PDFs.
 - Dedicated team and season views.
 - Pitching and fielding live event updates.
 - Multiple plate appearances in the same inning for bat-around frames.

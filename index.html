@@ -136,6 +136,8 @@
                   <h2>All Innings To Date</h2>
                   <span>Outcome, count, RBI</span>
                 </div>
+                <div id="fullChartToolbar" class="full-chart-toolbar"></div>
+                <div id="fullChartLineScore" class="full-chart-line-score"></div>
                 <div id="fullScorecardGrid" class="full-scorecard-grid"></div>
               </div>
               <div id="inningEditBanner" class="inning-edit-banner" hidden></div>
@@ -300,11 +302,12 @@
                   Import Season CSV
                   <input id="csvInput" type="file" accept=".csv,text/csv" />
                 </label>
-                <label class="file-button muted">
-                  Attach PDF reference
+                <label class="file-button">
+                  Import Stats / Roster PDF
                   <input id="pdfInput" type="file" accept="application/pdf,.pdf" />
                 </label>
               </div>
+              <p class="meta" id="pdfBridgeStatus" data-status="unknown">PDF bridge: checking&hellip;</p>
               <div id="dataSourceList" class="source-list"></div>
             </div>
           </section>
@@ -332,6 +335,10 @@
                 <label class="file-button">
                   Import Box Score CSV
                   <input id="boxScoreInput" type="file" accept=".csv,text/csv" />
+                </label>
+                <label class="file-button">
+                  Import Box Score PDF
+                  <input id="boxScorePdfInput" type="file" accept="application/pdf,.pdf" />
                 </label>
               </form>
               <div id="boxScoreList" class="source-list"></div>

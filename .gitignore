@@ -5,6 +5,11 @@ node_modules/
 .idea/
 .claude/
 
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
 # Sample data: exclude multi-hundred-MB PDFs that GitHub rejects
 Sample Data/BSB CHART (annotated).pdf
 Sample Data/MHS @ GCHS BSB GM 1 - 4_17.pdf

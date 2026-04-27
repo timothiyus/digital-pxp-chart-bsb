@@ -30,6 +30,10 @@ const emptyStats = () => ({
 
 const state = loadState();
 
+function emptyBaseState() {
+  return { first: "", second: "", third: "" };
+}
+
 const els = {
   appShell: document.querySelector("#appShell"),
   collapseSetupButton: document.querySelector("#collapseSetupButton"),
@@ -63,6 +67,8 @@ const els = {
   nextInningButton: document.querySelector("#nextInningButton"),
   scorecardGrid: document.querySelector("#scorecardGrid"),
   fullScorecardPanel: document.querySelector("#fullScorecardPanel"),
+  fullChartToolbar: document.querySelector("#fullChartToolbar"),
+  fullChartLineScore: document.querySelector("#fullChartLineScore"),
   fullScorecardGrid: document.querySelector("#fullScorecardGrid"),
   lineupSlots: document.querySelector("#lineupSlots"),
   autoLineupButton: document.querySelector("#autoLineupButton"),
@@ -90,6 +96,8 @@ const els = {
   pitchLogSummary: document.querySelector("#pitchLogSummary"),
   dataSourceList: document.querySelector("#dataSourceList"),
   boxScoreInput: document.querySelector("#boxScoreInput"),
+  boxScorePdfInput: document.querySelector("#boxScorePdfInput"),
+  pdfBridgeStatus: document.querySelector("#pdfBridgeStatus"),
   boxScoreDate: document.querySelector("#boxScoreDate"),
   boxScoreOpponent: document.querySelector("#boxScoreOpponent"),
   boxScoreResultNote: document.querySelector("#boxScoreResultNote"),
@@ -157,6 +165,7 @@ function newChartState() {
     completedInnings: {},
     editingCompletedInnings: {},
     extraAbs: {},
+    baseStates: {},
     baseState: { first: "", second: "", third: "" },
     hud: {
       bullpen: "",
@@ -208,7 +217,10 @@ function normalizeState() {
     chart.completedInnings = chart.completedInnings || {};
     chart.editingCompletedInnings = chart.editingCompletedInnings || {};
     chart.extraAbs = chart.extraAbs || {};
+    chart.baseStates = chart.baseStates || {};
     chart.baseState = chart.baseState || { first: "", second: "", third: "" };
+    chart.baseStates[chart.currentInning] = chart.baseStates[chart.currentInning] || { ...chart.baseState };
+    chart.baseState = { ...chart.baseStates[chart.currentInning] };
     chart.hud = {
       ...newChartState().hud,
       ...(chart.hud || {}),
@@ -221,6 +233,7 @@ function normalizeState() {
   state.sources = state.sources || [];
   state.boxScores = state.boxScores || [];
   state.events = state.events || [];
+  state.fullChartSide = state.fullChartSide || state.activeSide || "home";
   state.settings = {
     showAtBatControls: false,
     showFocusControls: false,
@@ -565,6 +578,140 @@ function importBoxScoreFromCsv(text, filename, meta = {}) {
   render();
 }
 
+const PDF_BRIDGE_URL = "http://127.0.0.1:8766";
+
+async function pingPdfBridge() {
+  try {
+    const res = await fetch(`${PDF_BRIDGE_URL}/health`, { cache: "no-store" });
+    return res.ok;
+  } catch (_) {
+    return false;
+  }
+}
+
+function setPdfBridgeStatus(status, message) {
+  if (!els.pdfBridgeStatus) return;
+  els.pdfBridgeStatus.dataset.status = status;
+  els.pdfBridgeStatus.textContent = message;
+}
+
+async function refreshPdfBridgeStatus() {
+  setPdfBridgeStatus("busy", "PDF bridge: checking…");
+  const ok = await pingPdfBridge();
+  if (ok) {
+    setPdfBridgeStatus("ready", "PDF bridge: ready");
+  } else {
+    setPdfBridgeStatus(
+      "offline",
+      "PDF bridge: offline — start it with `python -m pdf_to_csv.server` from tools/pdf_to_csv"
+    );
+  }
+  return ok;
+}
+
+async function uploadPdfToBridge(file, kindHint) {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (kindHint) formData.append("kind", kindHint);
+
+  const res = await fetch(`${PDF_BRIDGE_URL}/parse`, {
+    method: "POST",
+    body: formData
+  });
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+    } catch (_) { /* keep statusText */ }
+    throw new Error(`bridge ${res.status}: ${detail}`);
+  }
+
+  return res.json();
+}
+
+async function importPdfViaBridge(file, options = {}) {
+  setPdfBridgeStatus("busy", `PDF bridge: parsing ${file.name}…`);
+  let payload;
+  try {
+    payload = await uploadPdfToBridge(file, options.kindHint);
+  } catch (error) {
+    setPdfBridgeStatus(
+      "offline",
+      `PDF bridge: ${error.message}`
+    );
+    throw error;
+  }
+
+  const filename = payload.filename || file.name;
+  if (payload.kind === "box_score") {
+    importBoxScoreFromCsv(payload.csv, filename, options.boxMeta || {});
+  } else {
+    importPlayersFromCsv(payload.csv, filename);
+  }
+
+  const warnNote = payload.warnings?.length
+    ? ` (${payload.warnings.length} warning${payload.warnings.length === 1 ? "" : "s"})`
+    : "";
+  setPdfBridgeStatus(
+    "ready",
+    `PDF bridge: imported ${payload.rows} ${payload.kind === "box_score" ? "box-score lines" : "rows"} from ${filename}${warnNote}`
+  );
+  return payload;
+}
+
+function bindPdfBridge() {
+  refreshPdfBridgeStatus();
+
+  if (els.pdfBridgeStatus) {
+    els.pdfBridgeStatus.addEventListener("click", () => {
+      if (els.pdfBridgeStatus.dataset.status !== "busy") refreshPdfBridgeStatus();
+    });
+  }
+
+  document.querySelectorAll('.data-tab[data-data-section="seasonStatsSection"]').forEach((tab) => {
+    tab.addEventListener("click", refreshPdfBridgeStatus);
+  });
+
+  if (els.pdfInput) {
+    els.pdfInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        await importPdfViaBridge(file, { kindHint: "auto" });
+      } catch (error) {
+        alert(`PDF import failed: ${error.message}\n\nMake sure the parser bridge is running:\n  cd tools/pdf_to_csv\n  python -m pdf_to_csv.server`);
+      } finally {
+        event.target.value = "";
+      }
+    });
+  }
+
+  if (els.boxScorePdfInput) {
+    els.boxScorePdfInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        await importPdfViaBridge(file, {
+          kindHint: "box",
+          boxMeta: {
+            gameDate: els.boxScoreDate?.value || "",
+            opponent: els.boxScoreOpponent?.value || "",
+            resultNote: els.boxScoreResultNote?.value || ""
+          }
+        });
+        if (els.boxScoreOpponent) els.boxScoreOpponent.value = "";
+        if (els.boxScoreResultNote) els.boxScoreResultNote.value = "";
+      } catch (error) {
+        alert(`PDF import failed: ${error.message}\n\nMake sure the parser bridge is running:\n  cd tools/pdf_to_csv\n  python -m pdf_to_csv.server`);
+      } finally {
+        event.target.value = "";
+      }
+    });
+  }
+}
+
 function boxScoreLinesForPlayer(playerId) {
   const out = [];
   state.boxScores.forEach((box) => {
@@ -799,6 +946,7 @@ function clearRunnerOutcome(cell) {
   delete cell.runnerStatDeltas;
   delete cell.runnerPitcherDeltas;
   delete cell.outOverlay;
+  delete cell.scoredOverlay;
 }
 
 function defaultCsSequence(terminal) {
@@ -867,6 +1015,22 @@ function nextTerminalFrom(terminal) {
   return terminal;
 }
 
+function syncCurrentBaseState(chart = activeChart()) {
+  chart.baseStates = chart.baseStates || {};
+  chart.baseStates[Number(chart.currentInning || 1)] = { ...(chart.baseState || emptyBaseState()) };
+}
+
+function loadBaseStateForInning(chart, inning) {
+  chart.baseStates = chart.baseStates || {};
+  chart.baseState = { ...(chart.baseStates[Number(inning)] || emptyBaseState()) };
+}
+
+function setChartInning(chart, inning) {
+  syncCurrentBaseState(chart);
+  chart.currentInning = Math.min(Number(state.inningCount || 9), Math.max(1, Number(inning) || 1));
+  loadBaseStateForInning(chart, chart.currentInning);
+}
+
 function setBatterBaseState(chart, batterId, terminalBase) {
   ["first", "second", "third"].forEach((base) => {
     if (chart.baseState[base] === batterId) chart.baseState[base] = "";
@@ -874,6 +1038,7 @@ function setBatterBaseState(chart, batterId, terminalBase) {
   if (terminalBase === "toFirst") chart.baseState.first = batterId;
   if (terminalBase === "toSecond") chart.baseState.second = batterId;
   if (terminalBase === "toThird") chart.baseState.third = batterId;
+  syncCurrentBaseState(chart);
 }
 
 function blankPitchingLine() {
@@ -954,6 +1119,7 @@ function reverseChartCell(cellKey, options = {}) {
   }
   if (cell.baseStateBefore) {
     chart.baseState = { ...cell.baseStateBefore };
+    syncCurrentBaseState(chart);
   }
 
   delete cell.eventId;
@@ -1515,12 +1681,12 @@ function renderInningTotals() {
   els.inningTotals.style.setProperty("--innings", Number(state.inningCount || 9) + 1);
 }
 
-function renderDiamondLineScore() {
-  if (!els.diamondLineScore) return;
-  const inning = Number(activeChart().currentInning || 1);
+function sideLabel(side) {
+  return side === "home" ? (state.game.teamName || "My Team") : (state.game.opponentName || "Opponent");
+}
+
+function lineScoreHtml({ inning = Number(activeChart().currentInning || 1), highlightedSide = state.activeSide } = {}) {
   const innings = Number(state.inningCount || 9);
-  const totals = getInningTotals(inning);
-  const sideLabel = (side) => side === "home" ? (state.game.teamName || "My Team") : (state.game.opponentName || "Opponent");
   const totalKeys = ["R", "H", "E", "LOB", "RISP"];
   const sideLineTotals = (chart) => Array.from({ length: innings }, (_, index) => getChartInningTotals(chart, index + 1))
     .reduce((acc, item) => {
@@ -1530,7 +1696,7 @@ function renderDiamondLineScore() {
       return acc;
     }, blankInningTotals());
 
-  els.diamondLineScore.innerHTML = `
+  return `
     <div class="traditional-line-score">
       <table>
         <thead>
@@ -1545,7 +1711,7 @@ function renderDiamondLineScore() {
             const chart = state.charts[side];
             const lineTotals = sideLineTotals(chart);
             return `
-              <tr class="${side === state.activeSide ? "active-side" : ""}">
+              <tr class="${side === highlightedSide ? "active-side" : ""}">
                 <th>${escapeHtml(sideLabel(side))}</th>
                 ${Array.from({ length: innings }, (_, index) => {
                   const item = getChartInningTotals(chart, index + 1);
@@ -1558,6 +1724,16 @@ function renderDiamondLineScore() {
         </tbody>
       </table>
     </div>
+  `;
+}
+
+function renderDiamondLineScore() {
+  if (!els.diamondLineScore) return;
+  const inning = Number(activeChart().currentInning || 1);
+  const totals = getInningTotals(inning);
+
+  els.diamondLineScore.innerHTML = `
+    ${lineScoreHtml({ inning, highlightedSide: state.activeSide })}
     <details class="diamond-inning-editor">
       <summary>Edit Inning ${inning}</summary>
       <div class="diamond-edit-fields">
@@ -1687,8 +1863,7 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
     const action = chartActions[key];
     return `
       <button type="button" data-chart-action="${key}" ${action.detail ? `title="${escapeHtml(`${action.label} (${action.detail})`)}"` : ""}>
-        <span class="result-main">${escapeHtml(action.label)}</span>
-        ${action.detail ? `<span class="result-detail">${escapeHtml(action.detail)}</span>` : ""}
+        <span class="result-main">${escapeHtml(`${action.label}${action.detail ? ` (${action.detail})` : ""}`)}</span>
       </button>
     `;
   }).join("") + `<button type="button" data-clear-cell="${cellKey}" class="danger clear-action-button" title="Clear cell">Clear</button>`;
@@ -1883,15 +2058,29 @@ function renderScorecard() {
   renderInningCompletion();
 }
 
+function blankScoreCell() {
+  return {
+    count: "",
+    result: "",
+    notation: "",
+    rbi: "",
+    bases: emptyDiamondPath()
+  };
+}
+
+function readChartScoreCell(chart, slotIndex, inning, abIndex = 0) {
+  return chart.scorecard[scoreCellKey(slotIndex, inning, abIndex)] || blankScoreCell();
+}
+
 function scoreSummaryHtml(cell) {
   const pitchText = cell.pitchDeltas?.length ? `${cell.pitchDeltas.length} P` : "";
   const summaryText = [cell.result || cell.notation, cell.runnerNote, cell.count ? `(${cell.count})` : "", pitchText, cell.rbi ? `${cell.rbi} RBI` : ""].filter(Boolean).join(" ");
   const center = cell.result || cell.notation || "-";
   return `
     <div class="score-cell score-cell-summary ${cell.outOverlay ? "is-out" : ""} ${cell.scoredOverlay ? "is-scored-status" : ""}">
-      <div class="summary-diamond">
+      <div class="summary-diamond-shell">
+        ${diamondSvg(cell.bases || emptyDiamondPath())}
         <strong>${escapeHtml(center)}</strong>
-        ${diamondBaseOrder.map((base) => `<span class="${base} ${cell.bases?.[base] ? "active" : ""}"></span>`).join("")}
       </div>
       <div class="summary-result">${escapeHtml(summaryText || "-")}</div>
     </div>
@@ -1899,12 +2088,26 @@ function scoreSummaryHtml(cell) {
 }
 
 function renderFullScorecard() {
-  const chart = activeChart();
+  if (!els.fullScorecardGrid) return;
+  const side = state.fullChartSide || state.activeSide;
+  const chart = state.charts[side] || activeChart();
   const innings = Number(state.inningCount || 9);
   const lastLineupIndex = chart.lineup.reduce((last, playerId, index) => playerId ? index : last, -1);
   const slotCount = Math.max(9, lastLineupIndex + 1);
   els.fullScorecardGrid.style.setProperty("--innings", innings);
-  const header = [`<div class="score-head">${escapeHtml(activeSideName())}</div>`]
+  if (els.fullChartToolbar) {
+    els.fullChartToolbar.innerHTML = `
+      <div class="segmented-toggle" role="group" aria-label="Full chart team">
+        ${["home", "away"].map((item) => `
+          <button type="button" data-full-chart-side="${item}" class="${item === side ? "is-on" : ""}">${escapeHtml(sideLabel(item))}</button>
+        `).join("")}
+      </div>
+    `;
+  }
+  if (els.fullChartLineScore) {
+    els.fullChartLineScore.innerHTML = lineScoreHtml({ highlightedSide: side });
+  }
+  const header = [`<div class="score-head">${escapeHtml(sideLabel(side))}</div>`]
     .concat(Array.from({ length: innings }, (_, index) => `<div class="score-head">${index + 1}</div>`))
     .join("");
   const rows = Array.from({ length: slotCount }, (_, slotIndex) => {
@@ -1913,7 +2116,7 @@ function renderFullScorecard() {
     const cells = Array.from({ length: innings }, (_, inningIndex) => {
       const inning = inningIndex + 1;
       const abCount = 1 + toNumber(chart.extraAbs[scoreCellKey(slotIndex, inning)] || 0);
-      return `<div class="summary-stack">${Array.from({ length: abCount }, (_, abIndex) => scoreSummaryHtml(getScoreCell(slotIndex, inning, abIndex))).join("")}</div>`;
+      return `<div class="summary-stack">${Array.from({ length: abCount }, (_, abIndex) => scoreSummaryHtml(readChartScoreCell(chart, slotIndex, inning, abIndex))).join("")}</div>`;
     }).join("");
     return `<div class="score-player summary-player"><strong>${playerLabel}</strong></div>${cells}`;
   }).join("");
@@ -2588,6 +2791,7 @@ function setupEvents() {
   document.querySelectorAll(".side-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       state.activeSide = tab.dataset.side;
+      state.fullChartSide = state.activeSide;
       document.querySelectorAll(".side-tab").forEach((item) => item.classList.toggle("active", item === tab));
       saveState();
       render();
@@ -2677,20 +2881,7 @@ function setupEvents() {
     });
   }
 
-  els.pdfInput.addEventListener("change", (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    state.sources.unshift({
-      id: uid("source"),
-      type: "pdf",
-      name: file.name,
-      importedAt: new Date().toISOString(),
-      detail: `${Math.round(file.size / 1024)} KB reference`
-    });
-    saveState();
-    render();
-    event.target.value = "";
-  });
+  bindPdfBridge();
 
   els.exportButton.addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -2804,6 +2995,7 @@ function setupEvents() {
     if (clearBase) {
       if (chart.baseState[clearBase]) updateRunnerDiamond(chart.baseState[clearBase], "");
       chart.baseState[clearBase] = "";
+      syncCurrentBaseState(chart);
       saveState();
       render();
     }
@@ -2812,6 +3004,7 @@ function setupEvents() {
       chart.baseState.first = "";
       chart.baseState.second = runnerId;
       updateRunnerDiamond(runnerId, "toSecond");
+      syncCurrentBaseState(chart);
       getInningTotals().RISP = toNumber(getInningTotals().RISP) + 1;
       const runner = state.players.find((player) => player.id === runnerId);
       if (runner) runner.stats.SB = toNumber(runner.stats.SB) + 1;
@@ -2823,6 +3016,7 @@ function setupEvents() {
       chart.baseState.second = "";
       chart.baseState.third = runnerId;
       updateRunnerDiamond(runnerId, "toThird");
+      syncCurrentBaseState(chart);
       const runner = state.players.find((player) => player.id === runnerId);
       if (runner) runner.stats.SB = toNumber(runner.stats.SB) + 1;
       saveState();
@@ -2837,7 +3031,7 @@ function setupEvents() {
   });
 
   els.currentInning.addEventListener("change", () => {
-    activeChart().currentInning = Number(els.currentInning.value);
+    setChartInning(activeChart(), Number(els.currentInning.value));
     saveState();
     renderScorecard();
     renderInningTotals();
@@ -2876,14 +3070,14 @@ function setupEvents() {
 
   els.prevInningButton.addEventListener("click", () => {
     const chart = activeChart();
-    chart.currentInning = Math.max(1, Number(chart.currentInning || 1) - 1);
+    setChartInning(chart, Number(chart.currentInning || 1) - 1);
     saveState();
     render();
   });
 
   els.nextInningButton.addEventListener("click", () => {
     const chart = activeChart();
-    chart.currentInning = Math.min(Number(state.inningCount || 9), Number(chart.currentInning || 1) + 1);
+    setChartInning(chart, Number(chart.currentInning || 1) + 1);
     saveState();
     render();
   });
@@ -2899,7 +3093,8 @@ function setupEvents() {
     activeChart().scorecard = {};
     activeChart().extraAbs = {};
     activeChart().inningTotals = {};
-    activeChart().baseState = { first: "", second: "", third: "" };
+    activeChart().baseStates = {};
+    activeChart().baseState = emptyBaseState();
     saveState();
     render();
   });
@@ -2908,6 +3103,14 @@ function setupEvents() {
     els.fullScorecardPanel.hidden = !els.fullScorecardPanel.hidden;
     els.toggleFullChartButton.textContent = els.fullScorecardPanel.hidden ? "Show Full Chart" : "Hide Full Chart";
     if (!els.fullScorecardPanel.hidden) renderFullScorecard();
+  });
+
+  els.fullScorecardPanel?.addEventListener("click", (event) => {
+    const side = event.target.closest("[data-full-chart-side]")?.dataset.fullChartSide;
+    if (!side) return;
+    state.fullChartSide = side;
+    saveState();
+    renderFullScorecard();
   });
 
   [els.inningCompleteOverlay, els.inningEditBanner].forEach((container) => {

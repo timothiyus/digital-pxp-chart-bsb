@@ -10,21 +10,22 @@ The importer reads the header row containing `Number`, `Last`, and `First`, then
 
 ## 2. PDF stat packets
 
-Required next step: a local parser service.
+Implemented as `tools/pdf_to_csv` — a Python CLI that converts source PDFs into CSVs the existing browser importer can consume unchanged. See [`tools/pdf_to_csv/README.md`](../tools/pdf_to_csv/README.md) for installation and usage.
 
-Browser-only PDF parsing is not reliable enough for stat packets, especially when tables are generated as positioned text. The right path is:
+The CLI auto-detects the source provider (Prestosports, GameChanger, MaxPreps) and document kind (season stats, box score, roster), dispatches to the right extractor, and writes a CSV next to the input PDF. The user reviews the CSV before importing, which doubles as the manual-resolution step for ambiguous name matches.
 
-- Extract text and tables with Python.
-- Normalize tables into a shared player-stat shape.
-- Show an import review screen before writing records.
-- Let the user manually resolve names that do not match exactly.
+Two interfaces, same extractors:
 
-Recommended Python stack:
+- **Browser bridge** (`python -m pdf_to_csv.server`) — a FastAPI service on `127.0.0.1:8766`. The Data tab POSTs the PDF to `/parse`, the bridge returns CSV text + detection metadata, and the app pipes the result through the existing CSV importer. The Data tab shows a live "PDF bridge: ready / offline" pill so users know whether the bridge is reachable before they upload.
+- **CLI** (`python -m pdf_to_csv <pdf>`) — for one-off conversions, scripting, or when running the bridge isn't convenient.
 
-- `pdfplumber` for table/text extraction.
-- `pandas` for cleanup and column mapping.
-- `rapidfuzz` for player name matching.
-- `FastAPI` later if the browser app needs a local import endpoint.
+Why bridge instead of in-browser parsing:
+
+- Browser-only PDF parsing isn't reliable for monospace positioned-text renders (e.g., Prestosports' `monospace-template`).
+- The existing CSV importer already does name matching by `(side, number, first, last)` key — the bridge just feeds it cleaner data.
+- The bridge runs entirely on `localhost`; nothing leaves the machine.
+
+Stack: `pdfplumber` for text/table extraction, `rapidfuzz` for fuzzy column-name aliasing, `click` for the CLI, `FastAPI` + `uvicorn` for the bridge.
 
 ## 3. Box scores and historical seasons
 
