@@ -23,7 +23,19 @@ from __future__ import annotations
 
 import io
 import logging
+import os
+import sys
 from typing import Optional
+
+
+# When the server is launched via pythonw.exe (no console window — used by
+# Windows scheduled tasks), sys.stdout / sys.stderr can be None, which
+# crashes uvicorn the first time it tries to log. Redirect to devnull so
+# logging is a no-op instead of an exception.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
 import pdfplumber
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
