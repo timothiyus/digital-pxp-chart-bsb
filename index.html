@@ -73,6 +73,21 @@
           </div>
           <p>This version stores everything in your browser. The data model is shaped so Supabase can replace local storage for teams, players, games, and events.</p>
             </section>
+
+            <section class="panel">
+          <div class="panel-heading">
+            <h2>Settings</h2>
+            <span>Optional chart controls</span>
+          </div>
+          <label class="setting-toggle">
+            <input id="showAtBatControls" type="checkbox" />
+            Show previous/next at-bat controls
+          </label>
+          <label class="setting-toggle">
+            <input id="showFocusControls" type="checkbox" />
+            Enable Focus 3 / Edit All controls
+          </label>
+            </section>
           </div>
         </section>
 
@@ -123,6 +138,8 @@
                 </div>
                 <div id="fullScorecardGrid" class="full-scorecard-grid"></div>
               </div>
+              <div id="inningEditBanner" class="inning-edit-banner" hidden></div>
+              <div id="inningCompleteOverlay" class="inning-complete-overlay" hidden></div>
             </div>
           </section>
 
@@ -194,6 +211,8 @@
                 <label>Hometown <input id="playerHometown" type="text" placeholder="Garden City, KS" /></label>
                 <label>Position <input id="playerPosition" type="text" placeholder="SS / RHP / 6 / 7 / DH / DP / FLEX" /></label>
                 <label>Class <input id="playerClass" type="text" placeholder="Fr., So., Jr." /></label>
+                <label>Height <input id="playerHeight" type="text" placeholder="6-1" /></label>
+                <label>Weight <input id="playerWeight" type="text" placeholder="185" /></label>
               </div>
               <div class="form-grid stats-edit">
                 <label>AB <input id="statAB" type="number" min="0" /></label>
@@ -402,6 +421,18 @@
     </main>
 
     <datalist id="notation-suggestions"></datalist>
+    <div id="appPromptOverlay" class="app-prompt-overlay" hidden>
+      <div class="app-prompt-dialog" role="dialog" aria-modal="true" aria-labelledby="appPromptTitle">
+        <h2 id="appPromptTitle"></h2>
+        <p id="appPromptMessage"></p>
+        <div id="appPromptChoices" class="app-prompt-choices"></div>
+        <input id="appPromptInput" type="text" />
+        <div class="app-prompt-actions">
+          <button id="appPromptCancel" type="button" class="muted">Cancel</button>
+          <button id="appPromptConfirm" type="button">Confirm</button>
+        </div>
+      </div>
+    </div>
     <script src="./app.js"></script>
   </body>
 </html>
