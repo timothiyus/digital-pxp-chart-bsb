@@ -615,7 +615,7 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 5px;
   background: #eef4f1;
-  color: var(--accent-strong);
+  color: var(--team-primary, var(--accent-strong));
   cursor: pointer;
   font-weight: 900;
 }
@@ -3422,7 +3422,7 @@ textarea {
 }
 
 .batter-note-box span {
-  color: var(--accent-strong);
+  color: var(--active-team-primary, var(--accent-strong));
   font-size: 0.66rem;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -3444,7 +3444,7 @@ textarea {
 }
 
 .sub-block span {
-  color: var(--accent-strong);
+  color: var(--active-team-primary, var(--accent-strong));
   font-size: 0.66rem;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -3624,7 +3624,7 @@ tr:hover td {
 .player-link {
   border: 0;
   background: transparent;
-  color: var(--accent-strong);
+  color: var(--active-team-primary, var(--accent-strong));
   padding: 0;
   min-height: 0;
   font-weight: 800;
@@ -5345,4 +5345,59 @@ tr:hover td {
     min-height: 27px;
     font-size: 0.52rem;
   }
+}
+
+/* Team-color button overrides (do not touch diamond buttons) */
+#autoLineupButton {
+  background: var(--active-team-primary, var(--accent));
+  border-color: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
+}
+#autoLineupButton:hover {
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 88%, #fff);
+  border-color: var(--active-team-primary, var(--accent-strong));
+  color: var(--active-team-secondary, #fff);
+}
+
+#addLineupSlotButton.muted,
+#addLineupSlotButton {
+  background: var(--active-team-secondary, #eef4f1);
+  border-color: var(--active-team-secondary, var(--line));
+  color: var(--active-team-primary, var(--accent-strong));
+}
+#addLineupSlotButton.muted:hover,
+#addLineupSlotButton:hover {
+  background: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 88%, #fff);
+  border-color: var(--active-team-secondary, var(--gold));
+  color: var(--active-team-primary, var(--accent-strong));
+}
+
+.chart-nav-actions #prevInningButton:not(.danger),
+#prevInningButton {
+  background: var(--active-team-secondary, #eef4f1);
+  border-color: var(--active-team-secondary, var(--line));
+  color: var(--active-team-primary, var(--accent-strong));
+}
+.chart-nav-actions #prevInningButton:not(.danger):hover,
+#prevInningButton:hover {
+  background: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 88%, #fff);
+  border-color: var(--active-team-secondary, var(--gold));
+  color: var(--active-team-primary, var(--accent-strong));
+}
+
+.up-next-actions > #prevAtBatButton,
+.up-next-actions > #toggleFullChartButton,
+#prevAtBatButton.muted,
+#toggleFullChartButton.muted {
+  background: var(--active-team-secondary, #eef4f1);
+  border-color: var(--active-team-secondary, var(--line));
+  color: var(--active-team-primary, var(--accent-strong));
+}
+.up-next-actions > #prevAtBatButton:hover,
+.up-next-actions > #toggleFullChartButton:hover,
+#prevAtBatButton.muted:hover,
+#toggleFullChartButton.muted:hover {
+  background: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 88%, #fff);
+  border-color: var(--active-team-secondary, var(--gold));
+  color: var(--active-team-primary, var(--accent-strong));
 }
