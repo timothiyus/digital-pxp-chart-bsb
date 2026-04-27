@@ -861,13 +861,13 @@ function resultLabel(result) {
 const notationStatMap = {
   "1B": "1B", "2B": "2B", "3B": "3B", "HR": "HR",
   "BB": "BB", "K": "K", "KC": "KC", "KL": "KC", "KPB": "KPB", "K PB": "KPB", "KWP": "KWP", "K WP": "KWP",
-  "HBP": "HBP", "ROE": "ROE", "E": "ERR", "ERR": "ERR",
+  "HBP": "HBP", "BI": "BI", "CI": "CI", "BK": "BALK", "BALK": "BALK", "ROE": "ROE", "E": "ERR", "ERR": "ERR",
   "FC": "FC", "SF": "SF",
   "SAC": "SF", "SH": "SF"
 };
 
 const notationSuggestions = [
-  "1B", "2B", "3B", "HR", "BB", "IBB", "HBP", "K", "Kc", "K PB", "K WP",
+  "1B", "2B", "3B", "HR", "BB", "IBB", "HBP", "K", "Kc", "K PB", "K WP", "BI", "CI", "BK",
   "ROE", "E", "FC", "SF", "SAC", "SH",
   "F7", "F8", "F9", "L7", "L8", "L9",
   "G1", "G3", "G4", "G5", "G6",
@@ -897,14 +897,17 @@ const chartActions = {
   BB: { label: "BB", result: "walk", notation: "BB", pitcher: { BB: 1, BF: 1 } },
   K: { label: "K", result: "strikeout", notation: "K", pitcher: { K: 1, BF: 1 } },
   KC: { label: "ꓘ", result: "strikeout", notation: "Kc", pitcher: { K: 1, BF: 1 } },
-  KPB: { label: "K PB", detail: "dropped strike 3, reach 1B, catcher fault", result: "strikeout", notation: "K PB", pitcher: { K: 1, BF: 1 } },
-  KWP: { label: "K WP", detail: "dropped strike 3, reach 1B, pitcher fault", result: "strikeout", notation: "K WP", pitcher: { K: 1, BF: 1 } },
+  KPB: { label: "K PB", result: "strikeout", notation: "K PB", pitcher: { K: 1, BF: 1 } },
+  KWP: { label: "K WP", result: "strikeout", notation: "K WP", pitcher: { K: 1, BF: 1 } },
   "1B": { label: "1B", result: "single", notation: "1B", pitcher: { H: 1, BF: 1 } },
   "2B": { label: "2B", result: "double", notation: "2B", pitcher: { H: 1, BF: 1 } },
   "3B": { label: "3B", result: "triple", notation: "3B", pitcher: { H: 1, BF: 1 } },
-  HR: { label: "HR", result: "hr", notation: "HR", pitcher: { H: 1, HR: 1, R: 1, ER: 1, BF: 1 } },
+  HR: { label: "Hr", result: "hr", notation: "HR", pitcher: { H: 1, HR: 1, R: 1, ER: 1, BF: 1 } },
   OUT: { label: "Out", result: "out", notation: "OUT", pitcher: { BF: 1 } },
   HBP: { label: "HBP", result: "hbp", notation: "HBP", pitcher: { BF: 1 } },
+  BI: { label: "BI", result: "out", notation: "BI", pitcher: { BF: 1 } },
+  CI: { label: "CI", result: "catcherInterference", notation: "CI", pitcher: { BF: 1 } },
+  BALK: { label: "Balk", result: "balk", notation: "BK", pitcher: {}, noPlateAppearance: true, advanceBatter: false },
   SF: { label: "SF", result: "sacFly", notation: "SF", pitcher: { BF: 1 } },
   ROE: { label: "ROE", result: "reachedError", notation: "ROE", pitcher: { BF: 1 }, inning: { E: 1 } },
   ERR: { label: "E", result: "out", notation: "E", pitcher: {}, inning: { E: 1 } },
@@ -915,6 +918,7 @@ const basePathForResult = {
   "1B": ["toFirst"],
   BB: ["toFirst"],
   HBP: ["toFirst"],
+  CI: ["toFirst"],
   KPB: ["toFirst"],
   KWP: ["toFirst"],
   ROE: ["toFirst"],
@@ -1508,7 +1512,7 @@ function currentInningOuts(inning = activeChart().currentInning) {
   const chart = activeChart();
   return Object.values(chart.scorecard || {}).reduce((outs, cell) => {
     if (cellActualInning(cell, inning) !== Number(inning)) return outs;
-    if (cell.outOverlay || ["OUT", "K", "Kc", "SF"].includes(cell.result) || ["OUT", "K", "KC", "SF"].includes(cell.actionKey)) return outs + 1;
+    if (cell.outOverlay || ["OUT", "K", "Kc", "SF", "BI"].includes(cell.result) || ["OUT", "K", "KC", "SF", "BI"].includes(cell.actionKey)) return outs + 1;
     return outs;
   }, 0);
 }
@@ -1902,24 +1906,36 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
           <button type="button" data-steal-cell="${cellKey}" data-steal-terminal="toFirst">Steal 1B</button>
           <button type="button" class="cs-control" data-cs-cell="${cellKey}" data-cs-terminal="toFirst">CS 1B</button>
         </div>
-        <button type="button" class="pick-control" data-pick-cell="${cellKey}" data-pick-terminal="toFirst">Pick</button>
+        <div class="runner-extra-stack">
+          <button type="button" class="pick-control" data-pick-cell="${cellKey}" data-pick-terminal="toFirst">Pick</button>
+          <button type="button" class="ri-control" data-ri-cell="${cellKey}" data-ri-terminal="toFirst">RI</button>
+        </div>
       </div>
       <div class="steal-control-pair steal-toSecond">
         <div class="steal-main-stack">
           <button type="button" data-steal-cell="${cellKey}" data-steal-terminal="toSecond">Steal 2B</button>
           <button type="button" class="cs-control" data-cs-cell="${cellKey}" data-cs-terminal="toSecond">CS 2B</button>
         </div>
-        <button type="button" class="pick-control" data-pick-cell="${cellKey}" data-pick-terminal="toSecond">Pick</button>
+        <div class="runner-extra-stack">
+          <button type="button" class="pick-control" data-pick-cell="${cellKey}" data-pick-terminal="toSecond">Pick</button>
+          <button type="button" class="ri-control" data-ri-cell="${cellKey}" data-ri-terminal="toSecond">RI</button>
+        </div>
       </div>
       <div class="steal-control-pair steal-toThird">
-        <button type="button" class="pick-control" data-pick-cell="${cellKey}" data-pick-terminal="toThird">Pick</button>
+        <div class="runner-extra-stack">
+          <button type="button" class="pick-control" data-pick-cell="${cellKey}" data-pick-terminal="toThird">Pick</button>
+          <button type="button" class="ri-control" data-ri-cell="${cellKey}" data-ri-terminal="toThird">RI</button>
+        </div>
         <div class="steal-main-stack">
           <button type="button" data-steal-cell="${cellKey}" data-steal-terminal="toThird">Steal 3B</button>
           <button type="button" class="cs-control" data-cs-cell="${cellKey}" data-cs-terminal="toThird">CS 3B</button>
         </div>
       </div>
       <div class="steal-control-pair steal-toHome">
-        <button type="button" class="pick-control" data-pick-cell="${cellKey}" data-pick-terminal="toHome">Pick</button>
+        <div class="runner-extra-stack">
+          <button type="button" class="pick-control" data-pick-cell="${cellKey}" data-pick-terminal="toHome">Pick</button>
+          <button type="button" class="ri-control" data-ri-cell="${cellKey}" data-ri-terminal="toHome">RI</button>
+        </div>
         <div class="steal-main-stack">
           <button type="button" data-steal-cell="${cellKey}" data-steal-terminal="toHome">Steal HP</button>
           <button type="button" class="cs-control" data-cs-cell="${cellKey}" data-cs-terminal="toHome">CS HP</button>
@@ -1929,14 +1945,23 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
     </div>
   `;
 
-  const actionButtons = ["HBP", "KPB", "KWP", "1B", "2B", "3B", "HR"].map((key) => {
+  const actionButtonHtml = (key) => {
     const action = chartActions[key];
     return `
       <button type="button" data-chart-action="${key}" ${action.detail ? `title="${escapeHtml(`${action.label} (${action.detail})`)}"` : ""}>
-        <span class="result-main">${escapeHtml(`${action.label}${action.detail ? ` (${action.detail})` : ""}`)}</span>
+        <span class="result-main">${escapeHtml(action.label)}</span>
       </button>
     `;
-  }).join("") + `<button type="button" data-clear-cell="${cellKey}" class="danger clear-action-button" title="Clear cell">Clear</button>`;
+  };
+  const actionButtons = [
+    ["1B", "2B", "3B", "HR"],
+    ["KWP", "KPB", "BI"],
+    ["HBP", "BALK", "CI"]
+  ].map((row) => `
+    <div class="result-button-row result-button-row-${row.length}">
+      ${row.map(actionButtonHtml).join("")}
+    </div>
+  `).join("");
 
   const displacedBadge = isDisplaced ? `<div class="displaced-tag">FROM INN ${actualInning}</div>` : "";
   const pitchTotal = (cell.pitchDeltas || []).length;
@@ -1944,7 +1969,6 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
   const entrySurface = opts.isCompact ? "" : `
     <div class="score-count-row">
       <div class="count-card">
-        <input data-score-field="count" value="${escapeHtml(cell.count)}" placeholder="0-0" aria-label="Count" />
         <span>${escapeHtml(cell.count || "0-0")} | ${pitchTotal} P</span>
       </div>
       <select data-score-field="rbi" aria-label="RBI">
@@ -1959,6 +1983,7 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
       <button type="button" data-pitch="strike">Strike</button>
       <button type="button" data-pitch="foul">Foul</button>
     </div>
+    <button type="button" data-clear-cell="${cellKey}" class="danger clear-action-button" title="Clear cell">Clear AB Data</button>
     <div class="result-buttons">${actionButtons}</div>
     ${abIndex > 0 ? `<div class="score-result-row"><button type="button" data-remove-ab="${cellKey}" class="muted remove-ab-button" title="Remove extra at-bat">Remove AB</button></div>` : ""}
   ` : "";
@@ -2775,7 +2800,7 @@ function applyChartAction(cellKey, actionKey) {
   cell.result = action.notation;
   cell.notation = action.notation;
   cell.actionKey = actionKey;
-  cell.outOverlay = ["OUT", "K", "KC", "SF"].includes(actionKey);
+  cell.outOverlay = ["OUT", "K", "KC", "SF", "BI"].includes(actionKey);
   cell.baseStateBefore = baseStateBefore;
   cell.bases = emptyDiamondPath();
   (basePathForResult[actionKey] || []).forEach((base) => {
@@ -2794,34 +2819,37 @@ function applyChartAction(cellKey, actionKey) {
 
   addToInningTotals(effectiveInning, inningUpdates, 1);
 
-  const event = {
-    id: uid("chart-event"),
-    playerId: batterId,
-    pitcherId: chart.activePitcherId,
-    result: action.result,
-    rbi: toNumber(cell.rbi),
-    sb: 0,
-    cs: 0,
-    context: `Inning ${effectiveInning}: ${action.notation}`,
-    createdAt: new Date().toISOString()
-  };
-  applyEvent(event, 1);
-  state.events.unshift(event);
+  let event = null;
+  if (!action.noPlateAppearance) {
+    event = {
+      id: uid("chart-event"),
+      playerId: batterId,
+      pitcherId: chart.activePitcherId,
+      result: action.result,
+      rbi: toNumber(cell.rbi),
+      sb: 0,
+      cs: 0,
+      context: `Inning ${effectiveInning}: ${action.notation}`,
+      createdAt: new Date().toISOString()
+    };
+    applyEvent(event, 1);
+    state.events.unshift(event);
+  }
 
   const pitcherUpdates = { ...(action.pitcher || {}) };
-  if (["OUT", "K", "KC", "SF"].includes(actionKey)) pitcherUpdates.outs = (pitcherUpdates.outs || 0) + 1;
-  if (event.rbi && ["HR"].includes(actionKey)) {
+  if (["OUT", "K", "KC", "SF", "BI"].includes(actionKey)) pitcherUpdates.outs = (pitcherUpdates.outs || 0) + 1;
+  if (event?.rbi && ["HR"].includes(actionKey)) {
     pitcherUpdates.R = Math.max(pitcherUpdates.R || 0, event.rbi);
     pitcherUpdates.ER = Math.max(pitcherUpdates.ER || 0, event.rbi);
   }
   addToPitchingLine(chart.activePitcherId, pitcherUpdates);
-  cell.eventId = event.id;
+  if (event) cell.eventId = event.id;
   cell.pitcherId = chart.activePitcherId;
   cell.pitcherUpdates = pitcherUpdates;
   cell.inning = effectiveInning;
   cell.inningUpdates = inningUpdates;
 
-  if (slot === getCurrentSlot() && effectiveInning === Number(chart.currentInning || 1)) {
+  if (action.advanceBatter !== false && slot === getCurrentSlot() && effectiveInning === Number(chart.currentInning || 1)) {
     advanceBatter();
   }
 }
@@ -3264,6 +3292,8 @@ function setupEvents() {
     const csTerminal = event.target.closest("[data-cs-cell]")?.dataset.csTerminal;
     const pickCellKey = event.target.closest("[data-pick-cell]")?.dataset.pickCell;
     const pickTerminal = event.target.closest("[data-pick-cell]")?.dataset.pickTerminal;
+    const riCellKey = event.target.closest("[data-ri-cell]")?.dataset.riCell;
+    const riTerminal = event.target.closest("[data-ri-cell]")?.dataset.riTerminal;
     const wpCellKey = event.target.closest("[data-wp-cell]")?.dataset.wpCell;
     const focusSlot = event.target.closest("[data-focus-slot]")?.dataset.focusSlot;
     if (focusSlot) {
@@ -3353,6 +3383,22 @@ function setupEvents() {
       addRunnerPitcherOut(cell);
       cell.runnerNote = `PO ${sequence}`;
       if (!cell.notation && !cell.result) cell.notation = `PO ${sequence}`;
+      saveState();
+      render();
+    }
+    if (riCellKey && riTerminal) {
+      const chart = activeChart();
+      const cell = getScoreCellFromKey(riCellKey);
+      const { slot } = parseScoreCellKey(riCellKey);
+      const runnerId = chart.lineup[slot - 1];
+      clearRunnerOutcome(cell);
+      if (!cell.baseStateBefore) cell.baseStateBefore = { ...chart.baseState };
+      cell.bases = diamondPathThrough(riTerminal);
+      if (runnerId) setBatterBaseState(chart, runnerId, "");
+      cell.outOverlay = true;
+      addRunnerPitcherOut(cell);
+      cell.runnerNote = "RI";
+      if (!cell.notation && !cell.result) cell.notation = "RI";
       saveState();
       render();
     }

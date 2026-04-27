@@ -2126,7 +2126,7 @@ textarea {
 
 .count-card {
   display: grid;
-  grid-template-columns: minmax(54px, 0.72fr) minmax(58px, 1fr);
+  grid-template-columns: 1fr;
   align-items: center;
   gap: 4px;
   min-height: 38px;
@@ -2144,7 +2144,7 @@ textarea {
 
 .count-card span {
   color: var(--accent-strong);
-  font-size: 0.72rem;
+  font-size: 0.88rem;
   font-weight: 950;
   text-align: center;
   white-space: nowrap;
@@ -2224,7 +2224,7 @@ textarea {
 
 .steal-controls {
   position: absolute;
-  inset: -58px;
+  inset: 0;
   z-index: 4;
   pointer-events: none;
 }
@@ -2264,7 +2264,14 @@ textarea {
   pointer-events: none;
 }
 
-.steal-main-stack button {
+.runner-extra-stack {
+  display: grid;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.steal-main-stack button,
+.runner-extra-stack button {
   pointer-events: auto;
 }
 
@@ -2280,27 +2287,33 @@ textarea {
   color: var(--accent-strong);
 }
 
+.steal-controls .ri-control {
+  background: #f1f5f2;
+  border-color: #8c9892;
+  color: #3a4842;
+}
+
 .steal-toFirst {
-  right: 0;
-  bottom: 8px;
+  right: -96px;
+  bottom: -8px;
   grid-template-columns: auto auto;
 }
 
 .steal-toSecond {
-  right: 0;
-  top: 8px;
+  right: -96px;
+  top: -8px;
   grid-template-columns: auto auto;
 }
 
 .steal-toThird {
-  left: 0;
-  top: 8px;
+  left: -96px;
+  top: -8px;
   grid-template-columns: auto auto;
 }
 
 .steal-toHome {
-  left: 0;
-  bottom: 8px;
+  left: -96px;
+  bottom: -8px;
   grid-template-columns: auto auto;
 }
 
@@ -2567,7 +2580,7 @@ textarea {
 
 .pitch-buttons {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
 }
 
@@ -2585,8 +2598,20 @@ textarea {
 
 .result-buttons {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
+}
+
+.result-button-row {
+  display: grid;
+  gap: 4px;
+}
+
+.result-button-row-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.result-button-row-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .result-buttons button {
@@ -2608,7 +2633,12 @@ textarea {
   display: block;
 }
 
-.result-buttons .clear-action-button {
+.clear-action-button {
+  width: 100%;
+  min-height: 30px;
+  padding: 0;
+  font-size: 0.82rem;
+  font-weight: 950;
   background: #fff4f2;
   color: var(--danger);
   border-color: var(--danger);
