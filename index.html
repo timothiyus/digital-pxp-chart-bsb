@@ -308,6 +308,15 @@
                 </label>
               </div>
               <p class="meta" id="pdfBridgeStatus" data-status="unknown">PDF bridge: checking&hellip;</p>
+              <details id="pdfBridgeConfig" class="bridge-config">
+                <summary>Bridge URL&hellip;</summary>
+                <div class="bridge-config-row">
+                  <input id="pdfBridgeUrlInput" type="url" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="https://your-pc.tail-xxxx.ts.net/api" />
+                  <button id="pdfBridgeSaveButton" type="button">Save &amp; test</button>
+                  <button id="pdfBridgeClearButton" type="button" class="ghost">Reset</button>
+                </div>
+                <p class="meta">Leave blank to auto-detect (works when the app loads from <code>localhost</code> or a <code>.ts.net</code> tailnet hostname). When loading the app from GitHub Pages, set this to your tailnet bridge, e.g. <code>https://&lt;pc&gt;.&lt;tailnet&gt;.ts.net/api</code>.</p>
+              </details>
               <div id="dataSourceList" class="source-list"></div>
             </div>
           </section>

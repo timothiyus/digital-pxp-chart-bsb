@@ -3165,6 +3165,41 @@ tr:hover td {
 #pdfBridgeStatus[data-status="offline"] { color: #d04a4a; }
 #pdfBridgeStatus[data-status="busy"]    { color: #e0a83b; }
 
+.bridge-config {
+  margin: 6px 0 4px;
+  font-size: 0.85rem;
+}
+
+.bridge-config summary {
+  cursor: pointer;
+  color: var(--muted);
+  user-select: none;
+}
+
+.bridge-config-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+  align-items: center;
+}
+
+.bridge-config-row input[type="url"] {
+  flex: 1 1 280px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--accent-strong, #ccc);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.bridge-config-row button.ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid currentColor;
+}
+
 .card-actions {
   display: flex;
   gap: 8px;

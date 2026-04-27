@@ -98,6 +98,10 @@ const els = {
   boxScoreInput: document.querySelector("#boxScoreInput"),
   boxScorePdfInput: document.querySelector("#boxScorePdfInput"),
   pdfBridgeStatus: document.querySelector("#pdfBridgeStatus"),
+  pdfBridgeUrlInput: document.querySelector("#pdfBridgeUrlInput"),
+  pdfBridgeSaveButton: document.querySelector("#pdfBridgeSaveButton"),
+  pdfBridgeClearButton: document.querySelector("#pdfBridgeClearButton"),
+  pdfBridgeConfig: document.querySelector("#pdfBridgeConfig"),
   boxScoreDate: document.querySelector("#boxScoreDate"),
   boxScoreOpponent: document.querySelector("#boxScoreOpponent"),
   boxScoreResultNote: document.querySelector("#boxScoreResultNote"),
@@ -587,13 +591,17 @@ function resolvePdfBridgeUrl() {
   if (!host || host === "localhost" || host === "127.0.0.1") {
     return "http://127.0.0.1:8766";
   }
-  // Remote origin (e.g. Tailscale magic-DNS hostname or LAN IP).
-  // Assumes `tailscale serve` (or any reverse proxy) routes /api/* to the bridge on this same origin.
-  return `${location.origin}/api`;
+  // tailscale serve typically reverse-proxies /api on the .ts.net origin to the local bridge.
+  if (host.endsWith(".ts.net")) {
+    return `${location.origin}/api`;
+  }
+  // Anywhere else (e.g. GitHub Pages) — the user must configure the bridge URL via the Data tab.
+  return "";
 }
-const PDF_BRIDGE_URL = resolvePdfBridgeUrl();
+let PDF_BRIDGE_URL = resolvePdfBridgeUrl();
 
 async function pingPdfBridge() {
+  if (!PDF_BRIDGE_URL) return false;
   try {
     const res = await fetch(`${PDF_BRIDGE_URL}/health`, { cache: "no-store" });
     return res.ok;
@@ -609,11 +617,24 @@ function setPdfBridgeStatus(status, message) {
 }
 
 function pdfBridgeOfflineHint() {
+  if (!PDF_BRIDGE_URL) {
+    return "PDF bridge: not configured — paste your tailnet bridge URL below (e.g. https://your-pc.tail-xxxx.ts.net/api)";
+  }
   const isLocal = PDF_BRIDGE_URL.startsWith("http://127.0.0.1") || PDF_BRIDGE_URL.startsWith("http://localhost");
   if (isLocal) {
     return "PDF bridge: offline — start it with `python -m pdf_to_csv.server` from tools/pdf_to_csv";
   }
   return `PDF bridge: offline at ${PDF_BRIDGE_URL} — wake the PC, start the bridge, and ensure 'tailscale serve' is routing /api/`;
+}
+
+function savePdfBridgeUrl(rawValue) {
+  const trimmed = (rawValue || "").trim().replace(/\/+$/, "");
+  try {
+    if (trimmed) localStorage.setItem("pxp.pdfBridgeUrl", trimmed);
+    else localStorage.removeItem("pxp.pdfBridgeUrl");
+  } catch (_) { /* ignore storage errors */ }
+  PDF_BRIDGE_URL = resolvePdfBridgeUrl();
+  return refreshPdfBridgeStatus();
 }
 
 async function refreshPdfBridgeStatus() {
@@ -680,11 +701,42 @@ async function importPdfViaBridge(file, options = {}) {
 }
 
 function bindPdfBridge() {
+  // Pre-fill the input with the saved override (if any) so the user can see / edit it.
+  if (els.pdfBridgeUrlInput) {
+    try {
+      const saved = localStorage.getItem("pxp.pdfBridgeUrl") || "";
+      els.pdfBridgeUrlInput.value = saved;
+      // If we're on GitHub Pages with no saved override, expand the config so the input is visible.
+      if (!saved && !PDF_BRIDGE_URL && els.pdfBridgeConfig) {
+        els.pdfBridgeConfig.open = true;
+      }
+    } catch (_) { /* ignore */ }
+  }
+
   refreshPdfBridgeStatus();
 
   if (els.pdfBridgeStatus) {
     els.pdfBridgeStatus.addEventListener("click", () => {
       if (els.pdfBridgeStatus.dataset.status !== "busy") refreshPdfBridgeStatus();
+    });
+  }
+
+  if (els.pdfBridgeSaveButton && els.pdfBridgeUrlInput) {
+    els.pdfBridgeSaveButton.addEventListener("click", () => {
+      savePdfBridgeUrl(els.pdfBridgeUrlInput.value);
+    });
+    els.pdfBridgeUrlInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        savePdfBridgeUrl(els.pdfBridgeUrlInput.value);
+      }
+    });
+  }
+
+  if (els.pdfBridgeClearButton && els.pdfBridgeUrlInput) {
+    els.pdfBridgeClearButton.addEventListener("click", () => {
+      els.pdfBridgeUrlInput.value = "";
+      savePdfBridgeUrl("");
     });
   }
 
