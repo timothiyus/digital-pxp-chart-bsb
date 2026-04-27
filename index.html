@@ -29,6 +29,7 @@
           <button class="tab active" type="button" data-view="chartView">Chart</button>
           <button class="tab" type="button" data-view="rosterView">Roster</button>
           <button class="tab" type="button" data-view="pitchingView">Pitching</button>
+          <button class="tab" type="button" data-view="defenseView">Defense</button>
           <button class="tab" type="button" data-view="gameLogView">Game Log</button>
           <button class="tab" type="button" data-view="dataView">Data</button>
         </nav>
@@ -57,6 +58,8 @@
             <textarea id="gameNotes" rows="5" placeholder="Weather, umpire tendencies, broadcast angles, coach notes..."></textarea>
           </label>
             </section>
+
+            <section id="teamProfilePanel" class="panel setup-team-profile"></section>
 
             <section class="panel">
           <div class="panel-heading">
@@ -134,12 +137,13 @@
               <div id="fullScorecardPanel" class="full-scorecard-panel" hidden>
                 <div class="section-title compact-title">
                   <h2>All Innings To Date</h2>
-                  <span>Outcome, count, RBI</span>
+                  <button type="button" class="muted" data-close-full-chart>Close</button>
                 </div>
                 <div id="fullChartToolbar" class="full-chart-toolbar"></div>
                 <div id="fullChartLineScore" class="full-chart-line-score"></div>
-                <div id="fullScorecardGrid" class="full-scorecard-grid"></div>
+              <div id="fullScorecardGrid" class="full-scorecard-grid"></div>
               </div>
+              <div id="defensePopupPanel" class="defense-popup-panel" hidden></div>
               <div id="inningEditBanner" class="inning-edit-banner" hidden></div>
               <div id="inningCompleteOverlay" class="inning-complete-overlay" hidden></div>
             </div>
@@ -217,6 +221,7 @@
                 <label>Weight <input id="playerWeight" type="text" placeholder="185" /></label>
               </div>
               <div class="form-grid stats-edit">
+                <h3>Batting Stats</h3>
                 <label>AB <input id="statAB" type="number" min="0" /></label>
                 <label>H <input id="statH" type="number" min="0" /></label>
                 <label>2B <input id="stat2B" type="number" min="0" /></label>
@@ -229,6 +234,27 @@
                 <label>SO <input id="statSO" type="number" min="0" /></label>
                 <label>SB <input id="statSB" type="number" min="0" /></label>
                 <label>CS <input id="statCS" type="number" min="0" /></label>
+              </div>
+              <div class="form-grid stats-edit">
+                <h3>Pitching Stats</h3>
+                <label>IP <input id="statIP" type="number" min="0" step="0.1" /></label>
+                <label>ERA <input id="statERA" type="number" min="0" step="0.01" /></label>
+                <label>WHIP <input id="statWHIP" type="number" min="0" step="0.01" /></label>
+                <label>W <input id="statW" type="number" min="0" /></label>
+                <label>L <input id="statL" type="number" min="0" /></label>
+                <label>GS <input id="statGS" type="number" min="0" /></label>
+                <label>BF <input id="statBF" type="number" min="0" /></label>
+                <label>H <input id="statP_H" type="number" min="0" /></label>
+                <label>R <input id="statP_R" type="number" min="0" /></label>
+                <label>ER <input id="statP_ER" type="number" min="0" /></label>
+                <label>HR <input id="statP_HR" type="number" min="0" /></label>
+                <label>BB <input id="statP_BB" type="number" min="0" /></label>
+                <label>K <input id="statP_SO" type="number" min="0" /></label>
+                <label>HBP <input id="statP_HBP" type="number" min="0" /></label>
+                <label>WP <input id="statP_WP" type="number" min="0" /></label>
+                <label>BK <input id="statP_BK" type="number" min="0" /></label>
+                <label>BAA <input id="statBAA" type="number" min="0" step="0.001" /></label>
+                <label>Pitches <input id="statPitches" type="number" min="0" /></label>
               </div>
               <label>
                 Broadcast notes
@@ -282,42 +308,106 @@
           </section>
         </section>
 
+        <section id="defenseView" class="view">
+          <section class="defense-page">
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Defense Chart</h2>
+                <span>Current fielding side</span>
+              </div>
+              <div id="defenseEditor"></div>
+            </section>
+          </section>
+        </section>
+
         <section id="dataView" class="view">
           <nav class="data-tabs" aria-label="Data sections">
-            <button class="data-tab active" type="button" data-data-section="seasonStatsSection">Season Stats</button>
+            <button class="data-tab active" type="button" data-data-section="gameChangerSection">GameChanger</button>
+            <button class="data-tab" type="button" data-data-section="prestoSection">PrestoSports</button>
             <button class="data-tab" type="button" data-data-section="boxScoreSection">Box Scores</button>
             <button class="data-tab" type="button" data-data-section="exportSection">Export</button>
             <button class="data-tab" type="button" data-data-section="helpSection">Settings &amp; Help</button>
           </nav>
 
-          <section id="seasonStatsSection" class="data-section active">
+          <section id="gameChangerSection" class="data-section active">
             <div class="panel">
               <div class="panel-heading">
-                <h2>Season Stats Import</h2>
-                <span>CSV with Number, First, Last + season totals</span>
+                <h2>GameChanger Import</h2>
+                <span>Season, conference, and box-score CSVs</span>
               </div>
-              <p class="meta">Imports a full-season GameChanger-style CSV into the active side&apos;s roster. Existing players (by side + number + name) get updated; new ones are added.</p>
+              <p class="meta">For GCHS and other GameChanger-sourced rosters. Imports full-season and conference CSVs into the active side&apos;s roster. Existing players (by side + number + name) get updated; new ones are added.</p>
               <div class="data-actions">
                 <label class="file-button">
                   Import Season CSV
                   <input id="csvInput" type="file" accept=".csv,text/csv" />
                 </label>
                 <label class="file-button">
-                  Import Stats / Roster PDF
-                  <input id="pdfInput" type="file" accept="application/pdf,.pdf" />
+                  Import Conference CSV
+                  <input id="gcConferenceCsvInput" type="file" accept=".csv,text/csv" />
+                </label>
+                <label class="file-button">
+                  Import Box Score CSV
+                  <input id="gcBoxScoreInput" type="file" accept=".csv,text/csv" />
                 </label>
               </div>
-              <p class="meta" id="pdfBridgeStatus" data-status="unknown">PDF bridge: checking&hellip;</p>
-              <details id="pdfBridgeConfig" class="bridge-config">
-                <summary>Bridge URL&hellip;</summary>
-                <div class="bridge-config-row">
-                  <input id="pdfBridgeUrlInput" type="url" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="https://your-pc.tail-xxxx.ts.net/api" />
-                  <button id="pdfBridgeSaveButton" type="button">Save &amp; test</button>
-                  <button id="pdfBridgeClearButton" type="button" class="ghost">Reset</button>
-                </div>
-                <p class="meta">Leave blank to auto-detect (works when the app loads from <code>localhost</code> or a <code>.ts.net</code> tailnet hostname). When loading the app from GitHub Pages, set this to your tailnet bridge, e.g. <code>https://&lt;pc&gt;.&lt;tailnet&gt;.ts.net/api</code>.</p>
-              </details>
               <div id="dataSourceList" class="source-list"></div>
+            </div>
+          </section>
+
+          <section id="prestoSection" class="data-section">
+            <div class="panel">
+              <div class="panel-heading">
+                <h2>PrestoSports Import</h2>
+                <span>NJCAA / GCCC roster + per-slice CSVs</span>
+              </div>
+              <p class="meta">For GCCC and other PrestoSports-sourced rosters. Drop the roster <code>.TRX</code> first, then the four overall-season stat CSVs and (optionally) the four conference-only CSVs. Each slot fills its own slice of <code>player.stats</code> (overall) or <code>player.confStats</code> (conference). The matching <code>.TRO</code> file is index-only — drop the <code>.TRX</code> instead.</p>
+              <div class="presto-roster-row">
+                <label class="file-button">
+                  Roster (TRX / TRO)
+                  <input id="prestoRosterInput" type="file" accept=".trx,.tro" />
+                </label>
+              </div>
+              <div class="presto-grid">
+                <div class="presto-column">
+                  <h3>Overall season</h3>
+                  <label class="file-button">
+                    Hitting CSV
+                    <input id="prestoHittingOverallInput" type="file" accept=".csv,text/csv" data-presto-scope="overall" data-presto-variant="hitting" />
+                  </label>
+                  <label class="file-button">
+                    Base running CSV
+                    <input id="prestoBaserunOverallInput" type="file" accept=".csv,text/csv" data-presto-scope="overall" data-presto-variant="baserunning" />
+                  </label>
+                  <label class="file-button">
+                    Pitching CSV
+                    <input id="prestoPitchingOverallInput" type="file" accept=".csv,text/csv" data-presto-scope="overall" data-presto-variant="pitching" />
+                  </label>
+                  <label class="file-button">
+                    Fielding CSV
+                    <input id="prestoFieldingOverallInput" type="file" accept=".csv,text/csv" data-presto-scope="overall" data-presto-variant="fielding" />
+                  </label>
+                </div>
+                <div class="presto-column">
+                  <h3>Conference only</h3>
+                  <label class="file-button">
+                    Hitting CSV
+                    <input id="prestoHittingConfInput" type="file" accept=".csv,text/csv" data-presto-scope="conference" data-presto-variant="hitting" />
+                  </label>
+                  <label class="file-button">
+                    Base running CSV
+                    <input id="prestoBaserunConfInput" type="file" accept=".csv,text/csv" data-presto-scope="conference" data-presto-variant="baserunning" />
+                  </label>
+                  <label class="file-button">
+                    Pitching CSV
+                    <input id="prestoPitchingConfInput" type="file" accept=".csv,text/csv" data-presto-scope="conference" data-presto-variant="pitching" />
+                  </label>
+                  <label class="file-button">
+                    Fielding CSV
+                    <input id="prestoFieldingConfInput" type="file" accept=".csv,text/csv" data-presto-scope="conference" data-presto-variant="fielding" />
+                  </label>
+                </div>
+              </div>
+              <div id="prestoSourceList" class="source-list"></div>
             </div>
           </section>
 
@@ -325,9 +415,9 @@
             <div class="panel">
               <div class="panel-heading">
                 <h2>Box Score Import</h2>
-                <span>One CSV per game; per-player line</span>
+                <span>One file per game; per-player line</span>
               </div>
-              <p class="meta">A box score CSV captures one game&apos;s line for each player who appeared. Imported box scores show up as a Recent Games strip in the Active Batter Detail and on each player&apos;s roster card. Required headers: <code>Number, Last, First</code> plus stat columns (<code>AB, H, 2B, 3B, HR, BB, SO, RBI, ...</code>). Optional: <code>Game Date</code>, <code>Opponent</code>.</p>
+              <p class="meta">A box score CSV or TXT captures one game&apos;s line for each player who appeared. Imported box scores show up as a Recent Games strip in the Active Batter Detail and on each player&apos;s roster card. CSV headers should include <code>Number, Last, First</code> plus stat columns (<code>AB, H, 2B, 3B, HR, BB, SO, RBI, ...</code>). TXT imports are designed for GameChanger/MaxPreps table exports.</p>
               <form id="boxScoreForm" class="data-form">
                 <label>
                   Game date
@@ -346,8 +436,8 @@
                   <input id="boxScoreInput" type="file" accept=".csv,text/csv" />
                 </label>
                 <label class="file-button">
-                  Import Box Score PDF
-                  <input id="boxScorePdfInput" type="file" accept="application/pdf,.pdf" />
+                  Import Box Score TXT
+                  <input id="boxScoreTxtInput" type="file" accept=".txt,text/plain" />
                 </label>
               </form>
               <div id="boxScoreList" class="source-list"></div>

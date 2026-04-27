@@ -155,7 +155,7 @@ p {
 
 .setup-page {
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(260px, 0.55fr) minmax(260px, 0.55fr);
+  grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr);
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -265,13 +265,15 @@ textarea {
 
 .side-tab {
   background: transparent;
-  color: var(--accent-strong);
+  color: var(--side-primary, var(--active-team-primary, var(--accent-strong)));
   border-color: transparent;
 }
 
+.side-tab:hover,
 .side-tab.active {
-  background: var(--accent);
-  color: #fff;
+  background: var(--side-primary, var(--active-team-primary, var(--accent)));
+  color: var(--side-secondary, #fff);
+  border-color: var(--side-primary, var(--active-team-primary, var(--accent)));
 }
 
 .save-state {
@@ -282,12 +284,14 @@ textarea {
 
 .tab {
   background: #fff;
-  color: var(--accent-strong);
+  color: var(--active-team-primary, var(--accent-strong));
 }
 
+.tab:hover,
 .tab.active {
-  background: var(--accent);
-  color: #fff;
+  background: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
+  border-color: var(--active-team-primary, var(--accent));
 }
 
 .view {
@@ -316,7 +320,7 @@ textarea {
 
 .chart-hud {
   display: grid;
-  grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.2fr) minmax(260px, 0.9fr);
+  grid-template-columns: minmax(360px, 0.85fr) minmax(0, 1.15fr);
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -349,11 +353,366 @@ textarea {
   font-weight: 800;
 }
 
+.team-snapshot-hud,
+.team-stats-hud {
+  border-color: color-mix(in srgb, var(--team-primary, var(--accent)) 45%, var(--line));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--team-primary, var(--accent)) 7%, #fff), #fff 42%),
+    var(--panel);
+}
+
+.team-snapshot-hud .hud-stat-chip,
+.team-snapshot-hud .hud-stats span,
+.team-stats-hud .hud-stat-chip,
+.team-stats-hud .hud-stats span {
+  border-color: color-mix(in srgb, var(--team-primary, var(--accent)) 26%, var(--line));
+}
+
+.hud-scope-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin: 6px 0;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfa;
+}
+
+.hud-scope-toggle button {
+  min-height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hud-scope-toggle button.active {
+  background: var(--team-primary, var(--active-team-primary, var(--accent)));
+  color: var(--team-secondary, #fff);
+}
+
+.hud-scope-toggle button:disabled {
+  background: #eceeed;
+  color: #9aa3a0;
+  cursor: not-allowed;
+}
+
 .hud-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
   gap: 6px;
   margin: 10px 0;
+}
+
+.pitcher-stat-pills {
+  grid-template-columns: repeat(auto-fit, minmax(50px, 1fr));
+}
+
+.team-snapshot-pills {
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+  margin: 0;
+}
+
+.team-snapshot-stat-batting .team-snapshot-pills {
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+}
+
+.team-snapshot-stat-pitching .team-snapshot-pills {
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+}
+
+.team-snapshot-identity {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.team-logo-box {
+  width: 132px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  border: 2px solid var(--team-primary, var(--accent));
+  border-radius: 7px;
+  background: #f8fbf8;
+  color: var(--team-primary, var(--accent-strong));
+  font-size: 1rem;
+  font-weight: 950;
+  text-align: center;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.team-logo-box.display-only {
+  cursor: default;
+}
+
+.team-logo-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.team-logo-box input {
+  display: none;
+}
+
+.team-snapshot-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.team-snapshot-copy strong {
+  color: var(--ink);
+  font-size: clamp(1.2rem, 2vw, 1.7rem);
+  font-weight: 950;
+  line-height: 1.12;
+}
+
+.team-snapshot-copy span,
+.team-snapshot-copy em,
+.team-snapshot-copy p {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-style: normal;
+  font-weight: 800;
+  margin: 0;
+}
+
+.team-record-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.team-record-row input {
+  width: 76px;
+}
+
+.team-record-row span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.team-snapshot-divider {
+  height: 1px;
+  margin: 9px 0;
+  background: linear-gradient(90deg, var(--team-primary, var(--accent)), var(--team-secondary, var(--gold)));
+}
+
+.team-snapshot-stat-groups {
+  display: grid;
+  gap: 9px;
+}
+
+.team-snapshot-stat-group {
+  display: grid;
+  gap: 5px;
+}
+
+.team-snapshot-stat-group h3 {
+  margin: 0;
+  color: var(--team-primary, var(--accent-strong));
+  font-size: 0.62rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.team-record-history {
+  overflow: auto;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.team-record-history table {
+  min-width: 360px;
+  font-size: 0.78rem;
+}
+
+.team-coach-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.team-coach-card {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--team-secondary, var(--gold));
+  border-radius: 6px;
+  background: #fbfcfa;
+}
+
+.coach-photo,
+.coach-image-uploader {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #eef4f1;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.coach-photo img,
+.coach-image-uploader img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.team-coach-card strong,
+.team-coach-card span,
+.team-coach-card p,
+.coach-bio-details summary {
+  display: block;
+  margin: 0;
+  font-size: 0.76rem;
+}
+
+.team-coach-card span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.team-coach-card p {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.coach-bio-details {
+  margin-top: 5px;
+}
+
+.coach-bio-details summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #eef4f1;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.coach-bio-details p {
+  margin-top: 6px;
+  line-height: 1.35;
+}
+
+.team-setup-grid {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 14px;
+  padding: 10px;
+  margin-bottom: 12px;
+  border: 1px solid color-mix(in srgb, var(--team-primary, var(--accent)) 36%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--team-secondary, var(--gold)) 7%, #fff);
+}
+
+.team-logo-uploader {
+  margin: 0;
+}
+
+.setup-logo-preview {
+  width: 100%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--team-primary, var(--accent));
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.setup-logo-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.team-logo-uploader input,
+.coach-image-uploader input {
+  display: none;
+}
+
+.team-setup-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.setup-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.setup-subsection {
+  margin-top: 14px;
+}
+
+.mini-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.mini-section-title span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.setup-record-grid {
+  display: grid;
+  grid-template-columns: 0.8fr 1fr 1fr;
+  gap: 6px;
+}
+
+.coach-setup-list {
+  display: grid;
+  gap: 10px;
+}
+
+.coach-setup-card {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfa;
 }
 
 .live-line {
@@ -402,9 +761,48 @@ textarea {
   text-align: center;
 }
 
+.hud-panel .hud-stat-chip {
+  display: grid;
+  gap: 1px;
+  align-content: center;
+  min-height: 34px;
+  padding: 5px 4px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.hud-panel .hud-stat-chip b {
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.hud-panel .hud-stat-chip i {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 0.5rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hud-stat-chip.game-context-chip {
+  background: var(--team-secondary, var(--active-team-secondary, var(--accent)));
+  border-color: color-mix(in srgb, var(--team-secondary, var(--active-team-secondary, var(--accent))) 82%, #15231e);
+  color: #fff;
+}
+
+.hud-stat-chip.game-context-chip b {
+  color: #fff;
+}
+
+.hud-stat-chip.game-context-chip i {
+  color: rgba(255, 255, 255, 0.78);
+}
+
 .defense-diamond {
   position: relative;
-  min-height: 272px;
+  min-height: 390px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfcfa;
@@ -424,26 +822,88 @@ textarea {
 
 .def-pos {
   position: absolute;
-  width: 118px;
+  width: max-content;
+  min-width: 112px;
   margin: 0;
   gap: 3px;
   font-size: 0.72rem;
 }
 
+.def-pos span {
+  display: block;
+  width: max-content;
+  min-height: 30px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.defense-page {
+  display: grid;
+  gap: 16px;
+}
+
+.defense-editor-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.defense-editor-head strong {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.defense-popup-panel {
+  position: fixed;
+  right: 18px;
+  top: 108px;
+  width: min(760px, calc(100vw - 36px));
+  z-index: 70;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 20px 48px rgba(21, 35, 30, 0.22);
+}
+
+.defense-popup-body {
+  display: grid;
+  gap: 10px;
+}
+
+.defense-popup-body .defense-diamond {
+  min-height: 360px;
+}
+
+.defense-popup-body > strong {
+  color: var(--accent-strong);
+}
+
 .def-pos select {
   padding: 5px;
+  width: auto;
+  min-width: 12ch;
   font-size: 0.76rem;
 }
 
-.pos-P { left: 50%; top: 47%; transform: translate(-50%, -50%); }
+.pos-P { left: 50%; top: 48%; transform: translate(-50%, -50%); }
 .pos-C { left: 50%; bottom: 4%; transform: translateX(-50%); }
-.pos-oneB { right: 7%; top: 56%; }
-.pos-twoB { right: 23%; top: 25%; }
-.pos-threeB { left: 7%; top: 56%; }
-.pos-SS { left: 23%; top: 25%; }
-.pos-LF { left: 4%; top: 6%; }
+.pos-oneB { right: 4%; top: 58%; }
+.pos-twoB { right: 17%; top: 25%; }
+.pos-threeB { left: 4%; top: 58%; }
+.pos-SS { left: 17%; top: 25%; }
+.pos-LF { left: 2%; top: 6%; }
 .pos-CF { left: 50%; top: 2%; transform: translateX(-50%); }
-.pos-RF { right: 4%; top: 6%; }
+.pos-RF { right: 2%; top: 6%; }
 
 .scorecard-board .section-title {
   padding: 16px;
@@ -548,8 +1008,8 @@ textarea {
   place-items: center;
   border-radius: 4px;
   padding: 4px 2px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
   font-size: 0.5rem;
   line-height: 1;
   writing-mode: vertical-rl;
@@ -607,15 +1067,18 @@ textarea {
 }
 
 .stat-hud[data-hud-mode="compact"] .up-next-now .up-next-tag {
-  background: var(--accent);
+  background: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
 }
 
 .stat-hud[data-hud-mode="compact"] .up-next-deck .up-next-tag {
-  background: var(--gold);
+  background: var(--active-team-secondary, var(--gold));
+  color: var(--active-team-primary, var(--accent-strong));
 }
 
 .stat-hud[data-hud-mode="compact"] .up-next-hole .up-next-tag {
-  background: #7a5712;
+  background: var(--accent);
+  color: #fff;
 }
 
 .stat-hud[data-hud-mode="compact"] .up-next-actions {
@@ -642,8 +1105,8 @@ textarea {
 .stat-hud[data-hud-mode="compact"] .batter-detail-card {
   grid-column: 1 / 2;
   min-height: 142px;
-  padding: 10px 11px;
-  gap: 6px;
+  padding: 8px 10px;
+  gap: 4px;
   border-radius: 6px;
   display: grid;
   grid-template-columns: minmax(230px, max-content) minmax(0, 1fr);
@@ -653,9 +1116,9 @@ textarea {
 
 .stat-hud[data-hud-mode="compact"] .compact-batter-line {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(66px, 1fr));
-  align-items: center;
-  gap: 5px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 4px;
   color: var(--accent-strong);
   font-size: 0.74rem;
   font-weight: 800;
@@ -666,7 +1129,7 @@ textarea {
 .stat-hud[data-hud-mode="compact"] .compact-analytics-line,
 .stat-hud[data-hud-mode="compact"] .compact-storyline-line {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
   align-items: center;
   gap: 5px;
   font-size: 0.68rem;
@@ -683,6 +1146,33 @@ textarea {
 
 .stat-hud[data-hud-mode="compact"] .compact-analytics-line {
   grid-row: 2;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-stat-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+}
+
+.stat-hud[data-hud-mode="compact"] .hud-pill-group {
+  flex: var(--pill-count, 1) 1 calc(var(--pill-count, 1) * 42px);
+  display: grid;
+  grid-template-columns: repeat(var(--pill-count, 1), minmax(0, 1fr));
+  gap: 4px;
+  min-width: 0;
+  padding: 0 5px;
+  border-left: 1px solid #d6dfd8;
+}
+
+.stat-hud[data-hud-mode="compact"] .hud-pill-group:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.stat-hud[data-hud-mode="compact"] .hud-pill-group:last-child {
+  padding-right: 0;
 }
 
 .stat-hud[data-hud-mode="compact"] .compact-player-identity {
@@ -694,9 +1184,9 @@ textarea {
   justify-items: start;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--team-primary, var(--active-team-primary, var(--accent)));
   border-radius: 5px;
-  background: #eef7f2;
+  background: color-mix(in srgb, var(--team-primary, var(--active-team-primary, var(--accent))) 8%, #fff);
   text-align: left;
 }
 
@@ -723,11 +1213,24 @@ textarea {
   white-space: nowrap;
 }
 
+.stat-hud[data-hud-mode="compact"] .compact-player-identity .hud-scope-toggle {
+  margin: 0;
+  width: 100%;
+  justify-content: center;
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-player-identity .hud-scope-toggle button {
+  flex: 1 1 0;
+  min-height: 24px;
+  padding: 0 5px;
+  font-size: 0.58rem;
+}
+
 .stat-hud[data-hud-mode="compact"] .compact-batter-line span,
 .stat-hud[data-hud-mode="compact"] .compact-analytics-line span,
 .stat-hud[data-hud-mode="compact"] .compact-storyline-line span {
   min-width: 0;
-  padding: 4px 6px;
+  padding: 3px 5px;
   border: 1px solid var(--line);
   border-radius: 5px;
   background: #fff;
@@ -737,37 +1240,27 @@ textarea {
 }
 
 .stat-hud[data-hud-mode="compact"] .compact-notes-box {
-  grid-column: 1 / -1;
-  grid-row: 4;
-  padding: 6px 8px;
-  border: 1px solid #e2c77c;
-  border-radius: 5px;
-  background: #fff8e8;
-  color: #5d4311;
-  font-size: 0.72rem;
-  font-weight: 750;
-  line-height: 1.3;
-  max-height: 6.2em;
-  overflow: hidden;
+  display: none;
 }
 
 .stat-hud[data-hud-mode="compact"] .hud-stat-chip {
   display: grid;
   gap: 1px;
   align-content: center;
-  min-height: 34px;
+  min-height: 25px;
+  border-radius: 5px;
 }
 
 .stat-hud[data-hud-mode="compact"] .hud-stat-chip b {
   color: var(--ink);
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   line-height: 1;
 }
 
 .stat-hud[data-hud-mode="compact"] .hud-stat-chip i {
   font-style: normal;
   color: var(--muted);
-  font-size: 0.52rem;
+  font-size: 0.46rem;
   font-weight: 900;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -792,6 +1285,20 @@ textarea {
 .stat-hud[data-hud-mode="compact"] .hud-context-chip {
   background: #fbfcfa;
   border-color: var(--line);
+}
+
+.stat-hud[data-hud-mode="compact"] .hud-stat-chip.game-context-chip {
+  background: var(--team-secondary, var(--active-team-secondary, var(--accent)));
+  border-color: color-mix(in srgb, var(--team-secondary, var(--active-team-secondary, var(--accent))) 82%, #15231e);
+}
+
+.stat-hud[data-hud-mode="compact"] .hud-stat-chip.game-context-chip b {
+  color: #fff;
+}
+
+.stat-hud[data-hud-mode="compact"] .hud-stat-chip.game-context-chip i {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.38rem;
 }
 
 .stat-hud[data-hud-mode="compact"] .batter-detail-head,
@@ -854,7 +1361,7 @@ textarea {
   background: #fbfcfa;
   font-size: 0.72rem;
   font-weight: 800;
-  color: var(--accent-strong);
+  color: var(--team-primary, var(--active-team-primary, var(--accent-strong)));
 }
 
 .stat-hud[data-hud-mode="compact"] .compact-pitcher-title {
@@ -864,6 +1371,17 @@ textarea {
   justify-content: center;
   gap: 8px;
   min-width: 0;
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-scope-toggle {
+  grid-column: 1 / -1;
+  justify-self: center;
+  margin: 0;
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-scope-toggle button {
+  min-height: 22px;
+  font-size: 0.56rem;
 }
 
 .stat-hud[data-hud-mode="compact"] .compact-pitcher-card strong {
@@ -990,29 +1508,29 @@ textarea {
 }
 
 .traditional-line-score th:first-child {
-  text-align: left;
+  text-align: center;
   min-width: 140px;
 }
 
 .traditional-line-score th {
   background: #f1f5f2;
-  color: var(--accent-strong);
+  color: var(--active-team-primary, var(--accent-strong));
   font-weight: 900;
 }
 
 .traditional-line-score .active {
   background: #fff8e8;
-  box-shadow: inset 0 0 0 1px var(--gold);
+  box-shadow: inset 0 0 0 1px var(--active-team-secondary, var(--gold));
 }
 
 .traditional-line-score .active-side th:first-child {
-  box-shadow: inset 4px 0 0 var(--accent);
+  box-shadow: inset 4px 0 0 var(--active-team-primary, var(--accent));
 }
 
 .traditional-line-score .metric-total {
-  background: var(--accent);
+  background: var(--active-team-primary, var(--accent));
   color: #fff;
-  border-color: var(--accent-strong);
+  border-color: var(--active-team-primary, var(--accent-strong));
   font-weight: 900;
 }
 
@@ -1029,11 +1547,11 @@ textarea {
 
 .diamond-inning-editor summary {
   list-style: none;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--active-team-primary, var(--accent));
   border-radius: 5px;
-  background: #eef4f1;
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 10%, #fff);
   font-weight: 900;
-  color: var(--accent-strong);
+  color: var(--active-team-primary, var(--accent-strong));
   font-size: 0.72rem;
   min-height: 29px;
   padding: 0 8px;
@@ -1047,9 +1565,9 @@ textarea {
 }
 
 .diamond-inning-editor[open] summary {
-  background: var(--accent);
-  border-color: var(--accent-strong);
-  color: #fff;
+  background: var(--active-team-primary, var(--accent));
+  border-color: var(--active-team-primary, var(--accent-strong));
+  color: var(--active-team-secondary, #fff);
 }
 
 .diamond-edit-fields {
@@ -1464,6 +1982,19 @@ textarea {
   justify-content: flex-end;
 }
 
+.chart-nav-actions button:not(.danger),
+.inning-edit-banner button:not(.danger) {
+  background: var(--active-team-primary, var(--accent));
+  border-color: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
+}
+
+.chart-nav-actions button:not(.danger):hover,
+.inning-edit-banner button:not(.danger):hover {
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 88%, #fff);
+  border-color: var(--active-team-primary, var(--accent-strong));
+}
+
 .section-subtitle {
   margin-top: 4px;
   color: var(--muted);
@@ -1484,9 +2015,9 @@ textarea {
 }
 
 #pinChartButton.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent-strong);
+  background: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
+  border-color: var(--active-team-primary, var(--accent-strong));
 }
 
 .scorecard-grid {
@@ -1646,6 +2177,18 @@ textarea {
   color: #3a4842;
 }
 
+.score-team-head {
+  text-align: center;
+  justify-items: center;
+  color: var(--active-team-primary, var(--accent-strong));
+  box-shadow: inset 0 -3px 0 var(--active-team-secondary, var(--gold));
+}
+
+.score-head.is-current-col {
+  color: var(--active-team-primary, var(--accent-strong));
+  background: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 12%, #fff);
+}
+
 .score-head:first-child,
 .score-player {
   position: sticky;
@@ -1690,6 +2233,33 @@ textarea {
   flex-direction: column;
   gap: 6px;
   position: relative;
+}
+
+.score-ab-controls {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  z-index: 9;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.score-ab-controls button,
+.score-ab-controls select,
+.summary-stack select {
+  min-height: 24px;
+  height: 24px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 0.58rem;
+  font-weight: 900;
+}
+
+.score-ab-controls .add-ab-button {
+  background: #eef4f1;
+  color: var(--active-team-primary, var(--accent-strong));
+  border-color: color-mix(in srgb, var(--active-team-primary, var(--accent)) 42%, var(--line));
 }
 
 .score-cell.is-out {
@@ -1754,16 +2324,16 @@ textarea {
 }
 
 .score-row.is-active .score-player {
-  background: linear-gradient(180deg, #f1faf5 0%, #fffdf8 65%);
-  box-shadow: inset 4px 0 0 var(--accent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--active-team-primary, var(--accent)) 9%, #fff) 0%, #fffdf8 65%);
+  box-shadow: inset 4px 0 0 var(--active-team-primary, var(--accent));
 }
 
 .score-row.is-on-deck .score-player {
-  box-shadow: inset 4px 0 0 var(--gold);
+  box-shadow: inset 4px 0 0 var(--active-team-secondary, var(--gold));
 }
 
 .score-row.is-in-hole .score-player {
-  box-shadow: inset 4px 0 0 #c9a06a;
+  box-shadow: inset 4px 0 0 var(--accent);
 }
 
 .score-row.has-runner-on-base .score-player {
@@ -1772,8 +2342,8 @@ textarea {
 }
 
 .score-row.has-runner-on-base.is-active .score-player {
-  background: linear-gradient(180deg, #f1faf5 0%, #fffdf8 65%);
-  box-shadow: inset 4px 0 0 var(--accent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--active-team-primary, var(--accent)) 9%, #fff) 0%, #fffdf8 65%);
+  box-shadow: inset 4px 0 0 var(--active-team-primary, var(--accent));
 }
 
 .score-player-head {
@@ -1792,6 +2362,7 @@ textarea {
 }
 
 .score-player-headline strong {
+  color: var(--active-team-primary, var(--accent-strong));
   font-size: clamp(1.06rem, 0.7vw + 0.94rem, 1.42rem);
   line-height: 1.02;
   white-space: normal;
@@ -1825,26 +2396,26 @@ textarea {
 }
 
 .batting-order-badge:hover {
-  border-color: var(--accent);
+  border-color: var(--active-team-primary, var(--accent));
 }
 
 .score-row.is-active .batting-order-badge {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent-strong);
-  box-shadow: 0 0 0 3px rgba(31, 122, 92, 0.18);
+  background: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
+  border-color: var(--active-team-primary, var(--accent-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--active-team-primary, var(--accent)) 20%, transparent);
 }
 
 .score-row.is-on-deck .batting-order-badge {
-  background: #fdf3df;
-  color: #7a5712;
-  border-color: var(--gold);
+  background: var(--active-team-secondary, var(--gold));
+  color: var(--active-team-primary, var(--accent-strong));
+  border-color: var(--active-team-secondary, var(--gold));
 }
 
 .score-row.is-in-hole .batting-order-badge {
-  background: #faf2e6;
-  color: #8a6a35;
-  border-color: #d8b87a;
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent-strong);
 }
 
 .slot-pill {
@@ -1862,17 +2433,17 @@ textarea {
 }
 
 .pill-active {
-  background: var(--accent);
-  color: #fff;
+  background: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
 }
 
 .pill-on-deck {
-  background: var(--gold);
-  color: #fff;
+  background: var(--active-team-secondary, var(--gold));
+  color: var(--active-team-primary, var(--accent-strong));
 }
 
 .pill-in-hole {
-  background: #d8b87a;
+  background: var(--accent);
   color: #fff;
 }
 
@@ -1930,13 +2501,13 @@ textarea {
 }
 
 .up-next-entry.up-next-now {
-  background: linear-gradient(180deg, #eef9f3 0%, #fbfcfa 100%);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent) inset;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--active-team-primary, var(--accent)) 10%, #fff) 0%, #fbfcfa 100%);
+  border-color: var(--active-team-primary, var(--accent));
+  box-shadow: 0 0 0 1px var(--active-team-primary, var(--accent)) inset;
 }
 
 .up-next-entry.up-next-deck {
-  border-color: var(--gold);
+  border-color: var(--active-team-secondary, var(--gold));
 }
 
 .up-next-entry.up-next-hole {
@@ -1961,18 +2532,18 @@ textarea {
 }
 
 .up-next-now .up-next-tag {
-  color: #fff;
-  background: var(--accent);
+  color: var(--active-team-secondary, #fff);
+  background: var(--active-team-primary, var(--accent));
 }
 
 .up-next-deck .up-next-tag {
-  color: #fff;
-  background: var(--gold);
+  color: var(--active-team-primary, var(--accent-strong));
+  background: var(--active-team-secondary, var(--gold));
 }
 
 .up-next-hole .up-next-tag {
   color: #fff;
-  background: #7a5712;
+  background: var(--accent);
 }
 
 .up-next-slot {
@@ -1991,21 +2562,21 @@ textarea {
 }
 
 .up-next-now .up-next-slot {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent-strong);
+  background: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
+  border-color: var(--active-team-primary, var(--accent-strong));
 }
 
 .up-next-deck .up-next-slot {
-  background: #fdf3df;
-  color: #7a5712;
-  border-color: var(--gold);
+  background: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 18%, #fff);
+  color: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 72%, #15231e);
+  border-color: var(--active-team-secondary, var(--gold));
 }
 
 .up-next-hole .up-next-slot {
-  background: #faf2e6;
-  color: #8a6a35;
-  border-color: #d8b87a;
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent-strong);
 }
 
 .up-next-name {
@@ -2036,6 +2607,9 @@ textarea {
 .up-next-actions > button {
   min-height: 48px;
   padding: 0 18px;
+  background: var(--active-team-primary, var(--accent));
+  border-color: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
   font-weight: 900;
   font-size: 0.95rem;
   letter-spacing: 0.04em;
@@ -2043,8 +2617,9 @@ textarea {
 }
 
 .up-next-actions .next-ab-button {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--active-team-primary, var(--accent));
+  border-color: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
 }
 
 .segmented-toggle {
@@ -2573,7 +3148,9 @@ textarea {
 }
 
 .score-cell.is-active-cell {
-  box-shadow: 0 0 0 3px var(--accent), 0 0 16px rgba(31, 122, 92, 0.25);
+  box-shadow:
+    0 0 0 3px var(--active-team-primary, var(--accent)),
+    0 0 16px color-mix(in srgb, var(--active-team-primary, var(--accent)) 25%, transparent);
   position: relative;
   z-index: 2;
 }
@@ -2616,14 +3193,9 @@ textarea {
   align-self: flex-start;
 }
 
-.score-head.is-overflow-col {
-  background: #fdf3df;
-  color: #7a5712;
-}
-
 .score-head.is-current-col {
-  background: #e8f5ee;
-  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 10%, #fff);
+  color: var(--active-team-primary, var(--accent-strong));
 }
 
 .pill-runner {
@@ -2689,7 +3261,7 @@ textarea {
 }
 
 .result-button-row-3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .result-button-row-2 {
@@ -3089,15 +3661,61 @@ tr:hover td {
 }
 
 .data-tab:hover {
-  color: var(--accent-strong);
-  background: rgba(31, 122, 92, 0.06);
+  color: var(--active-team-primary, var(--accent-strong));
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 7%, #fff);
 }
 
 .data-tab.active {
   background: var(--bg);
   border-color: var(--line);
-  color: var(--accent-strong);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  color: var(--active-team-primary, var(--accent-strong));
+  box-shadow: inset 0 -2px 0 var(--active-team-secondary, var(--accent));
+}
+
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) button:not(.danger):not(.data-tab),
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .file-button:not(.danger) {
+  background: var(--active-team-primary, var(--accent));
+  border-color: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
+}
+
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) button.muted:not(.danger):not(.data-tab),
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .file-button.muted:not(.danger) {
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 10%, #fff);
+  border-color: color-mix(in srgb, var(--active-team-primary, var(--accent)) 45%, var(--line));
+  color: var(--active-team-primary, var(--accent-strong));
+}
+
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) button:not(.danger):not(.data-tab):hover,
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .file-button:not(.danger):hover {
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 88%, #fff);
+}
+
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) h2,
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .panel-heading span,
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .player-link,
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .event-card h3,
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .source-item strong,
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .pill b {
+  color: var(--active-team-primary, var(--accent-strong));
+}
+
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .number-badge {
+  background: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
+}
+
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) th {
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 9%, #fff);
+  color: var(--active-team-primary, var(--accent-strong));
+}
+
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) tr:hover td {
+  background: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 8%, #fff);
+}
+
+:is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .micro-copy {
+  border-left-color: var(--active-team-secondary, var(--gold));
 }
 
 .data-section {
@@ -3126,6 +3744,42 @@ tr:hover td {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.presto-roster-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.presto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.presto-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+}
+
+.presto-column h3 {
+  margin: 0 0 4px 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.presto-column .file-button {
+  justify-content: center;
 }
 
 .data-form {
@@ -3270,6 +3924,24 @@ tr:hover td {
 
 .stats-edit {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.stats-edit h3 {
+  grid-column: 1 / -1;
+  margin: 10px 0 2px;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-pitcher-card.season-pitcher-card {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.roster-pitching-line {
+  margin-top: 3px;
+  color: var(--accent-strong);
 }
 
 .roster-cards,
@@ -3493,13 +4165,16 @@ tr:hover td {
 
 .summary-stack {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(82px, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 4px;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   padding: 4px;
   overflow-x: auto;
+}
+
+.summary-stack select {
+  width: 100%;
 }
 
 .summary-stack .score-cell-summary {
@@ -3524,5 +4199,1150 @@ tr:hover td {
 
   .lineup-slot input {
     grid-column: auto;
+  }
+}
+
+@media (max-width: 1180px) and (orientation: portrait) {
+  body {
+    font-size: 13px;
+  }
+
+  button,
+  .file-button {
+    min-height: 34px;
+    border-radius: 5px;
+    padding: 0 9px;
+  }
+
+  input,
+  select,
+  textarea {
+    padding: 6px 7px;
+  }
+
+  .topbar {
+    min-height: 0;
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .app-shell {
+    padding: 10px;
+  }
+
+  .tabs {
+    gap: 5px;
+    margin-bottom: 10px;
+    overflow-x: auto;
+  }
+
+  .tab {
+    min-height: 32px;
+    padding: 0 9px;
+    font-size: 0.74rem;
+    white-space: nowrap;
+  }
+
+  .panel,
+  .lineup-board,
+  .spotlight {
+    padding: 10px;
+  }
+
+  .setup-page {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .chart-grid,
+  .chart-hud,
+  .editor-layout,
+  .game-log-layout,
+  .pitching-layout {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .hud-panel {
+    padding: 9px;
+  }
+
+  .hud-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .hud-stats span,
+  .live-line span {
+    font-size: 0.66rem;
+    padding: 4px;
+  }
+
+  .live-line {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 4px;
+    padding: 6px;
+  }
+
+  .defense-diamond {
+    min-height: 340px;
+  }
+
+  .defense-diamond::before {
+    width: 92px;
+    height: 92px;
+  }
+
+  .def-pos {
+    width: max-content;
+    min-width: 98px;
+    font-size: 0.64rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-strip {
+    padding: 5px 6px;
+    gap: 6px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-meta {
+    min-width: 62px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-row {
+    grid-template-columns: repeat(3, minmax(96px, 1fr));
+    gap: 4px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-entry {
+    grid-template-columns: 20px minmax(0, 1fr);
+    min-height: 38px;
+    padding: 4px 5px 4px 4px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-tag {
+    font-size: 0.44rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-name {
+    font-size: 0.74rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-now .up-next-name {
+    font-size: clamp(0.85rem, 2.2vw, 1.08rem);
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-rates {
+    gap: 2px;
+    font-size: 0.56rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-actions > button,
+  .stat-hud[data-hud-mode="compact"] .segmented-toggle button {
+    min-height: 26px;
+    padding: 0 6px;
+    font-size: 0.62rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .inning-totals {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 5px 6px 0;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .batter-detail-card {
+    grid-column: 1;
+    grid-template-columns: minmax(150px, 0.72fr) minmax(0, 1fr);
+    min-height: 0;
+    padding: 7px;
+    gap: 5px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity {
+    padding: 6px 7px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity strong {
+    font-size: 0.82rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity span,
+  .stat-hud[data-hud-mode="compact"] .compact-notes-box,
+  .stat-hud[data-hud-mode="compact"] .compact-batter-line,
+  .stat-hud[data-hud-mode="compact"] .compact-analytics-line,
+  .stat-hud[data-hud-mode="compact"] .compact-storyline-line {
+    font-size: 0.62rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .base-state-card {
+    grid-column: 1;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-run-state {
+    grid-template-columns: minmax(0, 1fr) minmax(130px, 0.48fr);
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-bases-line,
+  .stat-hud[data-hud-mode="compact"] .compact-count-line,
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card {
+    gap: 4px;
+    padding: 5px;
+    font-size: 0.62rem;
+  }
+
+  .diamond-scorebox {
+    margin: 6px 8px;
+    padding: 6px;
+  }
+
+  .traditional-line-score table {
+    min-width: 660px;
+    font-size: 0.62rem;
+  }
+
+  .scorecard-board .section-title,
+  .compact-title {
+    padding: 8px 10px;
+  }
+
+  .scorecard-grid {
+    grid-template-columns: minmax(132px, 148px) repeat(var(--columns, 1), minmax(236px, 1fr));
+  }
+
+  .score-head {
+    min-height: 32px;
+    font-size: 0.64rem;
+  }
+
+  .score-player {
+    padding: 6px 6px 6px 27px;
+    gap: 4px;
+  }
+
+  .score-player strong {
+    font-size: 0.72rem;
+    line-height: 1.05;
+  }
+
+  .score-player span,
+  .score-player-meta {
+    font-size: 0.58rem;
+    line-height: 1.15;
+  }
+
+  .player-pill-row {
+    width: 21px;
+  }
+
+  .score-player .slot-pill {
+    font-size: 0.48rem;
+  }
+
+  .batting-order-badge {
+    min-width: 26px;
+    min-height: 26px;
+    font-size: 0.68rem;
+  }
+
+  .sub-grid {
+    gap: 4px;
+    margin-top: 4px;
+  }
+
+  .sub-block span,
+  .batter-note-box span {
+    font-size: 0.54rem;
+  }
+
+  .sub-grid select,
+  .sub-grid input,
+  .batter-note-box textarea {
+    min-height: 25px;
+    padding: 3px 5px;
+    font-size: 0.62rem;
+  }
+
+  .batter-note-box textarea {
+    min-height: 34px;
+  }
+
+  .ab-cell-row {
+    grid-auto-columns: minmax(236px, 1fr);
+    gap: 5px;
+    padding: 0 5px 5px;
+  }
+
+  .score-cell {
+    padding: 6px;
+    gap: 4px;
+  }
+
+  .score-cell-body {
+    grid-template-columns: minmax(96px, 0.82fr) minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .score-count-row {
+    gap: 4px;
+  }
+
+  .count-card,
+  .rbi-buttons button {
+    min-height: 30px;
+  }
+
+  .count-card span {
+    font-size: 0.7rem;
+  }
+
+  .rbi-buttons {
+    gap: 3px;
+  }
+
+  .rbi-buttons button {
+    font-size: 0.58rem;
+  }
+
+  .diamond {
+    width: min(100%, 112px);
+    margin-block: 8px;
+  }
+
+  .base-toggle {
+    width: 38px;
+    height: 38px;
+  }
+
+  .base-marker {
+    width: 16px;
+    height: 16px;
+  }
+
+  .base-toggle.toFirst { right: -11px; top: 37px; }
+  .base-toggle.toSecond { right: 37px; top: -11px; }
+  .base-toggle.toThird { left: -11px; bottom: 37px; }
+  .base-toggle.toHome { left: 37px; bottom: -11px; }
+
+  .diamond-result-input {
+    width: 44px;
+    height: 34px;
+    font-size: 0.7rem;
+  }
+
+  .pitch-buttons,
+  .result-buttons,
+  .result-button-row,
+  .score-action-panel {
+    gap: 3px;
+  }
+
+  .pitch-buttons button {
+    min-height: 26px;
+    font-size: 0.72rem;
+  }
+
+  .result-buttons button,
+  .clear-action-button {
+    min-height: 25px;
+    font-size: 0.64rem;
+  }
+
+  .pitcher-adjust-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 3px;
+    padding: 0 5px 5px;
+  }
+
+  .pitcher-adjuster summary {
+    padding: 3px 5px;
+    font-size: 0.56rem;
+  }
+
+  .pitcher-adjust-grid input {
+    min-height: 23px;
+    height: 23px;
+    font-size: 0.66rem;
+  }
+
+  .runner-controls {
+    gap: 3px;
+  }
+
+  .runner-btn {
+    min-height: 34px;
+    font-size: 0.62rem;
+  }
+
+  .full-scorecard-panel {
+    left: 8px;
+    right: 8px;
+    top: 112px;
+  }
+
+  .full-scorecard-grid {
+    grid-template-columns: 118px repeat(var(--innings, 9), 74px);
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    font-size: 11px;
+  }
+
+  button,
+  .file-button {
+    min-height: 30px;
+    padding: 0 6px;
+  }
+
+  .app-shell,
+  .topbar {
+    padding: 7px;
+  }
+
+  .scorecard-grid {
+    grid-template-columns: minmax(96px, 106px) repeat(var(--columns, 1), minmax(190px, 1fr));
+  }
+
+  .ab-cell-row {
+    grid-auto-columns: minmax(190px, 1fr);
+  }
+
+  .score-cell-body {
+    grid-template-columns: minmax(74px, 0.78fr) minmax(0, 1fr);
+  }
+
+  .diamond {
+    width: min(100%, 84px);
+    margin-block: 5px;
+  }
+
+  .base-toggle {
+    width: 32px;
+    height: 32px;
+  }
+
+  .base-marker {
+    width: 13px;
+    height: 13px;
+  }
+
+  .base-toggle.toFirst { right: -10px; top: 26px; }
+  .base-toggle.toSecond { right: 26px; top: -10px; }
+  .base-toggle.toThird { left: -10px; bottom: 26px; }
+  .base-toggle.toHome { left: 26px; bottom: -10px; }
+
+  .score-player {
+    padding: 5px 4px 5px 23px;
+  }
+
+  .player-pill-row {
+    width: 18px;
+  }
+
+  .score-player strong {
+    font-size: 0.62rem;
+  }
+
+  .sub-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pitch-buttons button,
+  .result-buttons button,
+  .clear-action-button,
+  .rbi-buttons button {
+    min-height: 22px;
+    font-size: 0.52rem;
+  }
+
+  .count-card {
+    min-height: 25px;
+  }
+
+  .count-card span {
+    font-size: 0.58rem;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1180px) and (orientation: portrait) {
+  :root {
+    --portrait-player-col: clamp(188px, 23vw, 228px);
+    --portrait-cell-col: clamp(214px, 27vw, 248px);
+  }
+
+  body {
+    font-size: 12px;
+  }
+
+  button,
+  .file-button {
+    min-height: 30px;
+    padding: 0 7px;
+  }
+
+  input,
+  select,
+  textarea {
+    padding: 5px 6px;
+  }
+
+  .topbar {
+    padding: 8px 10px;
+  }
+
+  .topbar h1 {
+    font-size: clamp(1.05rem, 2.1vw, 1.45rem);
+  }
+
+  .app-shell {
+    padding: 8px;
+  }
+
+  .tabs {
+    margin-bottom: 8px;
+  }
+
+  .tab {
+    min-height: 29px;
+    font-size: 0.66rem;
+  }
+
+  .panel,
+  .lineup-board,
+  .spotlight,
+  .hud-panel {
+    padding: 8px;
+  }
+
+  .chart-grid,
+  .chart-hud,
+  .editor-layout,
+  .game-log-layout,
+  .pitching-layout {
+    gap: 8px;
+  }
+
+  .hud-stats {
+    grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+  }
+
+  .live-line {
+    grid-template-columns: repeat(auto-fit, minmax(50px, 1fr));
+  }
+
+  .hud-stats span,
+  .live-line span {
+    font-size: 0.6rem;
+    padding: 3px 4px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-strip {
+    display: grid;
+    grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+    padding: 4px 6px;
+    gap: 5px 8px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-meta {
+    min-width: 0;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-row {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    margin-left: 0;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-entry {
+    grid-template-columns: 18px minmax(0, 1fr);
+    min-height: 34px;
+    padding: 3px 5px 3px 3px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-name {
+    font-size: 0.72rem;
+    line-height: 1.05;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-now .up-next-name {
+    font-size: clamp(0.82rem, 1.9vw, 1.05rem);
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-rates {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    font-size: 0.5rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .inning-totals {
+    grid-template-columns: minmax(0, 1.15fr) minmax(230px, 0.58fr);
+    gap: 6px;
+    padding: 5px 6px 0;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .batter-detail-card {
+    grid-column: 1;
+    grid-template-columns: minmax(168px, 0.78fr) minmax(0, 1fr);
+    min-height: 0;
+    padding: 6px;
+    gap: 5px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity {
+    padding: 5px 7px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity strong {
+    font-size: 0.9rem;
+    line-height: 1.02;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity span {
+    font-size: 0.58rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-batter-line {
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 3px;
+    font-size: 0.56rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-analytics-line {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 3px;
+    font-size: 0.56rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-storyline-line {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3px;
+    font-size: 0.54rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-batter-line span,
+  .stat-hud[data-hud-mode="compact"] .compact-analytics-line span,
+  .stat-hud[data-hud-mode="compact"] .compact-storyline-line span {
+    padding: 3px 4px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-notes-box {
+    padding: 4px 6px;
+    font-size: 0.58rem;
+    max-height: 4.8em;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .base-state-card {
+    grid-column: 2;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-run-state {
+    grid-template-columns: 1fr;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-bases-line,
+  .stat-hud[data-hud-mode="compact"] .compact-count-line,
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card {
+    padding: 4px;
+    gap: 3px;
+    font-size: 0.56rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card {
+    grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card strong {
+    font-size: 0.68rem;
+  }
+
+  .scorecard-grid {
+    grid-template-columns: var(--portrait-player-col) repeat(var(--columns, 1), var(--portrait-cell-col));
+    justify-content: start;
+  }
+
+  .ab-cell-row {
+    grid-auto-columns: var(--portrait-cell-col);
+    gap: 4px;
+    padding: 0 4px 4px;
+  }
+
+  .score-head {
+    min-height: 28px;
+    font-size: 0.58rem;
+  }
+
+  .score-player {
+    padding: 5px 6px 5px 25px;
+    gap: 4px;
+  }
+
+  .score-player-head {
+    gap: 6px;
+  }
+
+  .score-player-headline {
+    gap: 2px;
+  }
+
+  .score-player-headline strong {
+    font-size: clamp(0.86rem, 1.4vw, 1.02rem);
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+  }
+
+  .score-player .score-player-meta {
+    font-size: 0.62rem;
+    line-height: 1.12;
+  }
+
+  .batting-order-badge {
+    width: 27px;
+    height: 27px;
+    min-width: 27px;
+    min-height: 27px;
+    font-size: 0.72rem;
+  }
+
+  .player-pill-row {
+    width: 20px;
+  }
+
+  .score-player .slot-pill {
+    font-size: 0.46rem;
+  }
+
+  .sub-grid {
+    gap: 3px;
+    margin-top: 2px;
+  }
+
+  .sub-block {
+    gap: 2px;
+  }
+
+  .sub-block span,
+  .batter-note-box span {
+    font-size: 0.5rem;
+  }
+
+  .sub-grid select,
+  .sub-grid input,
+  .batter-note-box textarea {
+    min-height: 22px;
+    padding: 2px 4px;
+    font-size: 0.58rem;
+  }
+
+  .batter-note-box textarea {
+    min-height: 30px;
+  }
+
+  .score-cell {
+    padding: 5px;
+    gap: 3px;
+  }
+
+  .score-cell-body {
+    grid-template-columns: 86px minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .score-count-row {
+    gap: 3px;
+  }
+
+  .count-card {
+    min-height: 25px;
+    padding: 2px;
+  }
+
+  .count-card span {
+    font-size: 0.58rem;
+  }
+
+  .rbi-buttons {
+    gap: 2px;
+  }
+
+  .rbi-buttons button {
+    min-height: 25px;
+    font-size: 0.49rem;
+  }
+
+  .diamond {
+    width: 82px;
+    margin-block: 5px;
+  }
+
+  .base-toggle {
+    width: 30px;
+    height: 30px;
+  }
+
+  .base-marker {
+    width: 13px;
+    height: 13px;
+  }
+
+  .base-toggle.toFirst { right: -9px; top: 26px; }
+  .base-toggle.toSecond { right: 26px; top: -9px; }
+  .base-toggle.toThird { left: -9px; bottom: 26px; }
+  .base-toggle.toHome { left: 26px; bottom: -9px; }
+
+  .diamond-result-input {
+    width: 38px;
+    height: 26px;
+    font-size: 0.62rem;
+  }
+
+  .diamond-result-input:focus {
+    width: 46px;
+    height: 28px;
+    font-size: 0.68rem;
+  }
+
+  .steal-controls button {
+    min-height: 18px;
+    height: 18px;
+    padding: 0 4px;
+    font-size: 0.46rem;
+  }
+
+  .steal-control-pair,
+  .steal-main-stack,
+  .runner-extra-stack {
+    gap: 1px;
+  }
+
+  .steal-toFirst,
+  .steal-toSecond {
+    right: -68px;
+  }
+
+  .steal-toThird,
+  .steal-toHome {
+    left: -68px;
+  }
+
+  .pitch-buttons,
+  .result-buttons,
+  .result-button-row,
+  .score-action-panel {
+    gap: 2px;
+  }
+
+  .pitch-buttons button {
+    min-height: 22px;
+    font-size: 0.6rem;
+  }
+
+  .result-buttons button,
+  .clear-action-button {
+    min-height: 22px;
+    font-size: 0.54rem;
+  }
+
+  .pitcher-adjuster summary {
+    padding: 2px 4px;
+    font-size: 0.5rem;
+  }
+
+  .pitcher-adjust-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 2px;
+    padding: 0 4px 4px;
+  }
+
+  .pitcher-adjust-grid span {
+    font-size: 0.46rem;
+  }
+
+  .pitcher-adjust-grid input {
+    min-height: 20px;
+    height: 20px;
+    padding: 1px 3px;
+    font-size: 0.56rem;
+  }
+
+  .runner-controls {
+    gap: 2px;
+  }
+
+  .runner-btn {
+    min-height: 29px;
+    font-size: 0.54rem;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1180px) and (orientation: portrait) {
+  :root {
+    --ipad-player-col: clamp(248px, 28vw, 286px);
+    --ipad-ab-col: clamp(560px, 62vw, 640px);
+  }
+
+  .stat-hud[data-hud-mode="compact"] .inning-totals {
+    grid-template-columns: minmax(0, 1fr) minmax(230px, 0.42fr);
+  }
+
+  .stat-hud[data-hud-mode="compact"] .batter-detail-card {
+    grid-template-columns: minmax(210px, 0.58fr) minmax(0, 1fr);
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity strong {
+    font-size: 0.86rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-batter-line {
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-analytics-line {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .scorecard-grid {
+    grid-template-columns: var(--ipad-player-col) repeat(var(--columns, 1), var(--ipad-ab-col));
+    justify-content: start;
+  }
+
+  .score-head {
+    min-height: 28px;
+  }
+
+  .ab-cell-row {
+    grid-auto-columns: var(--ipad-ab-col);
+    gap: 3px;
+    padding: 0 3px 3px;
+  }
+
+  .score-player {
+    padding: 5px 7px 5px 27px;
+    gap: 3px;
+  }
+
+  .score-player-head {
+    gap: 7px;
+    margin-bottom: 0;
+  }
+
+  .score-player-headline strong {
+    font-size: clamp(0.92rem, 1.35vw, 1.06rem);
+    line-height: 1.02;
+    overflow-wrap: normal;
+    word-break: keep-all;
+  }
+
+  .score-player .score-player-meta {
+    font-size: 0.58rem;
+    line-height: 1.08;
+  }
+
+  .batting-order-badge {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    font-size: 0.72rem;
+  }
+
+  .player-pill-row {
+    width: 20px;
+  }
+
+  .score-player .slot-pill {
+    font-size: 0.45rem;
+  }
+
+  .sub-grid {
+    gap: 4px;
+    margin-top: 2px;
+  }
+
+  .sub-block span,
+  .batter-note-box span {
+    font-size: 0.48rem;
+    line-height: 1.05;
+  }
+
+  .sub-grid select,
+  .sub-grid input {
+    min-height: 21px;
+    height: 21px;
+    padding: 1px 4px;
+    font-size: 0.56rem;
+  }
+
+  .batter-note-box {
+    gap: 2px;
+    margin-top: 2px;
+  }
+
+  .batter-note-box textarea {
+    min-height: 28px;
+    height: 28px;
+    padding: 3px 5px;
+    font-size: 0.56rem;
+    line-height: 1.08;
+  }
+
+  .sub-card-stack,
+  .sub-card {
+    gap: 2px;
+  }
+
+  .sub-card {
+    padding: 4px 5px;
+  }
+
+  .score-cell {
+    min-height: 0;
+    padding: 4px;
+    gap: 3px;
+  }
+
+  .score-count-row {
+    grid-template-columns: minmax(230px, 0.9fr) minmax(260px, 1fr);
+    gap: 3px;
+  }
+
+  .count-card,
+  .rbi-buttons button {
+    min-height: 24px;
+  }
+
+  .count-card span {
+    font-size: 0.58rem;
+  }
+
+  .rbi-buttons button {
+    font-size: 0.48rem;
+  }
+
+  .score-cell-body {
+    grid-template-columns: minmax(252px, 0.9fr) minmax(260px, 1fr);
+    gap: 4px;
+    align-items: start;
+  }
+
+  .diamond {
+    width: 90px;
+    margin-block: 4px;
+  }
+
+  .base-toggle {
+    width: 29px;
+    height: 29px;
+  }
+
+  .base-marker {
+    width: 12px;
+    height: 12px;
+  }
+
+  .base-toggle.toFirst { right: -8px; top: 30px; }
+  .base-toggle.toSecond { right: 30px; top: -8px; }
+  .base-toggle.toThird { left: -8px; bottom: 30px; }
+  .base-toggle.toHome { left: 30px; bottom: -8px; }
+
+  .diamond-result-input {
+    width: 38px;
+    height: 24px;
+    font-size: 0.58rem;
+  }
+
+  .diamond-result-input:focus {
+    width: 44px;
+    height: 26px;
+    font-size: 0.64rem;
+  }
+
+  .steal-controls button {
+    min-height: 16px;
+    height: 16px;
+    padding: 0 3px;
+    font-size: 0.42rem;
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgba(21, 35, 30, 0.16);
+  }
+
+  .steal-control-pair,
+  .steal-main-stack,
+  .runner-extra-stack {
+    gap: 1px;
+  }
+
+  .steal-toFirst,
+  .steal-toSecond {
+    right: -58px;
+  }
+
+  .steal-toThird,
+  .steal-toHome {
+    left: -58px;
+  }
+
+  .pitch-buttons,
+  .result-buttons,
+  .result-button-row,
+  .score-action-panel {
+    gap: 2px;
+  }
+
+  .score-action-panel {
+    align-content: start;
+  }
+
+  .pitch-buttons button {
+    min-height: 21px;
+    font-size: 0.58rem;
+  }
+
+  .result-buttons button,
+  .clear-action-button {
+    min-height: 21px;
+    font-size: 0.52rem;
+  }
+
+  .pitcher-adjuster summary {
+    padding: 2px 4px;
+    font-size: 0.48rem;
+  }
+
+  .pitcher-adjust-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 2px;
+    padding: 0 4px 4px;
+  }
+
+  .pitcher-adjust-grid span {
+    font-size: 0.42rem;
+  }
+
+  .pitcher-adjust-grid input {
+    min-height: 18px;
+    height: 18px;
+    padding: 1px 2px;
+    font-size: 0.52rem;
+  }
+
+  .control-spacer {
+    height: 4px;
+  }
+
+  .runner-controls {
+    gap: 2px;
+  }
+
+  .runner-btn {
+    min-height: 27px;
+    font-size: 0.52rem;
   }
 }

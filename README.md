@@ -4,9 +4,9 @@ Local-first baseball charting app for play-by-play radio prep and live game use.
 
 ## What works now
 
-- Import GameChanger-style CSV stat exports.
-- Drop stats / roster / box-score PDFs (Prestosports, Sidearm, etc.) directly into the Data tab — a local Python bridge (`python -m pdf_to_csv.server`) parses them in real time. See [`tools/pdf_to_csv/README.md`](tools/pdf_to_csv/README.md).
-- Reach the app from an iPad / second laptop over Tailscale (no public ports). The browser auto-detects local vs remote and routes the bridge through `tailscale serve`.
+- Import GameChanger-style season, conference, and box-score CSV exports.
+- Import PrestoSports roster/stat CSV slices for overall and conference splits.
+- Reach the app from an iPad / second laptop over Tailscale (no public ports).
 - Manage editable rosters, player numbers, pronunciation guides, positions, class years, and broadcast notes.
 - Build and reorder a lineup board, including substitute rows.
 - Switch between separate charts for your team and the opponent.
@@ -23,7 +23,6 @@ Local-first baseball charting app for play-by-play radio prep and live game use.
 - Store previous-start notes for pitchers.
 - Log live plate appearances and update batting stats immediately.
 - Generate a small player snapshot/rundown from current stats.
-- Attach PDFs as prep references.
 - Persist everything locally in browser storage.
 - Export the current workspace as JSON.
 
@@ -64,5 +63,5 @@ Two dummy CSVs are included in `Sample Data` for testing non-Garden City rosters
 - `Dummy Team - Prairie View Falcons Stats.csv`
 - `Dummy Team - Riverbend Tigers Stats.csv`
 
-See `docs/DATA_PIPELINE.md` for the PDF, box-score, and historical-season import plan.
+See `docs/DATA_PIPELINE.md` for the historical data import plan.
 "# digital-pxp-chart-bsb" 

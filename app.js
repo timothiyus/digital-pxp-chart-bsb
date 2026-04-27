@@ -16,6 +16,7 @@ const emptyStats = () => ({
   SF: 0,
   SB: 0,
   CS: 0,
+  TB: 0,
   IP: 0,
   ERA: 0,
   WHIP: 0,
@@ -26,7 +27,35 @@ const emptyStats = () => ({
   BAA: 0,
   Pitches: 0,
   Strikes: 0,
-  BK: 0
+  BK: 0,
+  P_H: 0,
+  P_R: 0,
+  P_ER: 0,
+  P_HR: 0,
+  P_2B: 0,
+  P_3B: 0,
+  P_BB: 0,
+  P_SO: 0,
+  P_BK: 0,
+  P_HBP: 0,
+  P_WP: 0,
+  P_AB: 0,
+  CG: 0,
+  SHO: 0,
+  SV: 0,
+  SFA: 0,
+  SHA: 0,
+  TC: 0,
+  PO: 0,
+  A: 0,
+  E: 0,
+  F_PCT: 0,
+  DP: 0,
+  SBA: 0,
+  RCS: 0,
+  RCS_PCT: 0,
+  PB: 0,
+  CI: 0
 });
 
 const state = loadState();
@@ -39,7 +68,9 @@ const els = {
   appShell: document.querySelector("#appShell"),
   collapseSetupButton: document.querySelector("#collapseSetupButton"),
   csvInput: document.querySelector("#csvInput"),
-  pdfInput: document.querySelector("#pdfInput"),
+  gcConferenceCsvInput: document.querySelector("#gcConferenceCsvInput"),
+  gcBoxScoreInput: document.querySelector("#gcBoxScoreInput"),
+  teamProfilePanel: document.querySelector("#teamProfilePanel"),
   exportButton: document.querySelector("#exportButton"),
   resetButton: document.querySelector("#resetButton"),
   saveState: document.querySelector("#saveState"),
@@ -71,6 +102,8 @@ const els = {
   fullChartToolbar: document.querySelector("#fullChartToolbar"),
   fullChartLineScore: document.querySelector("#fullChartLineScore"),
   fullScorecardGrid: document.querySelector("#fullScorecardGrid"),
+  defenseEditor: document.querySelector("#defenseEditor"),
+  defensePopupPanel: document.querySelector("#defensePopupPanel"),
   lineupSlots: document.querySelector("#lineupSlots"),
   autoLineupButton: document.querySelector("#autoLineupButton"),
   spotlightSelect: document.querySelector("#spotlightSelect"),
@@ -97,7 +130,7 @@ const els = {
   pitchLogSummary: document.querySelector("#pitchLogSummary"),
   dataSourceList: document.querySelector("#dataSourceList"),
   boxScoreInput: document.querySelector("#boxScoreInput"),
-  boxScorePdfInput: document.querySelector("#boxScorePdfInput"),
+  boxScoreTxtInput: document.querySelector("#boxScoreTxtInput"),
   pdfBridgeStatus: document.querySelector("#pdfBridgeStatus"),
   pdfBridgeUrlInput: document.querySelector("#pdfBridgeUrlInput"),
   pdfBridgeSaveButton: document.querySelector("#pdfBridgeSaveButton"),
@@ -146,8 +179,31 @@ function loadState() {
       home: newChartState(),
       away: newChartState()
     },
+    teamMeta: {
+      home: emptyTeamMeta(),
+      away: emptyTeamMeta()
+    },
     sources: [],
     boxScores: []
+  };
+}
+
+function emptyTeamMeta() {
+  return {
+    logo: "",
+    abbreviation: "",
+    mascot: "",
+    overallRecord: "",
+    conferenceRecord: "",
+    location: "",
+    institutionInfo: "",
+    primaryColor: "#167052",
+    secondaryColor: "#b67a14",
+    showSnapshot: true,
+    showRecords: true,
+    showCoaches: true,
+    records: [],
+    coaches: []
   };
 }
 
@@ -171,6 +227,7 @@ function newChartState() {
     completedInnings: {},
     editingCompletedInnings: {},
     extraAbs: {},
+    selectedAbs: {},
     baseStates: {},
     baseState: { first: "", second: "", third: "" },
     hud: {
@@ -227,6 +284,7 @@ function normalizeState() {
     chart.completedInnings = chart.completedInnings || {};
     chart.editingCompletedInnings = chart.editingCompletedInnings || {};
     chart.extraAbs = chart.extraAbs || {};
+    chart.selectedAbs = chart.selectedAbs || {};
     chart.baseStates = chart.baseStates || {};
     chart.baseState = chart.baseState || { first: "", second: "", third: "" };
     chart.baseStates[chart.currentInning] = chart.baseStates[chart.currentInning] || { ...chart.baseState };
@@ -243,12 +301,42 @@ function normalizeState() {
   state.sources = state.sources || [];
   state.boxScores = state.boxScores || [];
   state.events = state.events || [];
+  state.teamMeta = {
+    home: { ...emptyTeamMeta(), ...(state.teamMeta?.home || {}) },
+    away: { ...emptyTeamMeta(), ...(state.teamMeta?.away || {}) }
+  };
+  ["home", "away"].forEach((side) => {
+    state.teamMeta[side].records = Array.from({ length: 10 }, (_, index) => ({
+      season: "",
+      overall: "",
+      conference: "",
+      ...((state.teamMeta[side].records || [])[index] || {})
+    }));
+    state.teamMeta[side].coaches = (state.teamMeta[side].coaches || []).map((coach) => ({
+      id: coach.id || uid("coach"),
+      name: "",
+      title: "",
+      bio: "",
+      image: "",
+      ...coach
+    }));
+  });
   state.fullChartSide = state.fullChartSide || state.activeSide || "home";
   state.settings = {
     showAtBatControls: false,
     showFocusControls: false,
     ...(state.settings || {})
   };
+  state.hudStatScopes = {
+    batter: "overall",
+    pitcher: "overall",
+    ...(state.hudStatScopes || {})
+  };
+  ["batter", "pitcher"].forEach((kind) => {
+    if (!["overall", "conference", "nonconference", "currentgame"].includes(state.hudStatScopes[kind])) {
+      state.hudStatScopes[kind] = "overall";
+    }
+  });
   state.pinStatHud = state.pinStatHud ?? Boolean(state.pinScorecard);
   state.players = state.players || [];
   state.players.forEach((player) => {
@@ -256,6 +344,9 @@ function normalizeState() {
     player.hometown = player.hometown || "";
     player.height = player.height || "";
     player.weight = player.weight || "";
+    player.handedness = player.handedness || "";
+    player.stats = { ...emptyStats(), ...(player.stats || {}) };
+    player.confStats = { ...emptyStats(), ...(player.confStats || {}) };
   });
 }
 
@@ -269,8 +360,9 @@ function uid(prefix) {
 }
 
 function toNumber(value) {
-  if (value === undefined || value === null || value === "" || value === "-") return 0;
-  const normalized = String(value).replace("%", "");
+  if (value === undefined || value === null || value === "" || value === "-" || value === "'-") return 0;
+  const normalized = String(value).replace(/^'/, "").replace("%", "");
+  if (normalized === "-" || normalized === "") return 0;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -279,6 +371,30 @@ function formatRate(value) {
   if (!Number.isFinite(value)) return ".000";
   const fixed = value.toFixed(3);
   return fixed.startsWith("0") ? fixed.slice(1) : fixed;
+}
+
+function formatFixed(value, digits = 2) {
+  const n = toNumber(value);
+  return n.toFixed(digits);
+}
+
+function ipToOuts(value) {
+  if (value === undefined || value === null || value === "") return 0;
+  const text = String(value).trim();
+  if (!text) return 0;
+  const [wholeRaw, partialRaw = "0"] = text.split(".");
+  const whole = toNumber(wholeRaw);
+  const partial = Math.min(2, Math.max(0, toNumber(partialRaw.slice(0, 1))));
+  return whole * 3 + partial;
+}
+
+function outsToIpValue(outs) {
+  const safeOuts = Math.max(0, Math.round(toNumber(outs)));
+  return Number(`${Math.floor(safeOuts / 3)}.${safeOuts % 3}`);
+}
+
+function formatIpValue(value) {
+  return formatIpFromOuts(ipToOuts(value));
 }
 
 function activeChart() {
@@ -398,7 +514,7 @@ function activePlayers() {
 }
 
 function activeSideName() {
-  return state.activeSide === "home" ? (state.game.teamName || "My Team") : (state.game.opponentName || "Opponent");
+  return teamAbbreviation(state.activeSide);
 }
 
 function oppositeSide() {
@@ -531,7 +647,65 @@ function valueFrom(row, headers, name, occurrence = 1) {
   return index >= 0 ? row[index] : "";
 }
 
-function importPlayersFromCsv(text, filename) {
+function valueFromFirst(row, headers, lookups) {
+  for (const lookup of lookups) {
+    const name = Array.isArray(lookup) ? lookup[0] : lookup;
+    const occurrence = Array.isArray(lookup) ? lookup[1] : 1;
+    const value = valueFrom(row, headers, name, occurrence);
+    if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+  }
+  return "";
+}
+
+function gameChangerStatsFromRow(row, headers) {
+  return {
+    ...emptyStats(),
+    GP: toNumber(valueFrom(row, headers, "GP", 1)),
+    PA: toNumber(valueFrom(row, headers, "PA")),
+    AB: toNumber(valueFrom(row, headers, "AB")),
+    H: toNumber(valueFrom(row, headers, "H", 1)),
+    "2B": toNumber(valueFrom(row, headers, "2B")),
+    "3B": toNumber(valueFrom(row, headers, "3B")),
+    HR: toNumber(valueFrom(row, headers, "HR", 1)),
+    RBI: toNumber(valueFrom(row, headers, "RBI")),
+    R: toNumber(valueFrom(row, headers, "R")),
+    BB: toNumber(valueFrom(row, headers, "BB", 1)),
+    SO: toNumber(valueFrom(row, headers, "SO", 1)),
+    HBP: toNumber(valueFrom(row, headers, "HBP", 1)),
+    SF: toNumber(valueFrom(row, headers, "SF")),
+    SB: toNumber(valueFrom(row, headers, "SB", 1)),
+    CS: toNumber(valueFrom(row, headers, "CS", 1)),
+    IP: toNumber(valueFromFirst(row, headers, ["IP", "InningsPitched", "Innings Pitched"])),
+    GS: toNumber(valueFrom(row, headers, "GS")),
+    BF: toNumber(valueFromFirst(row, headers, ["BF", "BattersFaced", "Batters Faced"])),
+    W: toNumber(valueFrom(row, headers, "W")),
+    L: toNumber(valueFrom(row, headers, "L")),
+    Pitches: toNumber(valueFromFirst(row, headers, ["#P", "NumberOfPitches", "Number Of Pitches", "Pitches", "NP"])),
+    Strikes: toNumber(valueFrom(row, headers, "S%", 1)),
+    ERA: toNumber(valueFrom(row, headers, "ERA")),
+    WHIP: toNumber(valueFrom(row, headers, "WHIP")),
+    BAA: toNumber(valueFrom(row, headers, "BAA")),
+    P_HR: toNumber(valueFromFirst(row, headers, [["HR", 2], "HomeRunsAgainst", "Home Runs Against", "HRA"])),
+    P_2B: toNumber(valueFromFirst(row, headers, [["2B", 2], "DoublesAgainst", "Doubles Against"])),
+    P_3B: toNumber(valueFromFirst(row, headers, [["3B", 2], "TriplesAgainst", "Triples Against"])),
+    P_BB: toNumber(valueFromFirst(row, headers, [["BB", 2], "BaseOnBallsAgainst", "Base On Balls Against", "WalksAgainst", "Walks Against"])),
+    P_SO: toNumber(valueFromFirst(row, headers, [["SO", 2], "BattersStruckOut", "Batters Struck Out", ["K", 2], "StrikeoutsAgainst"])),
+    P_H: toNumber(valueFromFirst(row, headers, [["H", 2], "HitsAgainst", "Hits Against", "HA"])),
+    P_R: toNumber(valueFromFirst(row, headers, [["R", 2], "RunsAgainst", "Runs Against", "RA"])),
+    P_ER: toNumber(valueFromFirst(row, headers, ["ER", "EarnedRuns", "Earned Runs"])),
+    P_BK: toNumber(valueFromFirst(row, headers, ["BK", "Balks", "BalksAgainst"])),
+    P_HBP: toNumber(valueFromFirst(row, headers, [["HBP", 2], "HitBatter", "Hit Batter", "HitBatters", "HB"])),
+    P_WP: toNumber(valueFromFirst(row, headers, ["WP", "WildPitches", "Wild Pitches"])),
+    P_AB: toNumber(valueFromFirst(row, headers, [["AB", 2], "AtBatsAgainst", "At Bats Against", "ABAgainst"])),
+    CG: toNumber(valueFromFirst(row, headers, ["CG", "CompleteGames", "Complete Games"])),
+    SHO: toNumber(valueFromFirst(row, headers, ["SHO", "Shutouts"])),
+    SV: toNumber(valueFromFirst(row, headers, ["SV", "Saves"])),
+    SFA: toNumber(valueFromFirst(row, headers, ["SFA", "SacFliesAgainst", "Sac Flies Against"])),
+    SHA: toNumber(valueFromFirst(row, headers, ["SHA", "SacHitsAgainst", "Sac Hits Against"]))
+  };
+}
+
+function importPlayersFromCsv(text, filename, scope = "overall") {
   const rows = parseCsv(text);
   const headerRowIndex = rows.findIndex((row) => row.includes("Number") && row.includes("Last") && row.includes("First"));
   if (headerRowIndex < 0) {
@@ -540,12 +714,14 @@ function importPlayersFromCsv(text, filename) {
 
   const headers = rows[headerRowIndex].map((header) => header.trim());
   const imported = [];
+  const bucket = scope === "conference" ? "confStats" : "stats";
 
   rows.slice(headerRowIndex + 1).forEach((row) => {
     const number = valueFrom(row, headers, "Number").trim();
     const last = valueFrom(row, headers, "Last").trim();
     const first = valueFrom(row, headers, "First").trim();
     if (!number && !last && !first) return;
+    const parsedStats = gameChangerStatsFromRow(row, headers);
 
     imported.push({
       id: uid("player"),
@@ -560,72 +736,625 @@ function importPlayersFromCsv(text, filename) {
       weight: valueFrom(row, headers, "Weight").trim() || valueFrom(row, headers, "Wt").trim(),
       notes: "",
       side: state.activeSide,
-      stats: {
-        ...emptyStats(),
-        GP: toNumber(valueFrom(row, headers, "GP", 1)),
-        PA: toNumber(valueFrom(row, headers, "PA")),
-        AB: toNumber(valueFrom(row, headers, "AB")),
-        H: toNumber(valueFrom(row, headers, "H", 1)),
-        "2B": toNumber(valueFrom(row, headers, "2B")),
-        "3B": toNumber(valueFrom(row, headers, "3B")),
-        HR: toNumber(valueFrom(row, headers, "HR", 1)),
-        RBI: toNumber(valueFrom(row, headers, "RBI")),
-        R: toNumber(valueFrom(row, headers, "R")),
-        BB: toNumber(valueFrom(row, headers, "BB", 1)),
-        SO: toNumber(valueFrom(row, headers, "SO", 1)),
-        HBP: toNumber(valueFrom(row, headers, "HBP", 1)),
-        SF: toNumber(valueFrom(row, headers, "SF")),
-        SB: toNumber(valueFrom(row, headers, "SB", 1)),
-        CS: toNumber(valueFrom(row, headers, "CS", 1)),
-        IP: toNumber(valueFrom(row, headers, "IP")),
-        GS: toNumber(valueFrom(row, headers, "GS")),
-        BF: toNumber(valueFrom(row, headers, "BF")),
-        W: toNumber(valueFrom(row, headers, "W")),
-        L: toNumber(valueFrom(row, headers, "L")),
-        Pitches: toNumber(valueFrom(row, headers, "#P")),
-        Strikes: toNumber(valueFrom(row, headers, "S%", 1)),
-        ERA: toNumber(valueFrom(row, headers, "ERA")),
-        WHIP: toNumber(valueFrom(row, headers, "WHIP")),
-        BAA: toNumber(valueFrom(row, headers, "BAA")),
-        P_HR: toNumber(valueFrom(row, headers, "HR", 2)),
-        P_BB: toNumber(valueFrom(row, headers, "BB", 2)),
-        P_SO: toNumber(valueFrom(row, headers, "SO", 2)),
-        P_H: toNumber(valueFrom(row, headers, "H", 2)),
-        P_R: toNumber(valueFrom(row, headers, "R", 2)),
-        P_ER: toNumber(valueFrom(row, headers, "ER"))
-      }
+      stats: bucket === "stats" ? parsedStats : {},
+      confStats: bucket === "confStats" ? parsedStats : {}
     });
   });
 
-  const byKey = new Map(state.players.map((player) => [`${player.side || "home"}-${player.number}-${player.first}-${player.last}`.toLowerCase(), player]));
-  imported.forEach((player) => {
-    const key = `${player.side}-${player.number}-${player.first}-${player.last}`.toLowerCase();
-    if (byKey.has(key)) {
-      Object.assign(byKey.get(key), {
-        ...player,
-        id: byKey.get(key).id,
-        pronunciation: byKey.get(key).pronunciation || "",
-        hometown: byKey.get(key).hometown || player.hometown || "",
-        position: byKey.get(key).position || "",
-        classYear: byKey.get(key).classYear || "",
-        height: byKey.get(key).height || player.height || "",
-        weight: byKey.get(key).weight || player.weight || "",
-        notes: byKey.get(key).notes || ""
-      });
-    } else {
-      state.players.push(player);
-    }
-  });
+  mergePlayers(imported);
 
   state.sources.unshift({
     id: uid("source"),
     type: "csv",
     name: filename,
     importedAt: new Date().toISOString(),
-    detail: `${imported.length} player rows`
+    detail: `${imported.length} player rows`,
+    source: "gamechanger",
+    scope,
+    variant: "season"
   });
 
   if (!activeChart().lineup.some(Boolean)) autoFillLineup();
+  saveState();
+  render();
+}
+
+function mergePlayers(imported) {
+  const byJersey = new Map();
+  state.players.forEach((player) => {
+    if (!player.number) return;
+    byJersey.set(`${player.side || "home"}-${String(player.number).trim().toLowerCase()}`, player);
+  });
+  const byKey = new Map(state.players.map((player) => [`${player.side || "home"}-${player.number}-${player.first}-${player.last}`.toLowerCase(), player]));
+
+  imported.forEach((player) => {
+    const fullKey = `${player.side}-${player.number}-${player.first}-${player.last}`.toLowerCase();
+    const jerseyKey = player.number ? `${player.side}-${String(player.number).trim().toLowerCase()}` : "";
+    const existing = byKey.get(fullKey) || (jerseyKey ? byJersey.get(jerseyKey) : null);
+    if (existing) {
+      const mergedStats = { ...existing.stats, ...(player.stats || {}) };
+      const mergedConf = { ...(existing.confStats || emptyStats()), ...(player.confStats || {}) };
+      Object.assign(existing, {
+        ...player,
+        id: existing.id,
+        pronunciation: existing.pronunciation || player.pronunciation || "",
+        hometown: existing.hometown || player.hometown || "",
+        position: existing.position || player.position || "",
+        classYear: existing.classYear || player.classYear || "",
+        height: existing.height || player.height || "",
+        weight: existing.weight || player.weight || "",
+        notes: existing.notes || "",
+        handedness: existing.handedness || player.handedness || "",
+        stats: mergedStats,
+        confStats: mergedConf
+      });
+      byKey.set(fullKey, existing);
+      if (jerseyKey) byJersey.set(jerseyKey, existing);
+    } else {
+      const filled = {
+        ...player,
+        stats: { ...emptyStats(), ...(player.stats || {}) },
+        confStats: { ...emptyStats(), ...(player.confStats || {}) }
+      };
+      state.players.push(filled);
+      byKey.set(fullKey, filled);
+      if (jerseyKey) byJersey.set(jerseyKey, filled);
+    }
+  });
+}
+
+function detectPrestoVariant(headers) {
+  const lower = headers.map((h) => String(h || "").trim().toLowerCase());
+  const has = (col) => lower.includes(col);
+  if (has("era") && has("whip")) return "pitching";
+  if (has("tc") && has("f%")) return "fielding";
+  if (has("tb") && has("sb") && !has("ab")) return "baserunning";
+  if (has("ab") && (has("avg") || has("obp"))) return "hitting";
+  return null;
+}
+
+function isPrestoCsvHeader(headers) {
+  const trimmed = headers.map((h) => String(h || "").trim());
+  return trimmed.includes("#") && trimmed.includes("Name") && Boolean(detectPrestoVariant(trimmed));
+}
+
+function splitPrestoName(value) {
+  const collapsed = String(value || "").replace(/\s+/g, " ").trim();
+  if (!collapsed) return { first: "", last: "" };
+  const idx = collapsed.indexOf(" ");
+  if (idx < 0) return { first: "", last: collapsed };
+  return { first: collapsed.slice(0, idx).trim(), last: collapsed.slice(idx + 1).trim() };
+}
+
+const prestoStatMaps = {
+  hitting: (row, headers) => ({
+    GP: toNumber(valueFrom(row, headers, "gp")),
+    PA: toNumber(valueFrom(row, headers, "pa")),
+    AB: toNumber(valueFrom(row, headers, "ab")),
+    H: toNumber(valueFrom(row, headers, "h")),
+    "2B": toNumber(valueFrom(row, headers, "2b")),
+    "3B": toNumber(valueFrom(row, headers, "3b")),
+    HR: toNumber(valueFrom(row, headers, "hr")),
+    RBI: toNumber(valueFrom(row, headers, "rbi")),
+    BB: toNumber(valueFrom(row, headers, "bb")),
+    SO: toNumber(valueFrom(row, headers, "k")),
+    HBP: toNumber(valueFrom(row, headers, "hbp")),
+    SF: toNumber(valueFrom(row, headers, "sf"))
+  }),
+  baserunning: (row, headers) => ({
+    R: toNumber(valueFrom(row, headers, "r")),
+    TB: toNumber(valueFrom(row, headers, "tb")),
+    SB: toNumber(valueFrom(row, headers, "sb")),
+    CS: toNumber(valueFrom(row, headers, "cs"))
+  }),
+  pitching: (row, headers) => ({
+    ERA: toNumber(valueFrom(row, headers, "era")),
+    W: toNumber(valueFrom(row, headers, "w")),
+    L: toNumber(valueFrom(row, headers, "l")),
+    GS: toNumber(valueFrom(row, headers, "gs")),
+    IP: toNumber(valueFrom(row, headers, "ip")),
+    P_H: toNumber(valueFrom(row, headers, "h")),
+    P_R: toNumber(valueFrom(row, headers, "r")),
+    P_ER: toNumber(valueFrom(row, headers, "er")),
+    P_BB: toNumber(valueFrom(row, headers, "bb")),
+    P_SO: toNumber(valueFrom(row, headers, "k")),
+    P_HR: toNumber(valueFrom(row, headers, "hr")),
+    P_2B: toNumber(valueFrom(row, headers, "2b")),
+    P_3B: toNumber(valueFrom(row, headers, "3b")),
+    WHIP: toNumber(valueFrom(row, headers, "whip")),
+    BF: toNumber(valueFrom(row, headers, "bf")),
+    P_WP: toNumber(valueFrom(row, headers, "wp")),
+    P_HBP: toNumber(valueFrom(row, headers, "hbp")),
+    P_AB: toNumber(valueFrom(row, headers, "ab")),
+    CG: toNumber(valueFrom(row, headers, "cg")),
+    SHO: toNumber(valueFrom(row, headers, "sho")),
+    SV: toNumber(valueFrom(row, headers, "sv")),
+    SFA: toNumber(valueFrom(row, headers, "sfa")),
+    SHA: toNumber(valueFrom(row, headers, "sha"))
+  }),
+  fielding: (row, headers) => ({
+    TC: toNumber(valueFrom(row, headers, "tc")),
+    PO: toNumber(valueFrom(row, headers, "po")),
+    A: toNumber(valueFrom(row, headers, "a")),
+    E: toNumber(valueFrom(row, headers, "e")),
+    F_PCT: toNumber(valueFrom(row, headers, "f%")),
+    DP: toNumber(valueFrom(row, headers, "dp")),
+    SBA: toNumber(valueFrom(row, headers, "sba")),
+    RCS: toNumber(valueFrom(row, headers, "rcs")),
+    RCS_PCT: toNumber(valueFrom(row, headers, "rcs%")),
+    PB: toNumber(valueFrom(row, headers, "pb")),
+    CI: toNumber(valueFrom(row, headers, "ci"))
+  })
+};
+
+function importPrestoStatsFromCsv(text, filename, scope = "overall") {
+  const rows = parseCsv(text);
+  const headerRowIndex = rows.findIndex((row) => row.some((cell) => String(cell).trim() === "#") && row.some((cell) => String(cell).trim() === "Name"));
+  if (headerRowIndex < 0) {
+    throw new Error("Could not find a PrestoSports header row (#, Name, ...).");
+  }
+  const headers = rows[headerRowIndex].map((header) => String(header).trim());
+  const variant = detectPrestoVariant(headers);
+  if (!variant) {
+    throw new Error("Could not detect PrestoSports CSV variant (hitting / baserunning / pitching / fielding).");
+  }
+  const statMapper = prestoStatMaps[variant];
+  const bucket = scope === "conference" ? "confStats" : "stats";
+
+  const imported = [];
+  rows.slice(headerRowIndex + 1).forEach((row) => {
+    const number = String(valueFrom(row, headers, "#") || "").trim();
+    const rawName = valueFrom(row, headers, "Name");
+    const { first, last } = splitPrestoName(rawName);
+    if (!number && !first && !last) return;
+
+    const partial = statMapper(row, headers);
+    const player = {
+      id: uid("player"),
+      number,
+      first,
+      last,
+      pronunciation: "",
+      position: String(valueFrom(row, headers, "Pos") || "").trim(),
+      hometown: "",
+      classYear: String(valueFrom(row, headers, "Yr") || "").trim(),
+      height: "",
+      weight: "",
+      notes: "",
+      handedness: "",
+      side: state.activeSide,
+      stats: bucket === "stats" ? partial : {},
+      confStats: bucket === "confStats" ? partial : {}
+    };
+    imported.push(player);
+  });
+
+  mergePlayers(imported);
+
+  state.sources.unshift({
+    id: uid("source"),
+    type: "csv",
+    name: filename,
+    importedAt: new Date().toISOString(),
+    detail: `${imported.length} ${variant} rows (${scope})`,
+    source: "presto",
+    scope,
+    variant
+  });
+
+  if (!activeChart().lineup.some(Boolean)) autoFillLineup();
+  saveState();
+  render();
+}
+
+function importPrestoRosterFromTrx(text, filename) {
+  const lines = String(text || "").split(/\r?\n/);
+  const imported = [];
+  lines.forEach((rawLine) => {
+    if (!rawLine.trim()) return;
+    const fields = rawLine.split("@").map((f) => f.trim());
+    if (fields.length < 6) return;
+    const jersey = fields[1] || "";
+    const fullName = fields[4] || "";
+    const position = fields[5] || "";
+    const height = fields[6] || "";
+    const weight = fields[7] || "";
+    const hometown = fields[8] || "";
+    if (!jersey && !fullName) return;
+    const { first, last } = splitPrestoName(fullName);
+    let handedness = "";
+    if (/^LHP/i.test(position)) handedness = "L";
+    else if (/^RHP/i.test(position)) handedness = "R";
+    imported.push({
+      id: uid("player"),
+      number: jersey,
+      first,
+      last,
+      pronunciation: "",
+      position,
+      hometown,
+      classYear: "",
+      height,
+      weight,
+      notes: "",
+      handedness,
+      side: state.activeSide,
+      stats: {},
+      confStats: {}
+    });
+  });
+
+  if (!imported.length) {
+    throw new Error("No roster rows parsed from this TRX file.");
+  }
+
+  mergePlayers(imported);
+
+  state.sources.unshift({
+    id: uid("source"),
+    type: "trx",
+    name: filename,
+    importedAt: new Date().toISOString(),
+    detail: `${imported.length} roster rows`,
+    source: "presto",
+    scope: "roster",
+    variant: "roster"
+  });
+
+  if (!activeChart().lineup.some(Boolean)) autoFillLineup();
+  saveState();
+  render();
+}
+
+const boxScoreLineStats = [
+  "AB", "H", "2B", "3B", "HR", "BB", "SO", "RBI", "R", "SB", "CS", "HBP",
+  "IP", "P_H", "P_R", "P_ER", "P_HR", "P_BB", "P_SO", "P_HBP", "P_WP", "BF", "Pitches"
+];
+const boxScoreStatAliases = {
+  AB: "AB",
+  ATBATS: "AB",
+  R: "R",
+  RUN: "R",
+  RUNS: "R",
+  H: "H",
+  HIT: "H",
+  HITS: "H",
+  "2B": "2B",
+  DOUBLE: "2B",
+  DOUBLES: "2B",
+  "3B": "3B",
+  TRIPLE: "3B",
+  TRIPLES: "3B",
+  HR: "HR",
+  HRS: "HR",
+  HOMERUN: "HR",
+  HOMERUNS: "HR",
+  RBI: "RBI",
+  RBIS: "RBI",
+  RUNBATTEDIN: "RBI",
+  RUNSBATTEDIN: "RBI",
+  BB: "BB",
+  BASEONBALLS: "BB",
+  WALK: "BB",
+  WALKS: "BB",
+  SO: "SO",
+  K: "SO",
+  KS: "SO",
+  STRUCKOUT: "SO",
+  STRIKEOUT: "SO",
+  STRIKEOUTS: "SO",
+  SB: "SB",
+  STOLENBASE: "SB",
+  STOLENBASES: "SB",
+  CS: "CS",
+  CAUGHTSTEALING: "CS",
+  HBP: "HBP",
+  HP: "HBP",
+  HITBYPITCH: "HBP",
+  IP: "IP",
+  INNINGSPITCHED: "IP"
+};
+const boxScoreNumberHeaders = new Set(["#", "NO", "NUM", "NUMBER", "JERSEY", "JERSEYNUMBER"]);
+const boxScoreNameHeaders = new Set(["PLAYER", "PLAYERS", "NAME", "PLAYERNAME", "BATTER", "BATTERS", "HITTER", "HITTERS"]);
+const boxScoreFirstHeaders = new Set(["FIRST", "FIRSTNAME"]);
+const boxScoreLastHeaders = new Set(["LAST", "LASTNAME"]);
+const boxScorePositionTokens = new Set(["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "OF", "IF", "DH", "DP", "FLEX", "PH", "PR", "CR", "UTIL", "UTL"]);
+const boxScorePitchingStatHeaders = {
+  EARNEDRUNS: "P_ER",
+  RUNSAGAINST: "P_R",
+  HOMERUNSAGAINST: "P_HR",
+  BATTERSFACED: "BF",
+  BATTERSSTRUCKOUT: "P_SO",
+  BASEONBALLSAGAINST: "P_BB",
+  HITSAGAINST: "P_H",
+  HITBATTER: "P_HBP",
+  HITBATTERS: "P_HBP",
+  WILDPITCHES: "P_WP",
+  NUMBEROFPITCHES: "Pitches"
+};
+
+function normalizeBoxScoreHeader(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[.:]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function compactBoxScoreHeader(value) {
+  return normalizeBoxScoreHeader(value).replace(/[^A-Z0-9#]/g, "");
+}
+
+function canonicalBoxScoreStat(value) {
+  const normalized = normalizeBoxScoreHeader(value).replace(/[']/g, "");
+  const compact = normalized.replace(/[^A-Z0-9]/g, "");
+  return boxScoreStatAliases[normalized] || boxScoreStatAliases[compact] || "";
+}
+
+function cleanBoxScoreNumber(value) {
+  const match = String(value || "").match(/\d{1,3}/);
+  return match ? match[0] : "";
+}
+
+function normalizeBoxScoreName(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function boxScoreTextCells(line) {
+  const trimmed = String(line || "").replace(/\u00a0/g, " ").trim();
+  if (!trimmed) return { cells: [], mode: "empty" };
+  if (trimmed.includes("|")) {
+    return { cells: trimmed.split("|").map((cell) => cell.trim()), mode: "pipe" };
+  }
+  if (trimmed.includes("\t")) {
+    return { cells: trimmed.split("\t").map((cell) => cell.trim()), mode: "tab" };
+  }
+  const wideCells = trimmed.split(/\s{2,}/).map((cell) => cell.trim()).filter(Boolean);
+  if (wideCells.length > 1) return { cells: wideCells, mode: "wide" };
+  return { cells: trimmed.split(/\s+/).map((cell) => cell.trim()).filter(Boolean), mode: "word" };
+}
+
+function isBoxScoreNumberHeader(value) {
+  const normalized = normalizeBoxScoreHeader(value);
+  const compact = compactBoxScoreHeader(value);
+  return boxScoreNumberHeaders.has(normalized) || boxScoreNumberHeaders.has(compact);
+}
+
+function isBoxScoreNameHeader(value) {
+  const normalized = normalizeBoxScoreHeader(value);
+  const compact = compactBoxScoreHeader(value);
+  return boxScoreNameHeaders.has(normalized) || boxScoreNameHeaders.has(compact);
+}
+
+function isBoxScoreFirstHeader(value) {
+  const normalized = normalizeBoxScoreHeader(value);
+  const compact = compactBoxScoreHeader(value);
+  return boxScoreFirstHeaders.has(normalized) || boxScoreFirstHeaders.has(compact);
+}
+
+function isBoxScoreLastHeader(value) {
+  const normalized = normalizeBoxScoreHeader(value);
+  const compact = compactBoxScoreHeader(value);
+  return boxScoreLastHeaders.has(normalized) || boxScoreLastHeaders.has(compact);
+}
+
+function boxScoreHeaderFromTxtLine(line) {
+  const parsed = boxScoreTextCells(line);
+  if (!parsed.cells.length) return null;
+
+  const columns = parsed.cells.map((raw) => {
+    const stat = canonicalBoxScoreStat(raw);
+    return {
+      raw,
+      stat,
+      number: isBoxScoreNumberHeader(raw),
+      name: isBoxScoreNameHeader(raw),
+      first: isBoxScoreFirstHeader(raw),
+      last: isBoxScoreLastHeader(raw)
+    };
+  });
+  const statSet = new Set(columns.map((column) => column.stat).filter(Boolean));
+  const firstStatIndex = columns.findIndex((column) => Boolean(column.stat));
+  if (firstStatIndex < 0 || !statSet.has("AB") || !(statSet.has("H") || statSet.has("R") || statSet.has("RBI"))) {
+    return null;
+  }
+
+  return {
+    ...parsed,
+    columns,
+    firstStatIndex,
+    trailingColumns: columns.slice(firstStatIndex),
+    numberIndex: columns.findIndex((column) => column.number),
+    nameIndex: columns.findIndex((column) => column.name),
+    firstIndex: columns.findIndex((column) => column.first),
+    lastIndex: columns.findIndex((column) => column.last)
+  };
+}
+
+function isBoxScoreJunkTxtLine(line) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed) return true;
+  if (/^(totals?|team totals?|opponent totals?|batting totals?|pitching totals?|fielding totals?)\b/i.test(trimmed)) return true;
+  if (/^(batting|pitching|fielding|scoring|gamechanger|maxpreps)\b/i.test(trimmed) && !/\bAB\b/i.test(trimmed)) return true;
+  return false;
+}
+
+function isBoxScoreNumericToken(value) {
+  const trimmed = String(value || "").trim();
+  return trimmed === "-" || /^-?(?:\d+|\d*\.\d+)$/.test(trimmed);
+}
+
+function trimBoxScoreNameDecorations(value) {
+  let text = String(value || "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const pieces = text.split(/\s+/);
+  while (pieces.length > 1) {
+    const tail = pieces[pieces.length - 1].replace(/[.,;:]/g, "").toUpperCase();
+    const positionPieces = tail.split(/[\/-]/).filter(Boolean);
+    if (!positionPieces.length || !positionPieces.every((piece) => boxScorePositionTokens.has(piece))) break;
+    pieces.pop();
+  }
+  text = pieces.join(" ");
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function splitBoxScoreName(rawName, fallbackNumber = "") {
+  let text = trimBoxScoreNameDecorations(rawName);
+  let number = cleanBoxScoreNumber(fallbackNumber);
+  const leadingNumber = text.match(/^#?\s*(\d{1,3})(?:[.)-]\s*|\s+)(.+)$/);
+  if (leadingNumber) {
+    number = number || leadingNumber[1];
+    text = leadingNumber[2].trim();
+  }
+  const trailingNumber = text.match(/^(.+?)\s+#?(\d{1,3})$/);
+  if (trailingNumber && !number) {
+    text = trailingNumber[1].trim();
+    number = trailingNumber[2];
+  }
+  text = trimBoxScoreNameDecorations(text);
+
+  if (text.includes(",")) {
+    const [last, ...rest] = text.split(",");
+    return {
+      number,
+      first: rest.join(",").trim(),
+      last: last.trim(),
+      rawName: text
+    };
+  }
+
+  const pieces = text.split(/\s+/).filter(Boolean);
+  return {
+    number,
+    first: pieces.length > 1 ? pieces[0] : "",
+    last: pieces.length > 1 ? pieces.slice(1).join(" ") : (pieces[0] || ""),
+    rawName: text
+  };
+}
+
+function findBoxScorePlayer({ number, first, last, rawName }) {
+  const players = activePlayers();
+  const cleanNumber = cleanBoxScoreNumber(number);
+  const wantedFull = normalizeBoxScoreName([first, last].filter(Boolean).join(" "));
+  const wantedLastFirst = normalizeBoxScoreName([last, first].filter(Boolean).join(" "));
+  const wantedRaw = normalizeBoxScoreName(rawName);
+  const wantedLast = normalizeBoxScoreName(last);
+  const wantedFirst = normalizeBoxScoreName(first);
+
+  const sameName = (player) => {
+    const playerFull = normalizeBoxScoreName(fullName(player));
+    const playerLast = normalizeBoxScoreName(player.last);
+    const playerFirst = normalizeBoxScoreName(player.first);
+    return (
+      (wantedFull && playerFull === wantedFull)
+      || (wantedLastFirst && playerFull === wantedLastFirst)
+      || (wantedRaw && playerFull === wantedRaw)
+      || (wantedLast && playerLast === wantedLast && (!wantedFirst || playerFirst === wantedFirst))
+    );
+  };
+
+  if (cleanNumber) {
+    const sameNumber = players.filter((player) => cleanBoxScoreNumber(player.number) === cleanNumber);
+    const numberAndName = sameNumber.find(sameName);
+    if (numberAndName) return numberAndName;
+    if (sameNumber.length === 1) return sameNumber[0];
+  }
+
+  const nameMatches = players.filter(sameName);
+  return nameMatches.length === 1 ? nameMatches[0] : null;
+}
+
+function boxScoreStatsFromColumns(columns, values) {
+  const stats = {};
+  let partialInning = "";
+  let stolenBaseAttempts = "";
+  columns.forEach((column, index) => {
+    const compactHeader = compactBoxScoreHeader(column.raw);
+    if (compactHeader === "PARTIALINNINGPITCHED") partialInning = values[index];
+    if (compactHeader === "STOLENBASEATTEMPTS") stolenBaseAttempts = values[index];
+    if (boxScorePitchingStatHeaders[compactHeader]) stats[boxScorePitchingStatHeaders[compactHeader]] = values[index];
+    if (!column.stat || Object.prototype.hasOwnProperty.call(stats, column.stat)) return;
+    const value = values[index];
+    if (value !== undefined && value !== "") stats[column.stat] = value;
+  });
+  if (Object.prototype.hasOwnProperty.call(stats, "IP") && partialInning !== "" && partialInning !== undefined) {
+    stats.IP = `${toNumber(stats.IP)}.${toNumber(partialInning)}`;
+  }
+  if (!Object.prototype.hasOwnProperty.call(stats, "CS") && stolenBaseAttempts !== "" && stolenBaseAttempts !== undefined) {
+    stats.CS = Math.max(0, toNumber(stolenBaseAttempts) - toNumber(stats.SB));
+  }
+  return stats;
+}
+
+function makeBoxScoreLine({ number = "", first = "", last = "", rawName = "", stats = {} }) {
+  let parsedName = splitBoxScoreName(rawName, number);
+  let cleanNumber = cleanBoxScoreNumber(number) || parsedName.number;
+  let cleanFirst = String(first || "").trim();
+  let cleanLast = String(last || "").trim();
+  if (!cleanFirst && !cleanLast) {
+    cleanFirst = parsedName.first;
+    cleanLast = parsedName.last;
+  }
+  parsedName = splitBoxScoreName([cleanFirst, cleanLast].filter(Boolean).join(" "), cleanNumber);
+  cleanFirst = cleanFirst || parsedName.first;
+  cleanLast = cleanLast || parsedName.last;
+  cleanNumber = cleanNumber || parsedName.number;
+
+  if (!cleanNumber && !cleanFirst && !cleanLast) return null;
+
+  const existing = findBoxScorePlayer({
+    number: cleanNumber,
+    first: cleanFirst,
+    last: cleanLast,
+    rawName
+  });
+  const line = {
+    playerId: existing ? existing.id : "",
+    number: cleanNumber || existing?.number || "",
+    first: cleanFirst || existing?.first || "",
+    last: cleanLast || existing?.last || ""
+  };
+
+  boxScoreLineStats.forEach((stat) => {
+    line[stat] = toNumber(stats[stat]);
+  });
+  return line;
+}
+
+function saveImportedBoxScore(lines, filename, meta = {}, sourceFormat = "CSV") {
+  if (!lines.length) {
+    throw new Error(`No player rows found in this ${sourceFormat} box score.`);
+  }
+
+  const box = {
+    id: uid("box"),
+    side: state.activeSide,
+    gameDate: meta.gameDate || new Date().toISOString().slice(0, 10),
+    opponent: meta.opponent || "",
+    resultNote: meta.resultNote || "",
+    filename,
+    format: sourceFormat.toLowerCase(),
+    importedAt: new Date().toISOString(),
+    lines
+  };
+  state.boxScores.unshift(box);
+
+  state.sources.unshift({
+    id: uid("source"),
+    type: "box-score",
+    name: filename,
+    importedAt: box.importedAt,
+    detail: `${lines.length} players, ${box.opponent || "opponent unknown"} ${box.gameDate}`,
+    source: "gamechanger",
+    scope: "box-score",
+    variant: sourceFormat.toLowerCase()
+  });
+
   saveState();
   render();
 }
@@ -637,63 +1366,103 @@ function importBoxScoreFromCsv(text, filename, meta = {}) {
     throw new Error("Could not find a header row with Number, Last, and First columns.");
   }
   const headers = rows[headerRowIndex].map((header) => header.trim());
-  const lines = [];
+  const lines = rows.slice(headerRowIndex + 1)
+    .map((row) => {
+      const number = valueFrom(row, headers, "Number").trim();
+      const last = valueFrom(row, headers, "Last").trim();
+      const first = valueFrom(row, headers, "First").trim();
+      if (!number && !last && !first) return null;
+      return makeBoxScoreLine({
+        number,
+        first,
+        last,
+        rawName: [first, last].filter(Boolean).join(" "),
+        stats: {
+          AB: valueFrom(row, headers, "AB"),
+          H: valueFrom(row, headers, "H", 1),
+          "2B": valueFrom(row, headers, "2B"),
+          "3B": valueFrom(row, headers, "3B"),
+          HR: valueFrom(row, headers, "HR", 1),
+          BB: valueFrom(row, headers, "BB", 1),
+          SO: valueFrom(row, headers, "SO", 1),
+          RBI: valueFrom(row, headers, "RBI"),
+          R: valueFrom(row, headers, "R"),
+          SB: valueFrom(row, headers, "SB", 1),
+          CS: valueFrom(row, headers, "CS", 1),
+          HBP: valueFrom(row, headers, "HBP", 1),
+          IP: valueFrom(row, headers, "IP")
+        }
+      });
+    })
+    .filter(Boolean);
 
-  rows.slice(headerRowIndex + 1).forEach((row) => {
-    const number = valueFrom(row, headers, "Number").trim();
-    const last = valueFrom(row, headers, "Last").trim();
-    const first = valueFrom(row, headers, "First").trim();
-    if (!number && !last && !first) return;
+  saveImportedBoxScore(lines, filename, meta, "CSV");
+}
 
-    const matchKey = `${state.activeSide}-${number}-${first}-${last}`.toLowerCase();
-    const existing = state.players.find((p) => `${p.side || "home"}-${p.number}-${p.first}-${p.last}`.toLowerCase() === matchKey);
+function parseBoxScoreTxtDelimitedRow(line, header) {
+  const parsed = boxScoreTextCells(line);
+  if (parsed.mode === "word" || parsed.cells.length < header.firstStatIndex + 1) return null;
 
-    lines.push({
-      playerId: existing ? existing.id : "",
-      number,
-      first,
-      last,
-      AB: toNumber(valueFrom(row, headers, "AB")),
-      H: toNumber(valueFrom(row, headers, "H", 1)),
-      "2B": toNumber(valueFrom(row, headers, "2B")),
-      "3B": toNumber(valueFrom(row, headers, "3B")),
-      HR: toNumber(valueFrom(row, headers, "HR", 1)),
-      BB: toNumber(valueFrom(row, headers, "BB", 1)),
-      SO: toNumber(valueFrom(row, headers, "SO", 1)),
-      RBI: toNumber(valueFrom(row, headers, "RBI")),
-      R: toNumber(valueFrom(row, headers, "R")),
-      SB: toNumber(valueFrom(row, headers, "SB", 1)),
-      HBP: toNumber(valueFrom(row, headers, "HBP", 1)),
-      IP: toNumber(valueFrom(row, headers, "IP"))
-    });
-  });
-
-  if (!lines.length) {
-    throw new Error("No player rows found in this CSV.");
+  const stats = boxScoreStatsFromColumns(header.columns, parsed.cells);
+  let number = header.numberIndex >= 0 ? cleanBoxScoreNumber(parsed.cells[header.numberIndex]) : "";
+  let first = header.firstIndex >= 0 ? parsed.cells[header.firstIndex].trim() : "";
+  let last = header.lastIndex >= 0 ? parsed.cells[header.lastIndex].trim() : "";
+  let rawName = header.nameIndex >= 0 ? parsed.cells[header.nameIndex] : "";
+  if (!rawName && (!first || !last)) {
+    rawName = parsed.cells
+      .slice(0, header.firstStatIndex)
+      .filter((_, index) => ![header.numberIndex, header.firstIndex, header.lastIndex].includes(index))
+      .join(" ");
   }
+  if (!number && rawName) number = splitBoxScoreName(rawName).number;
+  if (!Object.keys(stats).length) return null;
+  return makeBoxScoreLine({ number, first, last, rawName, stats });
+}
 
-  const box = {
-    id: uid("box"),
-    side: state.activeSide,
-    gameDate: meta.gameDate || new Date().toISOString().slice(0, 10),
-    opponent: meta.opponent || "",
-    resultNote: meta.resultNote || "",
-    filename,
-    importedAt: new Date().toISOString(),
-    lines
-  };
-  state.boxScores.unshift(box);
+function parseBoxScoreTxtSuffixRow(line, header) {
+  const tokens = String(line || "").replace(/\u00a0/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return null;
 
-  state.sources.unshift({
-    id: uid("source"),
-    type: "box-score",
-    name: filename,
-    importedAt: box.importedAt,
-    detail: `${lines.length} players, ${box.opponent || "opponent unknown"} ${box.gameDate}`
+  const numericSuffix = [];
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    if (!isBoxScoreNumericToken(tokens[index])) break;
+    numericSuffix.unshift(tokens[index]);
+  }
+  if (!numericSuffix.length) return null;
+
+  const valueTokens = numericSuffix.slice(-header.trailingColumns.length);
+  const playerTokens = tokens.slice(0, tokens.length - valueTokens.length);
+  if (!playerTokens.length) return null;
+
+  const columns = header.trailingColumns.slice(0, valueTokens.length);
+  const stats = boxScoreStatsFromColumns(columns, valueTokens);
+  if (!Object.keys(stats).length) return null;
+  return makeBoxScoreLine({ rawName: playerTokens.join(" "), stats });
+}
+
+function parseBoxScoreTxtRow(line, header) {
+  if (isBoxScoreJunkTxtLine(line) || boxScoreHeaderFromTxtLine(line)) return null;
+  const direct = parseBoxScoreTxtDelimitedRow(line, header);
+  if (direct) return direct;
+  return parseBoxScoreTxtSuffixRow(line, header);
+}
+
+function importBoxScoreFromTxt(text, filename, meta = {}) {
+  const lines = [];
+  let currentHeader = null;
+
+  String(text || "").split(/\r?\n/).forEach((line) => {
+    const nextHeader = boxScoreHeaderFromTxtLine(line);
+    if (nextHeader) {
+      currentHeader = nextHeader;
+      return;
+    }
+    if (!currentHeader) return;
+    const parsed = parseBoxScoreTxtRow(line, currentHeader);
+    if (parsed) lines.push(parsed);
   });
 
-  saveState();
-  render();
+  saveImportedBoxScore(lines, filename, meta, "TXT");
 }
 
 function resolvePdfBridgeUrl() {
@@ -815,85 +1584,7 @@ async function importPdfViaBridge(file, options = {}) {
 }
 
 function bindPdfBridge() {
-  // Pre-fill the input with the saved override (if any) so the user can see / edit it.
-  if (els.pdfBridgeUrlInput) {
-    try {
-      const saved = localStorage.getItem("pxp.pdfBridgeUrl") || "";
-      els.pdfBridgeUrlInput.value = saved;
-      // If we're on GitHub Pages with no saved override, expand the config so the input is visible.
-      if (!saved && !PDF_BRIDGE_URL && els.pdfBridgeConfig) {
-        els.pdfBridgeConfig.open = true;
-      }
-    } catch (_) { /* ignore */ }
-  }
-
-  refreshPdfBridgeStatus();
-
-  if (els.pdfBridgeStatus) {
-    els.pdfBridgeStatus.addEventListener("click", () => {
-      if (els.pdfBridgeStatus.dataset.status !== "busy") refreshPdfBridgeStatus();
-    });
-  }
-
-  if (els.pdfBridgeSaveButton && els.pdfBridgeUrlInput) {
-    els.pdfBridgeSaveButton.addEventListener("click", () => {
-      savePdfBridgeUrl(els.pdfBridgeUrlInput.value);
-    });
-    els.pdfBridgeUrlInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        savePdfBridgeUrl(els.pdfBridgeUrlInput.value);
-      }
-    });
-  }
-
-  if (els.pdfBridgeClearButton && els.pdfBridgeUrlInput) {
-    els.pdfBridgeClearButton.addEventListener("click", () => {
-      els.pdfBridgeUrlInput.value = "";
-      savePdfBridgeUrl("");
-    });
-  }
-
-  document.querySelectorAll('.data-tab[data-data-section="seasonStatsSection"]').forEach((tab) => {
-    tab.addEventListener("click", refreshPdfBridgeStatus);
-  });
-
-  if (els.pdfInput) {
-    els.pdfInput.addEventListener("change", async (event) => {
-      const file = event.target.files[0];
-      if (!file) return;
-      try {
-        await importPdfViaBridge(file, { kindHint: "auto" });
-      } catch (error) {
-        alert(`PDF import failed: ${error.message}\n\nMake sure the parser bridge is running:\n  cd tools/pdf_to_csv\n  python -m pdf_to_csv.server`);
-      } finally {
-        event.target.value = "";
-      }
-    });
-  }
-
-  if (els.boxScorePdfInput) {
-    els.boxScorePdfInput.addEventListener("change", async (event) => {
-      const file = event.target.files[0];
-      if (!file) return;
-      try {
-        await importPdfViaBridge(file, {
-          kindHint: "box",
-          boxMeta: {
-            gameDate: els.boxScoreDate?.value || "",
-            opponent: els.boxScoreOpponent?.value || "",
-            resultNote: els.boxScoreResultNote?.value || ""
-          }
-        });
-        if (els.boxScoreOpponent) els.boxScoreOpponent.value = "";
-        if (els.boxScoreResultNote) els.boxScoreResultNote.value = "";
-      } catch (error) {
-        alert(`PDF import failed: ${error.message}\n\nMake sure the parser bridge is running:\n  cd tools/pdf_to_csv\n  python -m pdf_to_csv.server`);
-      } finally {
-        event.target.value = "";
-      }
-    });
-  }
+  return false;
 }
 
 function boxScoreLinesForPlayer(playerId) {
@@ -1012,15 +1703,15 @@ function notationActionKey(text) {
 const chartActions = {
   BB: { label: "BB", result: "walk", notation: "BB", pitcher: { BB: 1, BF: 1 } },
   K: { label: "K", result: "strikeout", notation: "K", pitcher: { K: 1, BF: 1 } },
-  KC: { label: "ꓘ", result: "strikeout", notation: "Kc", pitcher: { K: 1, BF: 1 } },
+  KC: { label: "Kc", result: "strikeout", notation: "Kc", pitcher: { K: 1, KC: 1, BF: 1 } },
   KPB: { label: "K PB", result: "strikeout", notation: "K PB", pitcher: { K: 1, BF: 1 } },
-  KWP: { label: "K WP", result: "strikeout", notation: "K WP", pitcher: { K: 1, BF: 1 } },
+  KWP: { label: "K WP", result: "strikeout", notation: "K WP", pitcher: { K: 1, WP: 1, BF: 1 } },
   "1B": { label: "1B", result: "single", notation: "1B", pitcher: { H: 1, BF: 1 } },
-  "2B": { label: "2B", result: "double", notation: "2B", pitcher: { H: 1, BF: 1 } },
-  "3B": { label: "3B", result: "triple", notation: "3B", pitcher: { H: 1, BF: 1 } },
+  "2B": { label: "2B", result: "double", notation: "2B", pitcher: { H: 1, "2B": 1, BF: 1 } },
+  "3B": { label: "3B", result: "triple", notation: "3B", pitcher: { H: 1, "3B": 1, BF: 1 } },
   HR: { label: "Hr", result: "hr", notation: "HR", pitcher: { H: 1, HR: 1, R: 1, ER: 1, BF: 1 } },
   OUT: { label: "Out", result: "out", notation: "OUT", pitcher: { BF: 1 } },
-  HBP: { label: "HBP", result: "hbp", notation: "HBP", pitcher: { BF: 1 } },
+  HBP: { label: "HBP", result: "hbp", notation: "HBP", pitcher: { HBP: 1, BF: 1 } },
   BI: { label: "BI", result: "out", notation: "BI", pitcher: { BF: 1 } },
   CI: { label: "CI", result: "catcherInterference", notation: "CI", pitcher: { BF: 1 } },
   BALK: { label: "Balk", result: "balk", notation: "BK", pitcher: {}, noPlateAppearance: true, advanceBatter: false },
@@ -1029,6 +1720,58 @@ const chartActions = {
   ERR: { label: "E", result: "out", notation: "E", pitcher: {}, inning: { E: 1 } },
   FC: { label: "FC", result: "fieldersChoice", notation: "FC", pitcher: { BF: 1 } }
 };
+
+const defaultEarnedRunActions = new Set(["1B", "2B", "3B", "HR", "BB", "HBP", "SF", "BI", "FC", "KWP"]);
+
+function pitcherRunsForAction(actionKey, rbi) {
+  const actionRuns = toNumber(chartActions[actionKey]?.pitcher?.R);
+  return Math.max(actionRuns, toNumber(rbi));
+}
+
+function pitcherEarnedRunsForAction(actionKey, rbi) {
+  const actionEarnedRuns = toNumber(chartActions[actionKey]?.pitcher?.ER);
+  if (!defaultEarnedRunActions.has(actionKey)) return actionEarnedRuns;
+  return Math.max(actionEarnedRuns, toNumber(rbi));
+}
+
+function syncPitcherRunsFromRbi(cell, actionKey, oldRbi, nextRbi) {
+  const pitcherId = cell.pitcherId;
+  if (!pitcherId) return;
+
+  const oldRunValue = pitcherRunsForAction(actionKey, oldRbi);
+  const nextRunValue = pitcherRunsForAction(actionKey, nextRbi);
+  if (toNumber(cell.pitcherUpdates?.R) === oldRunValue) {
+    setPitcherUpdateValue(cell, pitcherId, "R", nextRunValue);
+  }
+
+  const oldEarnedValue = pitcherEarnedRunsForAction(actionKey, oldRbi);
+  const nextEarnedValue = pitcherEarnedRunsForAction(actionKey, nextRbi);
+  if (toNumber(cell.pitcherUpdates?.ER) === oldEarnedValue) {
+    setPitcherUpdateValue(cell, pitcherId, "ER", nextEarnedValue);
+  }
+}
+
+function setCellRbi(cellKey, value) {
+  const cell = getScoreCellFromKey(cellKey);
+  const oldRbi = toNumber(cell.rbi);
+  const nextRbi = Math.max(0, toNumber(value));
+  if (oldRbi === nextRbi) return;
+
+  cell.rbi = nextRbi || "";
+  if (!cell.eventId) return;
+
+  const event = state.events.find((item) => item.id === cell.eventId);
+  if (event) {
+    const batter = state.players.find((item) => item.id === event.playerId);
+    const oldEventRbi = toNumber(event.rbi);
+    const delta = nextRbi - oldEventRbi;
+    if (batter && delta) {
+      batter.stats.RBI = Math.max(0, toNumber(batter.stats.RBI) + delta);
+    }
+    event.rbi = nextRbi;
+    syncPitcherRunsFromRbi(cell, cell.actionKey || notationActionKey(cell.notation), oldEventRbi, nextRbi);
+  }
+}
 
 const basePathForResult = {
   "1B": ["toFirst"],
@@ -1114,11 +1857,24 @@ function addRunnerStatDelta(cell, playerId, key, value) {
 }
 
 function addRunnerPitcherOut(cell) {
+  addRunnerPitcherDelta(cell, { outs: 1 });
+}
+
+function addRunnerPitcherDelta(cell, updates) {
   const chart = activeChart();
   if (!chart.activePitcherId) return;
-  addToPitchingLine(chart.activePitcherId, { outs: 1 });
+  addToPitchingLine(chart.activePitcherId, updates);
   cell.runnerPitcherDeltas = cell.runnerPitcherDeltas || [];
-  cell.runnerPitcherDeltas.push({ pitcherId: chart.activePitcherId, outs: 1 });
+  cell.runnerPitcherDeltas.push({ pitcherId: chart.activePitcherId, updates: { ...updates } });
+}
+
+function reverseRunnerPitcherDelta(item) {
+  const updates = item.updates || { outs: toNumber(item.outs) };
+  const reverseUpdates = {};
+  Object.entries(updates).forEach(([key, value]) => {
+    reverseUpdates[key] = -toNumber(value);
+  });
+  addToPitchingLine(item.pitcherId, reverseUpdates);
 }
 
 function clearRunnerOutcome(cell) {
@@ -1130,7 +1886,7 @@ function clearRunnerOutcome(cell) {
   }
   if (cell.runnerPitcherDeltas) {
     cell.runnerPitcherDeltas.forEach((item) => {
-      addToPitchingLine(item.pitcherId, { outs: -toNumber(item.outs) });
+      reverseRunnerPitcherDelta(item);
     });
   }
   delete cell.runnerStatDeltas;
@@ -1236,11 +1992,25 @@ function setBatterBaseState(chart, batterId, terminalBase) {
 }
 
 function blankPitchingLine() {
-  return { outs: 0, H: 0, R: 0, ER: 0, BB: 0, K: 0, HR: 0, BF: 0, pitches: 0, strikes: 0, BK: 0 };
+  return { outs: 0, H: 0, R: 0, ER: 0, BB: 0, K: 0, KC: 0, HR: 0, "2B": 0, "3B": 0, HBP: 0, WP: 0, BF: 0, pitches: 0, strikes: 0, balls: 0, fouls: 0, twoStrikePitches: 0, BK: 0 };
 }
 
 function formatIpFromOuts(outs) {
   return `${Math.floor(outs / 3)}.${outs % 3}`;
+}
+
+function livePitchingRates(line) {
+  const outs = toNumber(line.outs);
+  const innings = outs / 3;
+  const era = outs ? (toNumber(line.ER) * 9) / innings : 0;
+  const whip = outs ? (toNumber(line.BB) + toNumber(line.H)) / innings : 0;
+  const avgDenom = Math.max(0, toNumber(line.BF) - toNumber(line.BB) - toNumber(line.HBP));
+  const baa = avgDenom ? toNumber(line.H) / avgDenom : 0;
+  return {
+    ERA: formatFixed(era, 2),
+    WHIP: formatFixed(whip, 2),
+    BAA: formatRate(baa)
+  };
 }
 
 function getPitchingLine(chart, pitcherId = chart.activePitcherId) {
@@ -1264,15 +2034,17 @@ const pitcherAdjustmentFields = [
   { key: "ER", label: "ER" },
   { key: "BB", label: "BB" },
   { key: "K", label: "K" },
+  { key: "KC", label: "Kc" },
   { key: "HR", label: "HR" },
+  { key: "2B", label: "2B" },
+  { key: "3B", label: "3B" },
+  { key: "HBP", label: "HBP" },
+  { key: "WP", label: "WP" },
   { key: "BF", label: "BF" },
   { key: "BK", label: "BK" }
 ];
 
-function setCellPitcherUpdate(cellKey, key, value) {
-  const chart = activeChart();
-  const cell = getScoreCellFromKey(cellKey);
-  const pitcherId = cell.pitcherId || chart.activePitcherId;
+function setPitcherUpdateValue(cell, pitcherId, key, value) {
   if (!pitcherId) return;
   cell.pitcherId = pitcherId;
   cell.pitcherUpdates = cell.pitcherUpdates || {};
@@ -1284,6 +2056,14 @@ function setCellPitcherUpdate(cellKey, key, value) {
   if (nextValue) cell.pitcherUpdates[key] = nextValue;
   else delete cell.pitcherUpdates[key];
   if (!Object.keys(cell.pitcherUpdates).length) delete cell.pitcherUpdates;
+}
+
+function setCellPitcherUpdate(cellKey, key, value) {
+  const chart = activeChart();
+  const cell = getScoreCellFromKey(cellKey);
+  const pitcherId = cell.pitcherId || chart.activePitcherId;
+  if (!pitcherId) return;
+  setPitcherUpdateValue(cell, pitcherId, key, value);
 }
 
 function addToInningTotals(inning, updates, direction = 1) {
@@ -1313,13 +2093,22 @@ function reverseChartCell(cellKey, options = {}) {
   if (!options.preservePitches && cell.pitchDeltas) {
     cell.pitchDeltas.forEach((pitch) => {
       if (pitch.pitcherId) {
-        const line = getPitchingLine(chart, pitch.pitcherId);
-        if (pitch.type === "balk") {
-          line.BK = Math.max(0, toNumber(line.BK) - 1);
+        if (pitch.updates) {
+          const reverseUpdates = {};
+          Object.entries(pitch.updates).forEach(([key, value]) => {
+            reverseUpdates[key] = -toNumber(value);
+          });
+          addToPitchingLine(pitch.pitcherId, reverseUpdates);
+          if (pitch.type !== "balk") chart.pitchCounts[pitch.pitcherId] = Math.max(0, toNumber(chart.pitchCounts[pitch.pitcherId]) - 1);
         } else {
-          chart.pitchCounts[pitch.pitcherId] = Math.max(0, toNumber(chart.pitchCounts[pitch.pitcherId]) - 1);
-          line.pitches = Math.max(0, toNumber(line.pitches) - 1);
-          if (pitch.type === "strike" || pitch.type === "foul") line.strikes = Math.max(0, toNumber(line.strikes) - 1);
+          const line = getPitchingLine(chart, pitch.pitcherId);
+          if (pitch.type === "balk") {
+            line.BK = Math.max(0, toNumber(line.BK) - 1);
+          } else {
+            chart.pitchCounts[pitch.pitcherId] = Math.max(0, toNumber(chart.pitchCounts[pitch.pitcherId]) - 1);
+            line.pitches = Math.max(0, toNumber(line.pitches) - 1);
+            if (pitch.type === "strike" || pitch.type === "foul") line.strikes = Math.max(0, toNumber(line.strikes) - 1);
+          }
         }
       }
       if (pitch.id) chart.pitchLog = chart.pitchLog.filter((item) => item.id !== pitch.id);
@@ -1336,7 +2125,7 @@ function reverseChartCell(cellKey, options = {}) {
   }
   if (cell.runnerPitcherDeltas) {
     cell.runnerPitcherDeltas.forEach((item) => {
-      addToPitchingLine(item.pitcherId, { outs: -toNumber(item.outs) });
+      reverseRunnerPitcherDelta(item);
     });
   }
   if (cell.runnerDiamondBefore) {
@@ -1381,13 +2170,88 @@ function microRundown(player) {
   if (stats.HR || stats["2B"] + stats["3B"] >= 3) details.push(`${stats.HR} HR and ${stats["2B"] + stats["3B"]} extra-base hits`);
   if (stats.SB) details.push(`${stats.SB} stolen bases`);
   if (stats.RBI) details.push(`${stats.RBI} RBI`);
-  if (stats.IP) details.push(`${stats.IP} IP on the mound`);
+  if (stats.IP) details.push(`${formatIpValue(stats.IP)} IP on the mound`);
 
   return `${fullName(player)} is a ${details.join(", ")}. Current line: ${rates.AVG}/${rates.OBP}/${rates.SLG}, ${stats.H} H in ${stats.AB} AB.`;
 }
 
+function teamSetupHtml(side) {
+  const meta = teamMetaForSide(side);
+  return `
+    <div class="panel-heading">
+      <h2>Team Snapshot Setup</h2>
+      <span>${escapeHtml(sideLabel(side))}</span>
+    </div>
+    <div class="team-setup-grid" style="${teamColorStyle(side)}">
+      <label class="team-logo-uploader">
+        <span>Logo</span>
+        <div class="setup-logo-preview">
+          ${meta.logo ? `<img src="${escapeHtml(meta.logo)}" alt="${escapeHtml(sideLabel(side))} logo" />` : `<strong>${escapeHtml(teamInitials(sideLabel(side)))}</strong>`}
+        </div>
+        <input type="file" accept="image/*" data-team-logo="${side}" />
+      </label>
+      <div class="team-setup-fields">
+        <label>Mascot <input type="text" data-team-meta-side="${side}" data-team-meta-field="mascot" value="${escapeHtml(meta.mascot)}" placeholder="Broncbusters" /></label>
+        <label>Abbrev <input type="text" data-team-meta-side="${side}" data-team-meta-field="abbreviation" value="${escapeHtml(meta.abbreviation)}" placeholder="GCCC" /></label>
+        <label>Location <input type="text" data-team-meta-side="${side}" data-team-meta-field="location" value="${escapeHtml(meta.location)}" placeholder="Garden City, KS" /></label>
+        <label>Overall record <input type="text" data-team-meta-side="${side}" data-team-meta-field="overallRecord" value="${escapeHtml(meta.overallRecord)}" placeholder="21-31" /></label>
+        <label>Conference record <input type="text" data-team-meta-side="${side}" data-team-meta-field="conferenceRecord" value="${escapeHtml(meta.conferenceRecord)}" placeholder="13-14" /></label>
+        <label>Primary color <input type="color" data-team-meta-side="${side}" data-team-meta-field="primaryColor" value="${escapeHtml(safeHex(meta.primaryColor, "#167052"))}" /></label>
+        <label>Secondary color <input type="color" data-team-meta-side="${side}" data-team-meta-field="secondaryColor" value="${escapeHtml(safeHex(meta.secondaryColor, "#b67a14"))}" /></label>
+      </div>
+    </div>
+    <label>Institution info
+      <textarea data-team-meta-side="${side}" data-team-meta-field="institutionInfo" rows="4" placeholder="Institution notes, league context, campus, program identity...">${escapeHtml(meta.institutionInfo)}</textarea>
+    </label>
+    <div class="setup-toggle-grid">
+      <label class="setting-toggle"><input type="checkbox" data-team-toggle="${side}" data-team-meta-field="showSnapshot" ${meta.showSnapshot ? "checked" : ""} /> Show team stat snapshot</label>
+      <label class="setting-toggle"><input type="checkbox" data-team-toggle="${side}" data-team-meta-field="showRecords" ${meta.showRecords ? "checked" : ""} /> Show decade records</label>
+      <label class="setting-toggle"><input type="checkbox" data-team-toggle="${side}" data-team-meta-field="showCoaches" ${meta.showCoaches ? "checked" : ""} /> Show coaching staff</label>
+    </div>
+    <label>HUD notes
+      <textarea data-chart-hud-field="chartNotes" rows="3" placeholder="Broadcast notes to keep near the chart...">${escapeHtml(activeChart().hud.chartNotes)}</textarea>
+    </label>
+    <label>Defense notes
+      <textarea data-chart-hud-field="defenseNotes" rows="3" placeholder="Defensive tendencies, shifts, catcher notes...">${escapeHtml(activeChart().hud.defenseNotes)}</textarea>
+    </label>
+    <div class="setup-subsection">
+      <div class="mini-section-title"><strong>Previous Records</strong><span>Last decade</span></div>
+      <div class="setup-record-grid">
+        ${meta.records.map((row, index) => `
+          <input data-team-record-side="${side}" data-team-record-index="${index}" data-team-record-field="season" value="${escapeHtml(row.season)}" placeholder="2025" />
+          <input data-team-record-side="${side}" data-team-record-index="${index}" data-team-record-field="overall" value="${escapeHtml(row.overall)}" placeholder="21-31" />
+          <input data-team-record-side="${side}" data-team-record-index="${index}" data-team-record-field="conference" value="${escapeHtml(row.conference)}" placeholder="13-14" />
+        `).join("")}
+      </div>
+    </div>
+    <div class="setup-subsection">
+      <div class="mini-section-title">
+        <strong>Coaching Staff</strong>
+        <button type="button" data-add-coach="${side}">Add Coach</button>
+      </div>
+      <div class="coach-setup-list">
+        ${meta.coaches.map((coach, index) => `
+          <article class="coach-setup-card">
+            <label class="coach-image-uploader">
+              ${coach.image ? `<img src="${escapeHtml(coach.image)}" alt="${escapeHtml(coach.name || "Coach")}" />` : `<span>Photo</span>`}
+              <input type="file" accept="image/*" data-coach-image-side="${side}" data-coach-index="${index}" />
+            </label>
+            <div>
+              <input data-coach-side="${side}" data-coach-index="${index}" data-coach-field="name" value="${escapeHtml(coach.name)}" placeholder="Name" />
+              <input data-coach-side="${side}" data-coach-index="${index}" data-coach-field="title" value="${escapeHtml(coach.title)}" placeholder="Title" />
+              <textarea data-coach-side="${side}" data-coach-index="${index}" data-coach-field="bio" rows="2" placeholder="Bio / notes">${escapeHtml(coach.bio)}</textarea>
+            </div>
+            <button type="button" class="danger" data-delete-coach="${side}" data-coach-index="${index}">Delete</button>
+          </article>
+        `).join("") || `<p class="meta">Add coaches, photos, titles, and notes here.</p>`}
+      </div>
+    </div>
+  `;
+}
+
 function renderSetup() {
   document.querySelectorAll(".side-tab").forEach((tab) => {
+    applySideTabColors(tab);
     tab.classList.toggle("active", tab.dataset.side === state.activeSide);
     tab.textContent = tab.dataset.side === "home" ? (state.game.teamName || "My Team") : (state.game.opponentName || "Opponent");
   });
@@ -1395,6 +2259,7 @@ function renderSetup() {
   els.opponentName.value = state.game.opponentName;
   els.gameDate.value = state.game.gameDate;
   els.gameNotes.value = state.game.notes;
+  if (els.teamProfilePanel) els.teamProfilePanel.innerHTML = teamSetupHtml(state.activeSide);
   if (els.showAtBatControls) els.showAtBatControls.checked = Boolean(state.settings.showAtBatControls);
   if (els.showFocusControls) els.showFocusControls.checked = Boolean(state.settings.showFocusControls);
   if (!state.settings.showFocusControls) {
@@ -1433,7 +2298,7 @@ function renderSetup() {
         <p class="meta">${escapeHtml(source.type.toUpperCase())} - ${escapeHtml(source.detail || "Attached")} - ${new Date(source.importedAt).toLocaleString()}</p>
       </div>
     `).join("")
-    : `<p class="meta">Import the Garden City CSV or attach PDFs to track your prep sources.</p>`;
+    : `<p class="meta">Import a season, conference, or box-score CSV to track your prep sources.</p>`;
 }
 
 function scoreCellKey(slotIndex, inning, abIndex = 0) {
@@ -1484,9 +2349,34 @@ function slotAfter(slot, offset = 1) {
   return ((slot - 1 + offset) % len + len) % len + 1;
 }
 
-function abCountForSlotInning(slotIndex, inning) {
-  const chart = activeChart();
+function abCountForSlotInning(slotIndex, inning, chart = activeChart()) {
   return 1 + toNumber(chart.extraAbs[scoreCellKey(slotIndex, inning)] || 0);
+}
+
+function selectedAbForSlotInning(slotIndex, inning, chart = activeChart()) {
+  chart.selectedAbs = chart.selectedAbs || {};
+  const baseKey = scoreCellKey(slotIndex, inning);
+  const maxIndex = Math.max(0, abCountForSlotInning(slotIndex, inning, chart) - 1);
+  const selected = Math.min(maxIndex, Math.max(0, toNumber(chart.selectedAbs[baseKey])));
+  if (selected) chart.selectedAbs[baseKey] = selected;
+  else delete chart.selectedAbs[baseKey];
+  return selected;
+}
+
+function setSelectedAbForSlotInning(slotIndex, inning, abIndex, chart = activeChart()) {
+  chart.selectedAbs = chart.selectedAbs || {};
+  const baseKey = scoreCellKey(slotIndex, inning);
+  const maxIndex = Math.max(0, abCountForSlotInning(slotIndex, inning, chart) - 1);
+  const selected = Math.min(maxIndex, Math.max(0, toNumber(abIndex)));
+  if (selected) chart.selectedAbs[baseKey] = selected;
+  else delete chart.selectedAbs[baseKey];
+  return selected;
+}
+
+function addExtraAbForSlotInning(slotIndex, inning, chart = activeChart()) {
+  const baseKey = scoreCellKey(slotIndex, inning);
+  chart.extraAbs[baseKey] = toNumber(chart.extraAbs[baseKey]) + 1;
+  return setSelectedAbForSlotInning(slotIndex, inning, chart.extraAbs[baseKey], chart);
 }
 
 function cellHasResult(cell) {
@@ -1502,53 +2392,13 @@ function getActiveCellLocation() {
   const chart = activeChart();
   const currentInning = Number(chart.currentInning || 1);
   const slotIndex = getCurrentSlot() - 1;
-  const maxInning = Number(state.inningCount || 9);
-
-  const currentAbCount = abCountForSlotInning(slotIndex, currentInning);
-  for (let ab = 0; ab < currentAbCount; ab += 1) {
-    const key = scoreCellKey(slotIndex, currentInning, ab);
-    if (!cellHasResult(chart.scorecard[key])) {
-      return { key, column: currentInning, abIndex: ab, displaced: false };
-    }
-  }
-  const primaryCurrent = chart.scorecard[scoreCellKey(slotIndex, currentInning, 0)];
-  if (primaryCurrent && cellActualInning(primaryCurrent, currentInning) < currentInning) {
-    const newAb = currentAbCount;
-    return {
-      key: scoreCellKey(slotIndex, currentInning, newAb),
-      column: currentInning,
-      abIndex: newAb,
-      displaced: false,
-      willCreateExtra: true
-    };
-  }
-  for (let col = currentInning + 1; col <= maxInning; col += 1) {
-    const abCount = abCountForSlotInning(slotIndex, col);
-    for (let ab = 0; ab < abCount; ab += 1) {
-      const key = scoreCellKey(slotIndex, col, ab);
-      if (!cellHasResult(chart.scorecard[key])) {
-        return { key, column: col, abIndex: ab, displaced: true };
-      }
-    }
-  }
-  const fallbackAb = currentAbCount;
-  return {
-    key: scoreCellKey(slotIndex, currentInning, fallbackAb),
-    column: currentInning,
-    abIndex: fallbackAb,
-    displaced: false,
-    willCreateExtra: true
-  };
+  const abIndex = selectedAbForSlotInning(slotIndex, currentInning, chart);
+  return { key: scoreCellKey(slotIndex, currentInning, abIndex), column: currentInning, abIndex, displaced: false };
 }
 
 function ensureActiveCellExists() {
   const chart = activeChart();
-  const currentInning = Number(chart.currentInning || 1);
   const loc = getActiveCellLocation();
-  if (loc.willCreateExtra) {
-    const baseKey = scoreCellKey(getCurrentSlot() - 1, loc.column);
-    chart.extraAbs[baseKey] = toNumber(chart.extraAbs[baseKey]) + 1;
-  }
   const cell = chart.scorecard[loc.key] = chart.scorecard[loc.key] || {
     count: "",
     result: "",
@@ -1556,24 +2406,11 @@ function ensureActiveCellExists() {
     notes: "",
     bases: emptyDiamondPath()
   };
-  if (loc.displaced && !cell.actualInning) {
-    cell.actualInning = currentInning;
-  }
   return loc;
 }
 
 function visibleColumnsForView() {
-  const chart = activeChart();
-  const currentInning = Number(chart.currentInning || 1);
-  const cols = new Set([currentInning]);
-  Object.entries(chart.scorecard).forEach(([key, cell]) => {
-    const { inning } = parseScoreCellKey(key);
-    const actualInning = cellActualInning(cell, inning);
-    if (actualInning === currentInning && inning !== currentInning) {
-      cols.add(inning);
-    }
-  });
-  return [...cols].sort((a, b) => a - b);
+  return [Number(activeChart().currentInning || 1)];
 }
 
 function slotNeedsExtraAb(slot, inning) {
@@ -1723,7 +2560,7 @@ function recentPaText(events, limit = 4) {
 }
 
 function hudStatClass(value, type = "neutral") {
-  if (value === undefined || value === null || value === "" || String(value).includes("--")) return "stat-neutral";
+  if (value === undefined || value === null || value === "" || value === "-" || String(value).includes("--")) return "stat-neutral";
   const n = toNumber(value);
   if (type === "avg") return n >= 0.3 ? "stat-good" : n >= 0.24 ? "stat-average" : "stat-bad";
   if (type === "obp") return n >= 0.38 ? "stat-good" : n >= 0.32 ? "stat-average" : "stat-bad";
@@ -1741,6 +2578,527 @@ function hudStatClass(value, type = "neutral") {
 
 function hudStatChip(label, value, type = "neutral") {
   return `<span class="hud-stat-chip ${hudStatClass(value, type)}"><b>${escapeHtml(String(value))}</b><i>${escapeHtml(label)}</i></span>`;
+}
+
+function statPill({ label, value, type = "neutral", show = true, className = "" }) {
+  return show ? `<span class="hud-stat-chip ${hudStatClass(value, type)} ${className}"><b>${escapeHtml(String(value))}</b><i>${escapeHtml(label)}</i></span>` : "";
+}
+
+function renderPillGroups(groups) {
+  return groups
+    .filter((group) => group.some((pill) => pill.show !== false))
+    .map((group) => `<div class="hud-pill-group" style="--pill-count:${group.length}">${group.map(statPill).join("")}</div>`)
+    .join("");
+}
+
+function renderPillRow(groups, className = "") {
+  return `<div class="compact-stat-row ${className}">${renderPillGroups(groups)}</div>`;
+}
+
+function percentValue(numerator, denominator) {
+  const denom = toNumber(denominator);
+  return denom ? `${((toNumber(numerator) / denom) * 100).toFixed(1)}%` : "-";
+}
+
+function calculatedPercentPill(label, numerator, denominator, type = "neutral", className = "") {
+  return {
+    label,
+    value: percentValue(numerator, denominator),
+    type,
+    className
+  };
+}
+
+const batterStatKeys = ["GP", "PA", "AB", "H", "2B", "3B", "HR", "RBI", "R", "BB", "SO", "HBP", "SF", "SB", "CS", "TB"];
+const pitcherStatKeys = ["GP", "IP", "ERA", "WHIP", "W", "L", "GS", "BF", "BAA", "Pitches", "P_H", "P_R", "P_ER", "P_HR", "P_BB", "P_SO", "P_BK", "P_HBP", "P_WP"];
+const nonConferenceSubtractKeys = [
+  "GP", "PA", "AB", "H", "2B", "3B", "HR", "RBI", "R", "BB", "SO", "HBP", "SF", "SB", "CS", "TB",
+  "W", "L", "GS", "BF", "Pitches", "Strikes", "BK", "P_H", "P_R", "P_ER", "P_HR", "P_2B", "P_3B", "P_BB", "P_SO", "P_BK", "P_HBP", "P_WP", "P_AB", "CG", "SHO", "SV", "SFA", "SHA",
+  "TC", "PO", "A", "E", "DP", "SBA", "RCS", "PB", "CI"
+];
+
+function hasStatData(stats = {}, keys = []) {
+  return keys.some((key) => toNumber(stats[key]) > 0);
+}
+
+function hasConferenceStats(player, kind) {
+  if (!player?.confStats) return false;
+  return hasStatData(player.confStats, kind === "pitcher" ? pitcherStatKeys : batterStatKeys);
+}
+
+function hasOverallStats(player, kind) {
+  if (!player?.stats) return false;
+  return hasStatData(player.stats, kind === "pitcher" ? pitcherStatKeys : batterStatKeys);
+}
+
+function hasNonConferenceStats(player, kind) {
+  return hasOverallStats(player, kind) && hasConferenceStats(player, kind);
+}
+
+function hasPitchingStats(stats = {}) {
+  return hasStatData(stats, pitcherStatKeys);
+}
+
+function calculatePitchingRates(stats) {
+  const outs = ipToOuts(stats.IP);
+  const innings = outs / 3;
+  if (outs > 0) {
+    stats.ERA = (toNumber(stats.P_ER) * 9) / innings;
+    stats.WHIP = (toNumber(stats.P_BB) + toNumber(stats.P_H)) / innings;
+  } else {
+    stats.ERA = 0;
+    stats.WHIP = 0;
+  }
+  const avgDenom = toNumber(stats.P_AB) || Math.max(0, toNumber(stats.BF) - toNumber(stats.P_BB) - toNumber(stats.P_HBP));
+  stats.BAA = avgDenom ? toNumber(stats.P_H) / avgDenom : 0;
+}
+
+function nonConferenceStatsFor(player) {
+  const overall = { ...emptyStats(), ...(player?.stats || {}) };
+  const conference = { ...emptyStats(), ...(player?.confStats || {}) };
+  const out = emptyStats();
+
+  nonConferenceSubtractKeys.forEach((key) => {
+    out[key] = Math.max(0, toNumber(overall[key]) - toNumber(conference[key]));
+  });
+  out.IP = outsToIpValue(ipToOuts(overall.IP) - ipToOuts(conference.IP));
+  calculatePitchingRates(out);
+  return out;
+}
+
+function formatPitchingStatsLineValue(key, value) {
+  if (key === "IP") return formatIpValue(value);
+  if (key === "ERA" || key === "WHIP") return formatFixed(value, 2);
+  if (key === "BAA") return formatRate(toNumber(value));
+  return value || 0;
+}
+
+function pitchingStatsLine(stats = {}) {
+  const line = { ...emptyStats(), ...(stats || {}) };
+  return `P ${line.Pitches || 0} - W-L ${line.W || 0}-${line.L || 0} - ERA ${formatPitchingStatsLineValue("ERA", line.ERA)} - G/GS ${line.GP || 0}/${line.GS || 0} - IP ${formatPitchingStatsLineValue("IP", line.IP)} - H ${line.P_H || 0} - R ${line.P_R || 0} - ER ${line.P_ER || 0} - HR ${line.P_HR || 0} - BB ${line.P_BB || 0} - K ${line.P_SO || 0} - HBP ${line.P_HBP || 0} - WP ${line.P_WP || 0} - BK ${line.P_BK || 0} - WHIP ${formatPitchingStatsLineValue("WHIP", line.WHIP)} - AVG ${formatPitchingStatsLineValue("BAA", line.BAA)}`;
+}
+
+function batterHudPills(stats, rates, advanced) {
+  const pa = stats.PA || stats.AB + stats.BB + stats.HBP + stats.SF;
+  const obpDenom = stats.AB + stats.BB + stats.HBP + stats.SF;
+  const sbAttempts = stats.SB + stats.CS;
+  const xbh = stats["2B"] + stats["3B"] + stats.HR;
+  return [
+    [
+      [
+        { label: "GP/GS", value: `${stats.GP || 0}/${stats.GS || 0}` },
+        { label: "PA/AB", value: `${pa}/${stats.AB || 0}` },
+        { label: "AVG", value: stats.AB > 0 ? rates.AVG : "-", type: "avg" },
+        { label: "OBP", value: obpDenom > 0 ? rates.OBP : "-", type: "obp" },
+        { label: "SLG%", value: stats.AB > 0 ? rates.SLG : "-", type: "slg" },
+        { label: "OPS", value: obpDenom > 0 && stats.AB > 0 ? rates.OPS : "-", type: "ops" }
+      ],
+      [
+        { label: "R", value: stats.R, type: "count" },
+        { label: "H", value: stats.H, type: "count" },
+        { label: "2B", value: stats["2B"], type: "count" },
+        { label: "3B", value: stats["3B"], type: "count" },
+        { label: "HR", value: stats.HR, type: "count" },
+        { label: "RBI", value: stats.RBI, type: "count" }
+      ]
+    ],
+    [
+      [
+        { label: "BB", value: stats.BB },
+        { label: "SO", value: stats.SO },
+        { label: "HBP", value: stats.HBP }
+      ],
+      [
+        { label: "K%", value: pa > 0 ? advanced.KP : "-", type: "kp" },
+        { label: "BB%", value: pa > 0 ? advanced.BBP : "-", type: "bbp" },
+        { label: "BB/K", value: `${stats.BB}/${stats.SO}` }
+      ],
+      [
+        { label: "ISO", value: stats.AB > 0 ? advanced.ISO : "-", type: "iso" },
+        calculatedPercentPill("XBH%", xbh, stats.H, "iso"),
+        calculatedPercentPill("HR%", stats.HR, stats.AB, "iso")
+      ],
+      [
+        { label: "SB", value: stats.SB },
+        { label: "CS", value: stats.CS },
+        calculatedPercentPill("SB%", stats.SB, sbAttempts, "count")
+      ]
+    ]
+  ];
+}
+
+function scoreCellSortChronological(left, right) {
+  const a = parseScoreCellKey(left.key);
+  const b = parseScoreCellKey(right.key);
+  const aInning = cellActualInning(left.cell, a.inning);
+  const bInning = cellActualInning(right.cell, b.inning);
+  return aInning - bInning || new Date(left.event?.createdAt || 0) - new Date(right.event?.createdAt || 0) || a.slot - b.slot || a.abNumber - b.abNumber;
+}
+
+function cellRecordsOut(cell) {
+  return Boolean(cell && (cell.outOverlay || ["OUT", "K", "Kc", "SF", "BI"].includes(cell.result) || ["OUT", "K", "KC", "SF", "BI"].includes(cell.actionKey)));
+}
+
+function currentGameBatterSpecialPills(playerId) {
+  const chart = activeChart();
+  const eventCells = Object.entries(chart.scorecard || {})
+    .map(([key, cell]) => ({ key, cell, event: state.events.find((item) => item.id === cell.eventId) }))
+    .filter((item) => item.event)
+    .sort(scoreCellSortChronological);
+  const outsByInning = {};
+  const line = {
+    rispAb: 0,
+    rispH: 0,
+    twoOutH: 0,
+    twoOutBbhbp: 0,
+    twoOutPa: 0,
+    twoOutObpEvents: 0,
+    twoOutRbi: 0
+  };
+
+  eventCells.forEach((item) => {
+    const parsed = parseScoreCellKey(item.key);
+    const inning = cellActualInning(item.cell, parsed.inning);
+    const outsBefore = outsByInning[inning] || 0;
+    if (item.event.playerId === playerId) {
+      const delta = eventDelta(item.event.result);
+      const hadRisp = Boolean(item.cell.baseStateBefore?.second || item.cell.baseStateBefore?.third);
+      if (hadRisp && delta.AB) {
+        line.rispAb += delta.AB;
+        line.rispH += delta.H || 0;
+      }
+      if (outsBefore >= 2) {
+        const paDelta = delta.AB || delta.BB || delta.HBP || delta.SF;
+        line.twoOutPa += paDelta ? 1 : 0;
+        line.twoOutH += delta.H || 0;
+        line.twoOutBbhbp += (delta.BB || 0) + (delta.HBP || 0);
+        line.twoOutObpEvents += (delta.H || 0) + (delta.BB || 0) + (delta.HBP || 0);
+        line.twoOutRbi += toNumber(item.event.rbi);
+      }
+    }
+    if (cellRecordsOut(item.cell)) outsByInning[inning] = outsBefore + 1;
+  });
+
+  return [
+    { label: "CURRENT GAME AVG W/RISP", value: line.rispAb ? formatRate(line.rispH / line.rispAb) : "-", className: "game-context-chip" },
+    { label: "CURRENT 2-OUT HIT", value: line.twoOutH, className: "game-context-chip" },
+    { label: "CURRENT 2-OUT BB/HBP", value: line.twoOutBbhbp, className: "game-context-chip" },
+    { label: "CURRENT 2-OUT PA", value: line.twoOutPa, className: "game-context-chip" },
+    { label: "CURRENT 2-OUT OBP", value: line.twoOutPa ? formatRate(line.twoOutObpEvents / line.twoOutPa) : "-", className: "game-context-chip" },
+    { label: "CURRENT 2-OUT RBI", value: line.twoOutRbi, className: "game-context-chip" }
+  ];
+}
+
+function currentPitcherPills(line) {
+  const rates = livePitchingRates(line);
+  return [
+    { label: "IP", value: formatIpFromOuts(line.outs) },
+    { label: "P/S/B/F", value: `${line.pitches}/${line.strikes}/${line.balls}/${line.fouls}` },
+    { label: "H", value: line.H },
+    { label: "R", value: line.R },
+    { label: "ER", value: line.ER },
+    { label: "K", value: line.K, type: "count" },
+    { label: "Kc", value: line.KC, type: "count" },
+    { label: "2B", value: line["2B"] },
+    { label: "3B", value: line["3B"] },
+    { label: "HR", value: line.HR },
+    { label: "BB", value: line.BB },
+    { label: "HBP", value: line.HBP },
+    { label: "BF", value: line.BF },
+    { label: "GERA", value: line.outs ? rates.ERA : "-", type: "era" },
+    { label: "GWHIP", value: line.outs ? rates.WHIP : "-", type: "whip" },
+    { label: "GAVG", value: line.BF ? rates.BAA : "-", type: "baa" },
+    { label: "GBB%", value: percentValue(line.BB, line.BF), type: "bbp" },
+    { label: "G2-Str%", value: percentValue(line.twoStrikePitches, line.pitches) }
+  ];
+}
+
+function seasonPitcherPills(stats) {
+  const apps = stats.GP || 0;
+  const avgDenom = toNumber(stats.P_AB) || Math.max(0, toNumber(stats.BF) - toNumber(stats.P_BB) - toNumber(stats.P_HBP));
+  const hasIp = ipToOuts(stats.IP) > 0;
+  return [
+    { label: "IP", value: formatIpValue(stats.IP) },
+    { label: "ERA", value: hasIp ? formatFixed(stats.ERA, 2) : "-", type: "era" },
+    { label: "W/L", value: `${stats.W || 0}/${stats.L || 0}` },
+    { label: "GP/GS", value: `${stats.GP || 0}/${stats.GS || 0}` },
+    { label: "App/GS", value: `${apps}/${stats.GS || 0}` },
+    { label: "H", value: stats.P_H || 0 },
+    { label: "R", value: stats.P_R || 0 },
+    { label: "ER", value: stats.P_ER || 0 },
+    { label: "BB", value: stats.P_BB || 0 },
+    { label: "SO", value: stats.P_SO || 0 },
+    { label: "HR", value: stats.P_HR || 0 },
+    { label: "AVG", value: avgDenom ? formatRate(toNumber(stats.BAA)) : "-", type: "baa" },
+    { label: "WHIP", value: hasIp ? formatFixed(stats.WHIP, 2) : "-", type: "whip" },
+    { label: "WP", value: stats.P_WP || 0 },
+    { label: "HBP", value: stats.P_HBP || 0 }
+  ];
+}
+
+function aggregateTeamStats(side) {
+  const players = playersForSide(side);
+  const stats = emptyStats();
+  players.forEach((player) => {
+    const playerStats = { ...emptyStats(), ...(player.stats || {}) };
+    [...new Set([...batterStatKeys, ...pitcherStatKeys, "P_2B", "P_3B", "P_AB", "CG", "SHO", "SV", "SFA", "SHA", "TC", "PO", "A", "E", "DP", "SBA", "RCS", "PB", "CI"])].forEach((key) => {
+      if (key === "IP") return;
+      stats[key] = toNumber(stats[key]) + toNumber(playerStats[key]);
+    });
+    stats.IP = outsToIpValue(ipToOuts(stats.IP) + ipToOuts(playerStats.IP));
+  });
+  const battingRates = calcStats(stats);
+  calculatePitchingRates(stats);
+  return { stats, battingRates, players };
+}
+
+function teamMetaForSide(side) {
+  state.teamMeta = state.teamMeta || {};
+  state.teamMeta[side] = { ...emptyTeamMeta(), ...(state.teamMeta[side] || {}) };
+  state.teamMeta[side].records = Array.from({ length: 10 }, (_, index) => ({
+    season: "",
+    overall: "",
+    conference: "",
+    ...((state.teamMeta[side].records || [])[index] || {})
+  }));
+  state.teamMeta[side].coaches = state.teamMeta[side].coaches || [];
+  return state.teamMeta[side];
+}
+
+function teamInitials(name) {
+  return String(name || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((word) => word[0]?.toUpperCase() || "")
+    .join("") || "TEAM";
+}
+
+function teamAbbreviation(side) {
+  const meta = teamMetaForSide(side);
+  return meta.abbreviation || teamInitials(sideLabel(side));
+}
+
+function safeHex(value, fallback) {
+  const text = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(text) ? text : fallback;
+}
+
+function teamColorStyle(side) {
+  const meta = teamMetaForSide(side);
+  return `--team-primary:${safeHex(meta.primaryColor, "#167052")}; --team-secondary:${safeHex(meta.secondaryColor, "#b67a14")}`;
+}
+
+function applyActiveTeamColors() {
+  const meta = teamMetaForSide(state.activeSide);
+  document.documentElement.style.setProperty("--active-team-primary", safeHex(meta.primaryColor, "#167052"));
+  document.documentElement.style.setProperty("--active-team-secondary", safeHex(meta.secondaryColor, "#b67a14"));
+}
+
+function applySideTabColors(tab) {
+  if (!tab?.dataset?.side) return;
+  const meta = teamMetaForSide(tab.dataset.side);
+  tab.style.setProperty("--side-primary", safeHex(meta.primaryColor, "#167052"));
+  tab.style.setProperty("--side-secondary", safeHex(meta.secondaryColor, "#b67a14"));
+}
+
+function teamRecordTableHtml(side, compact = false) {
+  const rows = teamMetaForSide(side).records || [];
+  const visibleRows = rows.filter((row) => row.season || row.overall || row.conference);
+  if (!visibleRows.length) return compact ? "" : `<p class="meta">Add prior records in Setup.</p>`;
+  return `
+    <div class="team-record-history">
+      <table>
+        <thead><tr><th>Season</th><th>Overall</th><th>Conf</th></tr></thead>
+        <tbody>
+          ${visibleRows.map((row) => `<tr><td>${escapeHtml(row.season)}</td><td>${escapeHtml(row.overall)}</td><td>${escapeHtml(row.conference)}</td></tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function teamCoachesHtml(side) {
+  const coaches = teamMetaForSide(side).coaches || [];
+  if (!coaches.length) return "";
+  return `
+    <div class="team-coach-strip">
+      ${coaches.map((coach) => `
+        <article class="team-coach-card">
+          <div class="coach-photo">${coach.image ? `<img src="${escapeHtml(coach.image)}" alt="${escapeHtml(coach.name || "Coach")}" />` : `<span>${escapeHtml(teamInitials(coach.name || "Coach"))}</span>`}</div>
+          <div>
+            <strong>${escapeHtml(coach.name || "Coach")}</strong>
+            <span>${escapeHtml(coach.title || "")}</span>
+            ${coach.bio ? `<details class="coach-bio-details"><summary>Bio</summary><p>${escapeHtml(coach.bio)}</p></details>` : ""}
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function teamSnapshotHeaderHtml(side) {
+  const meta = teamMetaForSide(side);
+  const name = sideLabel(side);
+  const title = [name, meta.mascot].filter(Boolean).join(" ");
+  return `
+    <div class="team-snapshot-identity" style="${teamColorStyle(side)}">
+      <div class="team-logo-box display-only">
+        ${meta.logo
+          ? `<img src="${escapeHtml(meta.logo)}" alt="${escapeHtml(name)} logo" />`
+          : `<span>${escapeHtml(teamInitials(name))}</span>`}
+      </div>
+      <div class="team-snapshot-copy">
+        <strong>${escapeHtml(title || name)}</strong>
+        <span>${escapeHtml([meta.location, meta.abbreviation].filter(Boolean).join(" | "))}</span>
+        <em>${escapeHtml([meta.overallRecord, meta.conferenceRecord ? `(${meta.conferenceRecord})` : ""].filter(Boolean).join(" ") || "Record not set")}</em>
+        ${meta.institutionInfo ? `<p>${escapeHtml(meta.institutionInfo)}</p>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function teamSnapshotGroups(side) {
+  const { stats, battingRates, players } = aggregateTeamStats(side);
+  const errors = toNumber(stats.E);
+  const obpDenom = stats.AB + stats.BB + stats.HBP + stats.SF;
+  const fieldingPctDenom = toNumber(stats.TC);
+  const fieldingPct = fieldingPctDenom ? formatRate((fieldingPctDenom - errors) / fieldingPctDenom) : "-";
+  const hasStaffPitching = hasPitchingStats(stats);
+  const pa = stats.PA || stats.AB + stats.BB + stats.HBP + stats.SF;
+  const sbAttempts = stats.SB + stats.CS;
+  const caughtStealAttempts = stats.SBA + stats.RCS;
+  const iso = stats.AB ? (toNumber(battingRates.SLG) - toNumber(battingRates.AVG)).toFixed(3).replace(/^0/, "") : "-";
+  return [
+    {
+      title: "Batting",
+      pills: [
+        { label: "Players", value: players.length },
+        { label: "AVG", value: stats.AB ? battingRates.AVG : "-", type: "avg" },
+        { label: "OBP", value: obpDenom ? battingRates.OBP : "-", type: "obp" },
+        { label: "SLG%", value: stats.AB ? battingRates.SLG : "-", type: "slg" },
+        { label: "OPS", value: stats.AB && obpDenom ? battingRates.OPS : "-", type: "ops" },
+        { label: "PA", value: pa },
+        { label: "AB", value: stats.AB },
+        { label: "R", value: stats.R, type: "count" },
+        { label: "H", value: stats.H, type: "count" },
+        { label: "2B", value: stats["2B"], type: "count" },
+        { label: "3B", value: stats["3B"], type: "count" },
+        { label: "HR", value: stats.HR, type: "count" },
+        { label: "RBI", value: stats.RBI, type: "count" },
+        { label: "BB", value: stats.BB },
+        { label: "SO", value: stats.SO },
+        { label: "HBP", value: stats.HBP },
+        { label: "K%", value: pa ? percentValue(stats.SO, pa) : "-", type: "kp" },
+        { label: "BB%", value: pa ? percentValue(stats.BB, pa) : "-", type: "bbp" },
+        { label: "ISO", value: iso, type: "iso" }
+      ]
+    },
+    {
+      title: "Pitching",
+      pills: [
+        { label: "IP", value: hasStaffPitching ? formatIpValue(stats.IP) : "-" },
+        { label: "Staff ERA", value: hasStaffPitching && ipToOuts(stats.IP) ? formatFixed(stats.ERA, 2) : "-", type: "era" },
+        { label: "WHIP", value: hasStaffPitching && ipToOuts(stats.IP) ? formatFixed(stats.WHIP, 2) : "-", type: "whip" },
+        { label: "P AVG", value: hasStaffPitching && (stats.P_AB || stats.BF) ? formatRate(toNumber(stats.BAA)) : "-", type: "baa" },
+        { label: "W/L", value: `${stats.W || 0}/${stats.L || 0}` },
+        { label: "GP/GS", value: `${stats.GP || 0}/${stats.GS || 0}` },
+        { label: "SV", value: stats.SV || 0 },
+        { label: "CG", value: stats.CG || 0 },
+        { label: "SHO", value: stats.SHO || 0 },
+        { label: "H", value: stats.P_H || 0 },
+        { label: "R", value: stats.P_R || 0 },
+        { label: "ER", value: stats.P_ER || 0 },
+        { label: "BB", value: stats.P_BB || 0 },
+        { label: "SO", value: stats.P_SO || 0 },
+        { label: "HR", value: stats.P_HR || 0 },
+        { label: "HBP", value: stats.P_HBP || 0 },
+        { label: "WP", value: stats.P_WP || 0 },
+        { label: "BK", value: stats.P_BK || 0 }
+      ]
+    },
+    {
+      title: "Base Running",
+      pills: [
+        { label: "SB", value: stats.SB || 0 },
+        { label: "CS", value: stats.CS || 0 },
+        { label: "SB%", value: sbAttempts ? percentValue(stats.SB, sbAttempts) : "-" },
+        { label: "SBA", value: stats.SBA || 0 },
+        { label: "RCS", value: stats.RCS || 0 },
+        { label: "RCS%", value: caughtStealAttempts ? percentValue(stats.RCS, caughtStealAttempts) : "-" }
+      ]
+    },
+    {
+      title: "Fielding",
+      pills: [
+        { label: "F%", value: fieldingPct },
+        { label: "TC", value: stats.TC || 0 },
+        { label: "PO", value: stats.PO || 0 },
+        { label: "A", value: stats.A || 0 },
+        { label: "E", value: errors },
+        { label: "DP", value: stats.DP || 0 },
+        { label: "PB", value: stats.PB || 0 },
+        { label: "CI", value: stats.CI || 0 }
+      ]
+    }
+  ];
+}
+
+function teamSnapshotGroupsHtml(side) {
+  return teamSnapshotGroups(side).map((group) => `
+    <div class="team-snapshot-stat-group team-snapshot-stat-${group.title.toLowerCase().replace(/\s+/g, "-")}">
+      <h3>${escapeHtml(group.title)}</h3>
+      <div class="hud-stats team-snapshot-pills">
+        ${group.pills.map(statPill).join("")}
+      </div>
+    </div>
+  `).join("");
+}
+
+function selectedHudStatScope(kind, player) {
+  const requested = state.hudStatScopes?.[kind] || "overall";
+  if (kind === "pitcher" && requested === "currentgame") return "currentgame";
+  if (requested === "conference" && hasConferenceStats(player, kind)) return "conference";
+  if (requested === "nonconference" && hasNonConferenceStats(player, kind)) return "nonconference";
+  return "overall";
+}
+
+function hudStatsFor(player, kind) {
+  const scope = selectedHudStatScope(kind, player);
+  if (scope === "nonconference") return nonConferenceStatsFor(player);
+  const source = scope === "conference" ? player?.confStats : player?.stats;
+  return { ...emptyStats(), ...(source || {}) };
+}
+
+function hudScopeToggleHtml(kind, player) {
+  const selected = selectedHudStatScope(kind, player);
+  const canUseConference = hasConferenceStats(player, kind);
+  const canUseNonConference = hasNonConferenceStats(player, kind);
+  const label = kind === "pitcher" ? "Pitcher stats scope" : "Batter stats scope";
+  const side = player?.side || state.activeSide;
+  return `
+    <div class="hud-scope-toggle" role="group" aria-label="${label}" style="${teamColorStyle(side)}">
+      ${kind === "pitcher" ? `<button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="currentgame" class="${selected === "currentgame" ? "active" : ""}">CURRENT GAME</button>` : ""}
+      <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="overall" class="${selected === "overall" ? "active" : ""}">OVERALL</button>
+      <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="conference" class="${selected === "conference" ? "active" : ""}" ${canUseConference ? "" : "disabled"} title="${canUseConference ? "Show conference stats" : "No conference stats imported"}">CONF</button>
+      <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="nonconference" class="${selected === "nonconference" ? "active" : ""}" ${canUseNonConference ? "" : "disabled"} title="${canUseNonConference ? "Show overall minus conference stats" : "Overall and conference stats are needed"}">NON-CONF</button>
+    </div>
+  `;
+}
+
+function applyHudStatScopeFromEvent(event) {
+  const button = event.target.closest("[data-hud-stat-scope]");
+  if (!button || button.disabled) return false;
+  const kind = button.dataset.hudStatKind;
+  const scope = button.dataset.hudStatScope;
+  if (!["batter", "pitcher"].includes(kind) || !["overall", "conference", "nonconference", "currentgame"].includes(scope)) return false;
+  if (kind !== "pitcher" && scope === "currentgame") return false;
+  state.hudStatScopes = state.hudStatScopes || { batter: "overall", pitcher: "overall" };
+  state.hudStatScopes[kind] = scope;
+  saveState();
+  renderInningTotals();
+  renderChartHud();
+  return true;
 }
 
 function limitWords(text, limit = 250) {
@@ -1762,9 +3120,11 @@ function batterDetailHtml() {
       </div>
     `;
   }
-  const stats = player.stats;
+  const stats = hudStatsFor(player, "batter");
   const rates = calcStats(stats);
   const advanced = advancedStats(stats);
+  const batterPillRows = batterHudPills(stats, rates, advanced);
+  const currentContextPills = currentGameBatterSpecialPills(player.id);
   const positionText = displayPosition(activeChart().lineupPositions?.[slot - 1] || player.position) || "POS --";
   const physicalText = [player.weight ? `Wt ${player.weight}` : "", player.height ? `Ht ${player.height}` : ""].filter(Boolean).join(" | ");
   const playerMeta = [positionText, player.classYear, physicalText].filter(Boolean).join(" | ");
@@ -1790,34 +3150,20 @@ function batterDetailHtml() {
     : `0 PA tonight`;
 
   return `
-    <div class="batter-detail-card">
+    <div class="batter-detail-card" style="${teamColorStyle(player.side || state.activeSide)}">
       <div class="compact-player-identity">
         <strong>${escapeHtml(displayName)}</strong>
         <span>${escapeHtml(player.pronunciation || "No pronunciation provided")}</span>
         <span>${escapeHtml(playerMeta)}</span>
         <span>${escapeHtml(player.hometown || "No hometown provided")}</span>
+        ${hudScopeToggleHtml("batter", player)}
       </div>
       <div class="compact-batter-line">
-        ${hudStatChip("AVG", rates.AVG, "avg")}
-        ${hudStatChip("OBP", rates.OBP, "obp")}
-        ${hudStatChip("SLG", rates.SLG, "slg")}
-        ${hudStatChip("OPS", rates.OPS, "ops")}
-        ${hudStatChip("H/AB", `${stats.H}/${stats.AB}`)}
-        ${hudStatChip("XBH", advanced.XBH, "count")}
-        ${hudStatChip("RBI", stats.RBI, "count")}
-        ${hudStatChip("HR", stats.HR, "count")}
-        ${hudStatChip("BB/K", `${stats.BB}/${stats.SO}`)}
-        ${hudStatChip("SB", `${stats.SB}/${sbAttempts}`)}
+        ${renderPillRow(batterPillRows[0], "batter-season-row batter-season-row-top")}
+        ${renderPillRow(batterPillRows[1], "batter-season-row batter-season-row-bottom")}
       </div>
       <div class="compact-analytics-line">
-        ${hudStatChip("ISO", advanced.ISO, "iso")}
-        ${hudStatChip("BB%", advanced.BBP, "bbp")}
-        ${hudStatChip("K%", advanced.KP, "kp")}
-        ${hudStatChip("BABIP", advanced.BABIP)}
-        ${hudStatChip("TB", advanced.TB || rates.TB)}
-        ${hudStatChip("PA", stats.PA || stats.AB + stats.BB + stats.HBP + stats.SF)}
-        ${hudStatChip("SO", stats.SO)}
-        ${hudStatChip("R", stats.R, "count")}
+        ${currentContextPills.map(statPill).join("")}
       </div>
       <div class="compact-storyline-line">
         <span class="hud-context-chip">Today: ${escapeHtml(tonightSummary)}</span>
@@ -1832,6 +3178,7 @@ function batterDetailHtml() {
           <span class="batter-detail-meta">${escapeHtml([player.position, player.classYear].filter(Boolean).join(" / ") || "—")}</span>
         </div>
         ${player.pronunciation ? `<div class="batter-pronunciation">${escapeHtml(player.pronunciation)}</div>` : ""}
+        ${hudScopeToggleHtml("batter", player)}
       </div>
       <div class="batter-slash">
         <span><b>${rates.AVG}</b><i>AVG</i></span>
@@ -1844,6 +3191,7 @@ function batterDetailHtml() {
         <span><b>${bbPct}</b><i>BB%</i></span>
         <span><b>${kPct}</b><i>K%</i></span>
         <span><b>${babip}</b><i>BABIP</i></span>
+        <span><b>${stats.GP || 0}/${stats.GS || 0}</b><i>GP/GS</i></span>
         <span><b>${stats.HR}</b><i>HR</i></span>
         <span><b>${xbh}</b><i>XBH</i></span>
         <span><b>${stats.RBI}</b><i>RBI</i></span>
@@ -1910,27 +3258,22 @@ function renderInningTotals() {
   });
   const pitcher = state.players.find((player) => player.id === chart.activePitcherId);
   const liveLine = getPitchingLine(chart);
-  const pitcherRates = pitcher ? calcStats(pitcher.stats) : null;
+  const pitcherStats = pitcher ? hudStatsFor(pitcher, "pitcher") : null;
+  const pitcherScope = pitcher ? selectedHudStatScope("pitcher", pitcher) : "overall";
+  const pitcherPills = pitcherScope === "currentgame" ? currentPitcherPills(liveLine) : seasonPitcherPills(pitcherStats || emptyStats());
   const outs = currentInningOuts(inning);
   const pitcherBio = pitcher
     ? [pitcher.classYear, pitcher.weight ? `Wt ${pitcher.weight}` : "", pitcher.height ? `Ht ${pitcher.height}` : "", pitcher.hometown].filter(Boolean).join(" | ")
     : "";
   const pitcherCard = pitcher
     ? `
-      <div class="compact-pitcher-card">
+      <div class="compact-pitcher-card ${pitcherScope === "currentgame" ? "current-game-pitcher-card" : "season-pitcher-card"}" style="${teamColorStyle(pitcher.side || oppositeSide())}">
         <div class="compact-pitcher-title">
           <strong>P #${escapeHtml(pitcher.number)} ${escapeHtml(fullName(pitcher))}</strong>
           ${pitcherBio ? `<span class="pitcher-meta">${escapeHtml(pitcherBio)}</span>` : ""}
         </div>
-        ${hudStatChip("P/S", `${liveLine.pitches}/${liveLine.strikes}`)}
-        ${hudStatChip("BK", liveLine.BK, "count")}
-        ${hudStatChip("K", liveLine.K, "count")}
-        ${hudStatChip("BB", liveLine.BB, liveLine.BB <= 1 ? "count" : "neutral")}
-        ${hudStatChip("H", liveLine.H)}
-        ${hudStatChip("R", liveLine.R)}
-        ${hudStatChip("ERA", pitcher.stats.ERA || 0, "era")}
-        ${hudStatChip("WHIP", pitcher.stats.WHIP || 0, "whip")}
-        ${hudStatChip("AVG", pitcher.stats.BAA || pitcherRates?.AVG || 0, "baa")}
+        ${hudScopeToggleHtml("pitcher", pitcher)}
+        ${pitcherPills.map(statPill).join("")}
       </div>
     `
     : `<div class="compact-pitcher-card empty">P --</div>`;
@@ -1944,7 +3287,7 @@ function renderInningTotals() {
       <div class="totals-label">Bases</div>
       <div class="compact-run-state">
         <div class="compact-bases-line">${escapeHtml(compactBases)}</div>
-        <div class="compact-count-line">Count ${escapeHtml(activeCount)} | ${liveLine.pitches} P | ${liveLine.BK} Bk | Outs ${Math.min(3, outs)}/3</div>
+        <div class="compact-count-line">Count ${escapeHtml(activeCount)} | Outs ${Math.min(3, outs)}/3 | ${liveLine.pitches} P | ${liveLine.BK} Bk</div>
       </div>
       <div class="mini-diamond">
         <svg class="mini-diamond-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
@@ -2070,7 +3413,7 @@ function renderUpNextStrip() {
     <div class="up-next-actions">
       ${state.settings.showAtBatControls ? `
         <button type="button" id="prevAtBatButton" class="muted" title="Step pointer back">&larr; Prev</button>
-        <button type="button" id="nextAtBatButton" class="next-ab-button">Next At Bat &rarr;</button>
+        <button type="button" id="nextAtBatButton" class="next-ab-button">Next AB &rarr;</button>
       ` : ""}
       ${state.settings.showFocusControls ? `
         <div class="segmented-toggle" role="group" aria-label="Visible batters">
@@ -2079,6 +3422,7 @@ function renderUpNextStrip() {
         </div>
       ` : ""}
       <button id="pinChartButton" type="button" class="muted ${Boolean(state.pinStatHud) ? "active" : ""}">${Boolean(state.pinStatHud) ? "Unpinned HUD" : "Pinned HUD"}</button>
+      <button id="toggleDefenseButton" type="button" class="muted">${state.showDefensePopup ? "Hide Defense" : "Show Defense"}</button>
       <button id="toggleFullChartButton" type="button" class="muted">${els.fullScorecardPanel?.hidden === false ? "Hide Full Chart" : "Show Full Chart"}</button>
     </div>
   `;
@@ -2091,8 +3435,8 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
   const cellResult = cell.result || cell.notation || "";
   const cellTerminal = activeDiamondTerminal(cell.bases);
   const isOnBase = cellTerminal && cellTerminal !== "toHome";
-  const actualInning = cellActualInning(cell, column);
-  const isDisplaced = actualInning < column;
+  const actualInning = column;
+  const isDisplaced = false;
   const cellClasses = ["score-cell"];
   if (isOnBase) cellClasses.push("has-runner");
   if (cellTerminal === "toHome") cellClasses.push("has-scored");
@@ -2220,10 +3564,21 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
   const knownNotation = notationValue && (notationActionKey(notationValue) || notationSuggestions.some((token) => normalizedNotation(token) === normalizedNotation(notationValue)));
   const noteInputClasses = ["diamond-result-input"];
   if (notationValue && !knownNotation) noteInputClasses.push("is-unknown");
+  const abCount = abCountForSlotInning(slotIndex, column);
+  const baseCellKey = scoreCellKey(slotIndex, column);
+  const abSelector = abCount > 1 ? `
+    <select data-select-ab="${baseCellKey}" aria-label="Select at-bat">
+      ${Array.from({ length: abCount }, (_, index) => `<option value="${index}" ${index === abIndex ? "selected" : ""}>AB ${index + 1}</option>`).join("")}
+    </select>
+  ` : "";
 
   return `
     <div class="${cellClasses.join(" ")}" data-score-cell="${cellKey}">
       ${displacedBadge}
+      <div class="score-ab-controls">
+        <button type="button" class="muted add-ab-button" data-add-ab-for="${baseCellKey}" title="Add extra at-bat for this inning">+ AB</button>
+        ${abSelector}
+      </div>
       ${entrySurface}
       <div class="score-cell-body">
         <div class="diamond" aria-label="Runner diamond">
@@ -2280,10 +3635,10 @@ function renderScorecard() {
 
   els.scorecardGrid.style.setProperty("--columns", visibleCols.length);
 
-  const header = [`<div class="score-head">${escapeHtml(activeSideName())}</div>`]
+  const header = [`<div class="score-head score-team-head">${escapeHtml(activeSideName())}</div>`]
     .concat(visibleCols.map((col) => {
       const isCurrent = col === Number(chart.currentInning || 1);
-      return `<div class="score-head ${isCurrent ? "is-current-col" : "is-overflow-col"}">Inning ${col}${isCurrent ? "" : " (overflow)"}</div>`;
+      return `<div class="score-head ${isCurrent ? "is-current-col" : ""}">Inning ${col}</div>`;
     })).join("");
 
   const rows = Array.from({ length: slotCount }, (_, slotIndex) => {
@@ -2338,15 +3693,14 @@ function renderScorecard() {
 
     const cellRowsByColumn = visibleCols.map((col) => {
       const abCount = abCountForSlotInning(slotIndex, col);
-      const cells = Array.from({ length: abCount }, (_, ab) => {
-        const isThisActiveCell = isActive && activeLoc && activeLoc.column === col && activeLoc.abIndex === ab;
-        const isCompactCell = focusMode && !isActive && !hasRunner;
-        return renderScoreCellHtml(slotIndex, col, ab, {
-          isActive: isThisActiveCell,
-          isCompact: isCompactCell
-        });
-      }).join("");
-      return `<div class="ab-cell-row" data-column="${col}">${cells}</div>`;
+      const selectedAb = selectedAbForSlotInning(slotIndex, col, chart);
+      const isThisActiveCell = isActive && activeLoc && activeLoc.column === col && activeLoc.abIndex === selectedAb;
+      const isCompactCell = focusMode && !isActive && !hasRunner;
+      const cell = renderScoreCellHtml(slotIndex, col, selectedAb, {
+        isActive: isThisActiveCell,
+        isCompact: isCompactCell
+      });
+      return `<div class="ab-cell-row" data-column="${col}" style="--ab-count:${abCount}">${cell}</div>`;
     }).join("");
 
     return `
@@ -2434,6 +3788,22 @@ function scoreSummaryHtml(cell) {
   `;
 }
 
+function fullChartSummaryStackHtml(chart, slotIndex, inning) {
+  const abCount = 1 + toNumber(chart.extraAbs[scoreCellKey(slotIndex, inning)] || 0);
+  const selectedAb = Math.min(abCount - 1, Math.max(0, toNumber(chart.selectedAbs?.[scoreCellKey(slotIndex, inning)])));
+  const selector = abCount > 1 ? `
+    <select data-full-chart-ab="${scoreCellKey(slotIndex, inning)}" aria-label="Select full chart at-bat">
+      ${Array.from({ length: abCount }, (_, index) => `<option value="${index}" ${index === selectedAb ? "selected" : ""}>AB ${index + 1}</option>`).join("")}
+    </select>
+  ` : "";
+  return `
+    <div class="summary-stack">
+      ${selector}
+      ${scoreSummaryHtml(readChartScoreCell(chart, slotIndex, inning, selectedAb))}
+    </div>
+  `;
+}
+
 function renderFullScorecard() {
   if (!els.fullScorecardGrid) return;
   const side = state.fullChartSide || state.activeSide;
@@ -2454,17 +3824,13 @@ function renderFullScorecard() {
   if (els.fullChartLineScore) {
     els.fullChartLineScore.innerHTML = lineScoreHtml({ highlightedSide: side });
   }
-  const header = [`<div class="score-head">${escapeHtml(sideLabel(side))}</div>`]
+  const header = [`<div class="score-head score-team-head">${escapeHtml(teamAbbreviation(side))}</div>`]
     .concat(Array.from({ length: innings }, (_, index) => `<div class="score-head">${index + 1}</div>`))
     .join("");
   const rows = Array.from({ length: slotCount }, (_, slotIndex) => {
     const player = state.players.find((item) => item.id === chart.lineup[slotIndex]);
     const playerLabel = player ? `#${escapeHtml(player.number)} ${escapeHtml(fullName(player))}` : `Lineup ${slotIndex + 1}`;
-    const cells = Array.from({ length: innings }, (_, inningIndex) => {
-      const inning = inningIndex + 1;
-      const abCount = 1 + toNumber(chart.extraAbs[scoreCellKey(slotIndex, inning)] || 0);
-      return `<div class="summary-stack">${Array.from({ length: abCount }, (_, abIndex) => scoreSummaryHtml(readChartScoreCell(chart, slotIndex, inning, abIndex))).join("")}</div>`;
-    }).join("");
+    const cells = Array.from({ length: innings }, (_, inningIndex) => fullChartSummaryStackHtml(chart, slotIndex, inningIndex + 1)).join("");
     return `<div class="score-player summary-player"><strong>${playerLabel}</strong></div>${cells}`;
   }).join("");
   els.fullScorecardGrid.innerHTML = header + rows;
@@ -2521,85 +3887,93 @@ function renderInningCompletion() {
 }
 
 function renderChartHud() {
-  const chart = activeChart();
-  const opponentPlayers = playersForSide(oppositeSide());
-  const pitcher = state.players.find((player) => player.id === chart.activePitcherId);
-  const pitcherRates = pitcher ? calcStats(pitcher.stats) : null;
-  const liveLine = getPitchingLine(chart);
-  const pitcherCount = liveLine.pitches || 0;
-  const bullpen = chart.bullpenIds
-    .map((id) => state.players.find((player) => player.id === id))
-    .filter(Boolean);
-  const defensePositions = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"];
-  const defenseOptions = (selected) => [`<option value="">--</option>`]
-    .concat(opponentPlayers.map((player) => `<option value="${player.id}" ${player.id === selected ? "selected" : ""}>#${escapeHtml(player.number)} ${escapeHtml(fullName(player))}</option>`))
-    .join("");
+  const snapshotSide = state.activeSide;
+  const meta = teamMetaForSide(snapshotSide);
 
   els.chartHud.innerHTML = `
-    <section class="hud-panel pitcher-hud">
+    <section class="hud-panel team-snapshot-hud" style="${teamColorStyle(snapshotSide)}">
       <div class="hud-title">
-        <h2>Opposing Pitcher</h2>
-        <span>${escapeHtml(pitcher ? `${pitcherCount} P | ${liveLine.BK} Bk` : "Select above")}</span>
+        <h2>Team Snapshot</h2>
+        <span>${escapeHtml(sideLabel(snapshotSide))}</span>
       </div>
-      ${pitcher ? `
-        <strong>#${escapeHtml(pitcher.number)} ${escapeHtml(fullName(pitcher))}</strong>
-        <div class="hud-stats">
-          <span title="Total pitches thrown">P ${pitcher.stats.Pitches || 0}</span>
-          <span title="Win-loss record">W-L ${pitcher.stats.W || 0}-${pitcher.stats.L || 0}</span>
-          <span title="Earned run average">ERA ${pitcher.stats.ERA || 0}</span>
-          <span title="Games / games started">G/GS ${pitcher.stats.GP || 0}/${pitcher.stats.GS || 0}</span>
-          <span title="Innings pitched">IP ${pitcher.stats.IP || 0}</span>
-          <span title="Home runs allowed">HR ${pitcher.stats.P_HR || 0}</span>
-          <span title="Walks allowed">BB ${pitcher.stats.P_BB || pitcher.stats.BB || 0}</span>
-          <span title="Strikeouts">K ${pitcher.stats.P_SO || pitcher.stats.SO || 0}</span>
-          <span title="Balks">BK ${pitcher.stats.P_BK || pitcher.stats.BK || 0}</span>
-          <span title="Batting average against">AVG ${pitcher.stats.BAA || 0}</span>
-        </div>
-        <div class="live-line">
-          <strong>Today</strong>
-          <span title="Innings pitched">IP ${formatIpFromOuts(liveLine.outs)}</span>
-          <span title="Hits allowed">H ${liveLine.H}</span>
-          <span title="Runs allowed">R ${liveLine.R}</span>
-          <span title="Earned runs">ER ${liveLine.ER}</span>
-          <span title="Walks">BB ${liveLine.BB}</span>
-          <span title="Strikeouts">K ${liveLine.K}</span>
-          <span title="Balks">BK ${liveLine.BK}</span>
-          <span title="Home runs">HR ${liveLine.HR}</span>
-          <span title="Batters faced">BF ${liveLine.BF}</span>
-          <span title="Pitches / strikes">P/S ${liveLine.pitches}/${liveLine.strikes}</span>
-        </div>
-      ` : `<p class="meta">Choose the pitcher facing this lineup. Pitch buttons in the chart update this count.</p>`}
-      <div class="bullpen-strip">
-        <strong>Bullpen</strong>
-        ${bullpen.length ? bullpen.map((player) => {
-          const line = getPitchingLine(chart, player.id);
-          return `<span>#${escapeHtml(player.number)} ${escapeHtml(fullName(player))} (${line.pitches} P | ${line.BK} Bk)</span>`;
-        }).join("") : `<span>No bullpen arms selected yet.</span>`}
-      </div>
-      <label>Bullpen / tendencies<textarea data-hud-field="bullpen" rows="4">${escapeHtml(chart.hud.bullpen)}</textarea></label>
+      ${teamSnapshotHeaderHtml(snapshotSide)}
+      <div class="team-snapshot-divider"></div>
+      ${meta.showRecords ? teamRecordTableHtml(snapshotSide, true) : ""}
+      ${meta.showCoaches ? teamCoachesHtml(snapshotSide) : ""}
     </section>
-    <section class="hud-panel defense-hud">
-      <div class="hud-title">
-        <h2>Defense</h2>
-        <span>${escapeHtml(state.activeSide === "home" ? state.game.opponentName || "Opponent" : state.game.teamName || "My Team")}</span>
-      </div>
-      <div class="defense-diamond">
-        ${defensePositions.map((pos) => `
+    ${meta.showSnapshot ? `
+      <section class="hud-panel team-stats-hud" style="${teamColorStyle(snapshotSide)}">
+        <div class="hud-title">
+          <h2>Team Stats</h2>
+          <span>${escapeHtml(teamAbbreviation(snapshotSide))}</span>
+        </div>
+        <div class="team-snapshot-stat-groups">${teamSnapshotGroupsHtml(snapshotSide)}</div>
+      </section>
+    ` : ""}
+  `;
+}
+
+const defensePositions = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"];
+
+function defensePlayerLabel(playerId) {
+  const player = state.players.find((item) => item.id === playerId);
+  return player ? `#${player.number} ${fullName(player)}` : "--";
+}
+
+function defenseOptionsHtml(selected) {
+  const players = playersForSide(oppositeSide());
+  return [`<option value="">--</option>`]
+    .concat(players.map((player) => `<option value="${player.id}" ${player.id === selected ? "selected" : ""}>#${escapeHtml(player.number)} ${escapeHtml(fullName(player))}</option>`))
+    .join("");
+}
+
+function defenseDiamondHtml({ editable = false } = {}) {
+  const chart = activeChart();
+  const activePitcher = chart.activePitcherId;
+  return `
+    <div class="defense-diamond ${editable ? "editable" : "display"}">
+      ${defensePositions.map((pos) => {
+        const selected = pos === "P" ? activePitcher : chart.hud.defense[pos];
+        const label = pos === "P" ? defensePlayerLabel(activePitcher) : defensePlayerLabel(selected);
+        return `
           <label class="def-pos pos-${pos.replace("1", "one").replace("2", "two").replace("3", "three")}">
             ${pos}
-            <select data-defense-pos="${pos}">${defenseOptions(chart.hud.defense[pos])}</select>
+            ${editable && pos !== "P"
+              ? `<select data-defense-pos="${pos}">${defenseOptionsHtml(selected)}</select>`
+              : `<span>${escapeHtml(label)}</span>`}
           </label>
-        `).join("")}
-      </div>
-    </section>
-    <section class="hud-panel notes-hud">
-      <div class="hud-title">
-        <h2>Notes</h2>
-        <span>Manual HUD</span>
-      </div>
-      <label>Defense notes<textarea data-hud-field="defenseNotes" rows="3">${escapeHtml(chart.hud.defenseNotes)}</textarea></label>
-      <label>Game notes<textarea data-hud-field="chartNotes" rows="3">${escapeHtml(chart.hud.chartNotes)}</textarea></label>
-    </section>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderDefense() {
+  if (!els.defenseEditor) return;
+  els.defenseEditor.innerHTML = `
+    <div class="defense-editor-head">
+      <strong>${escapeHtml(sideLabel(oppositeSide()))} in the field</strong>
+      <span>Pitcher follows the active pitcher selected on the Pitching tab.</span>
+    </div>
+    ${defenseDiamondHtml({ editable: true })}
+    <label>Defense notes<textarea data-chart-hud-field="defenseNotes" rows="4">${escapeHtml(activeChart().hud.defenseNotes)}</textarea></label>
+  `;
+}
+
+function renderDefensePopup() {
+  if (!els.defensePopupPanel) return;
+  els.defensePopupPanel.hidden = !state.showDefensePopup;
+  if (els.defensePopupPanel.hidden) return;
+  els.defensePopupPanel.innerHTML = `
+    <div class="section-title compact-title">
+      <h2>Current Defense</h2>
+      <button type="button" class="muted" data-close-defense-popup>Close</button>
+    </div>
+    <div class="defense-popup-body">
+      <strong>${escapeHtml(sideLabel(oppositeSide()))}</strong>
+      ${defenseDiamondHtml({ editable: false })}
+      ${activeChart().hud.defenseNotes ? `<p>${escapeHtml(activeChart().hud.defenseNotes)}</p>` : ""}
+    </div>
   `;
 }
 
@@ -2694,13 +4068,17 @@ function renderPlayerTable() {
 function renderRosterCards() {
   els.rosterCards.innerHTML = sortedPlayers().map((player) => {
     const rates = calcStats(player.stats);
+    const pitchingLine = hasPitchingStats(player.stats)
+      ? `<p class="meta roster-pitching-line">${escapeHtml(pitchingStatsLine(player.stats))}</p>`
+      : "";
     return `
       <article class="roster-card">
         <div class="number-badge">${escapeHtml(player.number || "-")}</div>
         <div class="card-main">
           <h3>${escapeHtml(fullName(player))}</h3>
           <p>${escapeHtml([player.position, player.classYear, player.pronunciation].filter(Boolean).join(" - ") || "No profile details yet")}</p>
-          <p class="meta">${rates.AVG}/${rates.OBP}/${rates.SLG} - ${player.stats.H} H, ${player.stats.RBI} RBI, ${player.stats.BB} BB</p>
+          <p class="meta">BAT ${rates.AVG}/${rates.OBP}/${rates.SLG} - ${player.stats.H} H, ${player.stats.RBI} RBI, ${player.stats.BB} BB, ${player.stats.SO} K</p>
+          ${pitchingLine}
         </div>
         <div class="card-actions">
           <button type="button" data-edit-player="${player.id}">Edit</button>
@@ -2750,15 +4128,31 @@ const notationDocsData = [
 
 function renderDataView() {
   if (els.dataSourceList) {
-    if (state.sources.length) {
-      els.dataSourceList.innerHTML = state.sources.map((source) => `
+    const gcSources = state.sources.filter((s) => (s.source || "gamechanger") === "gamechanger");
+    if (gcSources.length) {
+      els.dataSourceList.innerHTML = gcSources.map((source) => `
         <div class="source-item">
           <strong>${escapeHtml(source.name)}</strong>
-          <p class="meta">${escapeHtml(source.type.toUpperCase())} &middot; ${escapeHtml(source.detail || "")} &middot; ${new Date(source.importedAt).toLocaleString()}</p>
+          <p class="meta">${escapeHtml((source.type || "csv").toUpperCase())} &middot; ${escapeHtml(source.scope || "")} &middot; ${escapeHtml(source.detail || "")} &middot; ${new Date(source.importedAt).toLocaleString()}</p>
         </div>
       `).join("");
     } else {
-      els.dataSourceList.innerHTML = `<p class="meta">No imports yet.</p>`;
+      els.dataSourceList.innerHTML = `<p class="meta">No GameChanger imports yet.</p>`;
+    }
+  }
+
+  const prestoList = document.querySelector("#prestoSourceList");
+  if (prestoList) {
+    const prestoSources = state.sources.filter((s) => s.source === "presto");
+    if (prestoSources.length) {
+      prestoList.innerHTML = prestoSources.map((source) => `
+        <div class="source-item">
+          <strong>${escapeHtml(source.name)}</strong>
+          <p class="meta">${escapeHtml((source.variant || source.type || "csv").toUpperCase())} &middot; ${escapeHtml(source.scope || "")} &middot; ${escapeHtml(source.detail || "")} &middot; ${new Date(source.importedAt).toLocaleString()}</p>
+        </div>
+      `).join("");
+    } else {
+      prestoList.innerHTML = `<p class="meta">No PrestoSports imports yet. Drop a TRX roster, then any of the eight stat CSVs.</p>`;
     }
   }
 
@@ -2772,7 +4166,7 @@ function renderDataView() {
         </div>
       `).join("");
     } else {
-      els.boxScoreList.innerHTML = `<p class="meta">No box scores imported for this side yet. Use the form above to import a per-game CSV.</p>`;
+      els.boxScoreList.innerHTML = `<p class="meta">No box scores imported for this side yet. Use the form above to import a per-game CSV or TXT.</p>`;
     }
   }
 
@@ -2795,6 +4189,7 @@ function renderDataView() {
 }
 
 function render() {
+  applyActiveTeamColors();
   renderSetup();
   renderChartHud();
   renderUpNextStrip();
@@ -2809,6 +4204,8 @@ function render() {
   renderRosterCards();
   renderEvents();
   renderPitching();
+  renderDefense();
+  renderDefensePopup();
 }
 
 function renderPitching() {
@@ -2831,12 +4228,13 @@ function renderPitching() {
   els.pitcherCards.innerHTML = selectedPitchers.map((player) => {
     const line = getPitchingLine(chart, player.id);
     const isBullpen = chart.bullpenIds.includes(player.id);
+    const seasonPitchingLine = pitchingStatsLine(player.stats);
     return `
       <article class="pitcher-card ${player.id === chart.activePitcherId ? "active" : ""}">
         <div>
           <strong>#${escapeHtml(player.number)} ${escapeHtml(fullName(player))}${player.id === chart.startingPitcherId ? " - SP" : ""}${isBullpen ? " - BP" : ""}</strong>
-          <p class="meta">P ${player.stats.Pitches || 0} - W-L ${player.stats.W || 0}-${player.stats.L || 0} - ERA ${player.stats.ERA || 0} - G/GS ${player.stats.GP || 0}/${player.stats.GS || 0} - IP ${player.stats.IP || 0} - HR ${player.stats.P_HR || 0} - BB ${player.stats.P_BB || player.stats.BB || 0} - K ${player.stats.P_SO || player.stats.SO || 0} - BK ${player.stats.P_BK || player.stats.BK || 0} - AVG ${player.stats.BAA || 0}</p>
-          <p class="meta">Today: IP ${formatIpFromOuts(line.outs)} H ${line.H} R ${line.R} ER ${line.ER} HR ${line.HR} BB ${line.BB} K ${line.K} BK ${line.BK} BF ${line.BF} P/S ${line.pitches}/${line.strikes}</p>
+          <p class="meta">${escapeHtml(seasonPitchingLine)}</p>
+          <p class="meta">Today: IP ${formatIpFromOuts(line.outs)} H ${line.H} R ${line.R} ER ${line.ER} HR ${line.HR} BB ${line.BB} K ${line.K} HBP ${line.HBP} WP ${line.WP} BK ${line.BK} BF ${line.BF} P/S ${line.pitches}/${line.strikes}</p>
           <textarea data-prev-starts="${player.id}" rows="2" placeholder="Previous starts: IP, H, R, ER, HR, BB, K, BF, P/S">${escapeHtml(player.previousStarts || "")}</textarea>
         </div>
         <div class="number-badge">${line.pitches}</div>
@@ -2927,6 +4325,10 @@ function fillPlayerForm(player) {
   ["AB", "H", "2B", "3B", "HR", "BB", "HBP", "SF", "RBI", "SO", "SB", "CS"].forEach((key) => {
     document.querySelector(`#stat${CSS.escape(key)}`).value = stats[key] || 0;
   });
+  ["IP", "ERA", "WHIP", "W", "L", "GS", "BF", "P_H", "P_R", "P_ER", "P_HR", "P_BB", "P_SO", "P_HBP", "P_WP", "P_BK", "BAA", "Pitches"].forEach((key) => {
+    const input = document.querySelector(`#stat${CSS.escape(key)}`);
+    if (input) input.value = stats[key] || 0;
+  });
 }
 
 function savePlayerFromForm(event) {
@@ -2936,6 +4338,10 @@ function savePlayerFromForm(event) {
   const stats = { ...(existing?.stats || emptyStats()) };
   ["AB", "H", "2B", "3B", "HR", "BB", "HBP", "SF", "RBI", "SO", "SB", "CS"].forEach((key) => {
     stats[key] = toNumber(document.querySelector(`#stat${CSS.escape(key)}`).value);
+  });
+  ["IP", "ERA", "WHIP", "W", "L", "GS", "BF", "P_H", "P_R", "P_ER", "P_HR", "P_BB", "P_SO", "P_HBP", "P_WP", "P_BK", "BAA", "Pitches"].forEach((key) => {
+    const input = document.querySelector(`#stat${CSS.escape(key)}`);
+    if (input) stats[key] = toNumber(input.value);
   });
 
   const player = {
@@ -2951,7 +4357,8 @@ function savePlayerFromForm(event) {
     weight: document.querySelector("#playerWeight").value.trim(),
     notes: document.querySelector("#playerNotes").value.trim(),
     side: existing?.side || state.activeSide,
-    stats
+    stats,
+    confStats: existing?.confStats || emptyStats()
   };
 
   if (existing) Object.assign(existing, player);
@@ -3008,15 +4415,23 @@ async function addPitchToCell(cellKey, type) {
   if (type === "foul") strikes = strikes < 2 ? strikes + 1 : strikes;
   if (type !== "balk") cell.count = `${balls}-${strikes}`;
 
+  let pitchDelta = null;
   if (chart.activePitcherId) {
-    const line = getPitchingLine(chart, chart.activePitcherId);
+    const updates = {};
     if (type === "balk") {
-      line.BK += 1;
+      updates.BK = 1;
     } else {
       chart.pitchCounts[chart.activePitcherId] = (chart.pitchCounts[chart.activePitcherId] || 0) + 1;
-      line.pitches += 1;
-      if (type === "strike" || type === "foul") line.strikes += 1;
+      updates.pitches = 1;
+      if (type === "ball") updates.balls = 1;
+      if (type === "foul") updates.fouls = 1;
+      if (type === "strike" || type === "foul") updates.strikes = 1;
+      if (strikesRaw >= 2) updates.twoStrikePitches = 1;
     }
+    addToPitchingLine(chart.activePitcherId, updates);
+    cell.pitchDeltas = cell.pitchDeltas || [];
+    pitchDelta = { pitcherId: chart.activePitcherId, type, updates };
+    cell.pitchDeltas.push(pitchDelta);
   }
 
   const pitchEvent = {
@@ -3029,7 +4444,8 @@ async function addPitchToCell(cellKey, type) {
   };
   chart.pitchLog.unshift(pitchEvent);
   cell.pitchDeltas = cell.pitchDeltas || [];
-  cell.pitchDeltas.push({ id: pitchEvent.id, pitcherId: chart.activePitcherId, type });
+  if (pitchDelta) pitchDelta.id = pitchEvent.id;
+  else cell.pitchDeltas.push({ id: pitchEvent.id, pitcherId: chart.activePitcherId, type });
 
   if (type === "balk") return;
 
@@ -3100,9 +4516,11 @@ function applyChartAction(cellKey, actionKey) {
 
   const pitcherUpdates = { ...(action.pitcher || {}) };
   if (["OUT", "K", "KC", "SF", "BI"].includes(actionKey)) pitcherUpdates.outs = (pitcherUpdates.outs || 0) + 1;
-  if (event?.rbi && ["HR"].includes(actionKey)) {
-    pitcherUpdates.R = Math.max(pitcherUpdates.R || 0, event.rbi);
-    pitcherUpdates.ER = Math.max(pitcherUpdates.ER || 0, event.rbi);
+  if (event) {
+    const chargedRuns = pitcherRunsForAction(actionKey, event.rbi);
+    const earnedRuns = pitcherEarnedRunsForAction(actionKey, event.rbi);
+    if (chargedRuns) pitcherUpdates.R = chargedRuns;
+    if (earnedRuns) pitcherUpdates.ER = earnedRuns;
   }
   addToPitchingLine(chart.activePitcherId, pitcherUpdates);
   if (event) cell.eventId = event.id;
@@ -3138,6 +4556,40 @@ function removeExtraAtBat(cellKey) {
   delete chart.scorecard[scoreCellKey(slot - 1, inning, totalAbs - 1)];
   chart.extraAbs[baseKey] = Math.max(0, extraCount - 1);
   if (!chart.extraAbs[baseKey]) delete chart.extraAbs[baseKey];
+  setSelectedAbForSlotInning(slot - 1, inning, Math.max(0, abNumber - 2), chart);
+}
+
+function clearActiveChartData() {
+  const chart = activeChart();
+  Object.keys(chart.scorecard || {}).forEach((cellKey) => {
+    reverseChartCell(cellKey);
+  });
+  state.events.forEach((event) => applyEvent(event, -1));
+  state.events = [];
+  chart.scorecard = {};
+  chart.extraAbs = {};
+  chart.selectedAbs = {};
+  chart.inningTotals = {};
+  chart.completedInnings = {};
+  chart.editingCompletedInnings = {};
+  chart.pitchCounts = {};
+  chart.pitchingLines = {};
+  chart.pitchLog = [];
+  chart.baseStates = {};
+  chart.baseState = emptyBaseState();
+}
+
+function currentBoxScoreMeta() {
+  return {
+    gameDate: els.boxScoreDate?.value || "",
+    opponent: els.boxScoreOpponent?.value || "",
+    resultNote: els.boxScoreResultNote?.value || ""
+  };
+}
+
+function clearBoxScoreTextFields() {
+  if (els.boxScoreOpponent) els.boxScoreOpponent.value = "";
+  if (els.boxScoreResultNote) els.boxScoreResultNote.value = "";
 }
 
 function setupEvents() {
@@ -3188,11 +4640,85 @@ function setupEvents() {
     });
   });
 
+  if (els.teamProfilePanel) {
+    els.teamProfilePanel.addEventListener("input", (event) => {
+      const metaSide = event.target.dataset.teamMetaSide;
+      const metaField = event.target.dataset.teamMetaField;
+      const recordSide = event.target.dataset.teamRecordSide;
+      const coachSide = event.target.dataset.coachSide;
+      const chartHudField = event.target.dataset.chartHudField;
+      if (metaSide && metaField) {
+        teamMetaForSide(metaSide)[metaField] = event.target.value;
+        if (metaField === "primaryColor" || metaField === "secondaryColor") {
+          applyActiveTeamColors();
+          document.querySelectorAll(".side-tab").forEach(applySideTabColors);
+        }
+      }
+      if (recordSide) {
+        const record = teamMetaForSide(recordSide).records[toNumber(event.target.dataset.teamRecordIndex)];
+        if (record) record[event.target.dataset.teamRecordField] = event.target.value;
+      }
+      if (coachSide) {
+        const coach = teamMetaForSide(coachSide).coaches[toNumber(event.target.dataset.coachIndex)];
+        if (coach) coach[event.target.dataset.coachField] = event.target.value;
+      }
+      if (chartHudField) activeChart().hud[chartHudField] = event.target.value;
+      saveState();
+      renderChartHud();
+      renderUpNextStrip();
+    });
+
+    els.teamProfilePanel.addEventListener("change", (event) => {
+      const toggleSide = event.target.dataset.teamToggle;
+      const logoSide = event.target.dataset.teamLogo;
+      const coachImageSide = event.target.dataset.coachImageSide;
+      if (toggleSide) {
+        teamMetaForSide(toggleSide)[event.target.dataset.teamMetaField] = event.target.checked;
+        saveState();
+        render();
+        return;
+      }
+      if (logoSide || coachImageSide) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (logoSide) teamMetaForSide(logoSide).logo = String(reader.result || "");
+          if (coachImageSide) {
+            const coach = teamMetaForSide(coachImageSide).coaches[toNumber(event.target.dataset.coachIndex)];
+            if (coach) coach.image = String(reader.result || "");
+          }
+          saveState();
+          render();
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    els.teamProfilePanel.addEventListener("click", (event) => {
+      const addSide = event.target.closest("[data-add-coach]")?.dataset.addCoach;
+      const deleteSide = event.target.closest("[data-delete-coach]")?.dataset.deleteCoach;
+      if (addSide) {
+        teamMetaForSide(addSide).coaches.push({ id: uid("coach"), name: "", title: "", bio: "", image: "" });
+        saveState();
+        renderSetup();
+        renderChartHud();
+      }
+      if (deleteSide) {
+        const index = toNumber(event.target.closest("[data-delete-coach]").dataset.coachIndex);
+        teamMetaForSide(deleteSide).coaches.splice(index, 1);
+        saveState();
+        renderSetup();
+        renderChartHud();
+      }
+    });
+  }
+
   els.csvInput.addEventListener("change", async (event) => {
     const file = event.target.files[0];
     if (!file) return;
     try {
-      importPlayersFromCsv(await file.text(), file.name);
+      importPlayersFromCsv(await file.text(), file.name, "overall");
     } catch (error) {
       alert(error.message);
     } finally {
@@ -3200,18 +4726,12 @@ function setupEvents() {
     }
   });
 
-  if (els.boxScoreInput) {
-    els.boxScoreInput.addEventListener("change", async (event) => {
+  if (els.gcConferenceCsvInput) {
+    els.gcConferenceCsvInput.addEventListener("change", async (event) => {
       const file = event.target.files[0];
       if (!file) return;
       try {
-        importBoxScoreFromCsv(await file.text(), file.name, {
-          gameDate: els.boxScoreDate?.value || "",
-          opponent: els.boxScoreOpponent?.value || "",
-          resultNote: els.boxScoreResultNote?.value || ""
-        });
-        if (els.boxScoreOpponent) els.boxScoreOpponent.value = "";
-        if (els.boxScoreResultNote) els.boxScoreResultNote.value = "";
+        importPlayersFromCsv(await file.text(), file.name, "conference");
       } catch (error) {
         alert(error.message);
       } finally {
@@ -3219,6 +4739,90 @@ function setupEvents() {
       }
     });
   }
+
+  if (els.gcBoxScoreInput) {
+    els.gcBoxScoreInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        importBoxScoreFromCsv(await file.text(), file.name, currentBoxScoreMeta());
+        clearBoxScoreTextFields();
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        event.target.value = "";
+      }
+    });
+  }
+
+  if (els.boxScoreInput) {
+    els.boxScoreInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        importBoxScoreFromCsv(await file.text(), file.name, currentBoxScoreMeta());
+        clearBoxScoreTextFields();
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        event.target.value = "";
+      }
+    });
+  }
+
+  if (els.boxScoreTxtInput) {
+    els.boxScoreTxtInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        importBoxScoreFromTxt(await file.text(), file.name, currentBoxScoreMeta());
+        clearBoxScoreTextFields();
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        event.target.value = "";
+      }
+    });
+  }
+
+  const prestoRosterInput = document.querySelector("#prestoRosterInput");
+  if (prestoRosterInput) {
+    prestoRosterInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        const lower = file.name.toLowerCase();
+        if (lower.endsWith(".tro")) {
+          alert("TRO is index-only — drop the matching .TRX instead.");
+          return;
+        }
+        if (!lower.endsWith(".trx")) {
+          alert("Roster file must be .trx (or .tro index, which will be skipped).");
+          return;
+        }
+        importPrestoRosterFromTrx(await file.text(), file.name);
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        event.target.value = "";
+      }
+    });
+  }
+
+  document.querySelectorAll('input[data-presto-scope]').forEach((input) => {
+    input.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      const scope = event.target.dataset.prestoScope || "overall";
+      try {
+        importPrestoStatsFromCsv(await file.text(), file.name, scope);
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        event.target.value = "";
+      }
+    });
+  });
 
   document.querySelectorAll(".data-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -3240,8 +4844,6 @@ function setupEvents() {
       }
     });
   }
-
-  bindPdfBridge();
 
   els.exportButton.addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -3321,16 +4923,55 @@ function setupEvents() {
     const chart = activeChart();
     const hudField = event.target.dataset.hudField;
     const defensePos = event.target.dataset.defensePos;
+    const teamMetaSide = event.target.dataset.teamMetaSide;
+    const teamMetaField = event.target.dataset.teamMetaField;
     if (hudField) chart.hud[hudField] = event.target.value;
     if (defensePos) chart.hud.defense[defensePos] = event.target.value;
+    if (teamMetaSide && teamMetaField) teamMetaForSide(teamMetaSide)[teamMetaField] = event.target.value;
     saveState();
   });
 
+  if (els.defenseEditor) {
+    els.defenseEditor.addEventListener("input", (event) => {
+      const defensePos = event.target.dataset.defensePos;
+      const chartHudField = event.target.dataset.chartHudField;
+      if (defensePos) activeChart().hud.defense[defensePos] = event.target.value;
+      if (chartHudField) activeChart().hud[chartHudField] = event.target.value;
+      saveState();
+      renderDefensePopup();
+    });
+    els.defenseEditor.addEventListener("change", (event) => {
+      const defensePos = event.target.dataset.defensePos;
+      if (!defensePos) return;
+      activeChart().hud.defense[defensePos] = event.target.value;
+      saveState();
+      renderDefensePopup();
+    });
+  }
+
   els.chartHud.addEventListener("change", (event) => {
     const defensePos = event.target.dataset.defensePos;
-    if (!defensePos) return;
-    activeChart().hud.defense[defensePos] = event.target.value;
-    saveState();
+    const logoSide = event.target.dataset.teamLogo;
+    if (defensePos) {
+      activeChart().hud.defense[defensePos] = event.target.value;
+      saveState();
+      return;
+    }
+    if (logoSide) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        teamMetaForSide(logoSide).logo = String(reader.result || "");
+        saveState();
+        renderChartHud();
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
+  els.chartHud.addEventListener("click", (event) => {
+    applyHudStatScopeFromEvent(event);
   });
 
   els.inningTotals.addEventListener("input", (event) => {
@@ -3349,6 +4990,7 @@ function setupEvents() {
   });
 
   els.inningTotals.addEventListener("click", (event) => {
+    if (applyHudStatScopeFromEvent(event)) return;
     const clearBase = event.target.closest("[data-clear-base]")?.dataset.clearBase;
     const steal = event.target.closest("[data-steal]")?.dataset.steal;
     const chart = activeChart();
@@ -3424,6 +5066,10 @@ function setupEvents() {
         els.fullScorecardPanel.hidden = !els.fullScorecardPanel.hidden;
         if (!els.fullScorecardPanel.hidden) renderFullScorecard();
         renderUpNextStrip();
+      } else if (target.id === "toggleDefenseButton") {
+        state.showDefensePopup = !state.showDefensePopup;
+        renderDefensePopup();
+        renderUpNextStrip();
       }
     });
   }
@@ -3449,12 +5095,8 @@ function setupEvents() {
   });
 
   els.clearScorecardButton.addEventListener("click", () => {
-    if (!confirm("Clear every diamond, count, and result on the visual chart?")) return;
-    activeChart().scorecard = {};
-    activeChart().extraAbs = {};
-    activeChart().inningTotals = {};
-    activeChart().baseStates = {};
-    activeChart().baseState = emptyBaseState();
+    if (!confirm("Clear the full chart, live game log, pitch log, and live pitching totals?")) return;
+    clearActiveChartData();
     saveState();
     render();
   });
@@ -3466,11 +5108,33 @@ function setupEvents() {
   });
 
   els.fullScorecardPanel?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-close-full-chart]")) {
+      els.fullScorecardPanel.hidden = true;
+      renderUpNextStrip();
+      return;
+    }
     const side = event.target.closest("[data-full-chart-side]")?.dataset.fullChartSide;
     if (!side) return;
     state.fullChartSide = side;
     saveState();
     renderFullScorecard();
+  });
+
+  els.fullScorecardPanel?.addEventListener("change", (event) => {
+    const fullChartAb = event.target.dataset.fullChartAb;
+    if (!fullChartAb) return;
+    const { slot, inning } = parseScoreCellKey(fullChartAb);
+    const chart = state.charts[state.fullChartSide || state.activeSide] || activeChart();
+    setSelectedAbForSlotInning(slot - 1, inning, event.target.value, chart);
+    saveState();
+    renderFullScorecard();
+  });
+
+  els.defensePopupPanel?.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-close-defense-popup]")) return;
+    state.showDefensePopup = false;
+    renderDefensePopup();
+    renderUpNextStrip();
   });
 
   [els.inningCompleteOverlay, els.inningEditBanner].forEach((container) => {
@@ -3506,6 +5170,7 @@ function setupEvents() {
   els.scorecardGrid.addEventListener("input", (event) => {
     const cellEl = event.target.closest("[data-score-cell]");
     const field = event.target.dataset.scoreField;
+    const selectAb = event.target.dataset.selectAb;
     const batterSubPlayer = event.target.dataset.subBatterPlayer;
     const batterSubText = event.target.dataset.subBatterText;
     const runnerSubPlayer = event.target.dataset.subRunnerPlayer;
@@ -3513,6 +5178,13 @@ function setupEvents() {
     const batterNote = event.target.dataset.batterNote;
     const pitcherUpdateCell = event.target.dataset.pitcherUpdate;
     const pitcherUpdateKey = event.target.dataset.pitcherUpdateKey;
+    if (selectAb) {
+      const { slot, inning } = parseScoreCellKey(selectAb);
+      setSelectedAbForSlotInning(slot - 1, inning, event.target.value);
+      saveState();
+      renderScorecard();
+      return;
+    }
     if (batterNote !== undefined) {
       const chart = activeChart();
       chart.batterNotes = chart.batterNotes || {};
@@ -3546,6 +5218,14 @@ function setupEvents() {
   });
 
   els.scorecardGrid.addEventListener("change", async (event) => {
+    const selectAb = event.target.dataset.selectAb;
+    if (selectAb) {
+      const { slot, inning } = parseScoreCellKey(selectAb);
+      setSelectedAbForSlotInning(slot - 1, inning, event.target.value);
+      saveState();
+      renderScorecard();
+      return;
+    }
     const batterSubPlayer = event.target.dataset.subBatterPlayer;
     const batterSubText = event.target.dataset.subBatterText;
     const runnerSubPlayer = event.target.dataset.subRunnerPlayer;
@@ -3600,7 +5280,7 @@ function setupEvents() {
     const pitch = event.target.dataset.pitch;
     const rbiValue = event.target.dataset.rbi;
     const chartAction = event.target.dataset.chartAction;
-    const addAb = event.target.dataset.addAb;
+    const addAbFor = event.target.closest("[data-add-ab-for]")?.dataset.addAbFor;
     const removeAb = event.target.dataset.removeAb;
     const runnerAdvanceKey = event.target.closest("[data-runner-advance]")?.dataset.runnerAdvance;
     const runnerScoreKey = event.target.closest("[data-runner-score]")?.dataset.runnerScore;
@@ -3723,15 +5403,17 @@ function setupEvents() {
     }
     if (wpCellKey) {
       const cell = getScoreCellFromKey(wpCellKey);
+      clearRunnerOutcome(cell);
       applyTerminalChange(wpCellKey, "toHome");
+      addRunnerPitcherDelta(cell, { WP: 1 });
       cell.runnerNote = "WP";
       if (!cell.notation && !cell.result) cell.notation = "WP";
       saveState();
       render();
     }
-    if (addAb !== undefined) {
-      const key = scoreCellKey(Number(addAb), activeChart().currentInning);
-      activeChart().extraAbs[key] = toNumber(activeChart().extraAbs[key]) + 1;
+    if (addAbFor) {
+      const { slot, inning } = parseScoreCellKey(addAbFor);
+      addExtraAbForSlotInning(slot - 1, inning);
       saveState();
       renderScorecard();
     }
@@ -3739,7 +5421,7 @@ function setupEvents() {
       const cellEl = event.target.closest("[data-score-cell]");
       const cell = getScoreCellFromKey(cellEl.dataset.scoreCell);
       const nextValue = Number(rbiValue);
-      cell.rbi = toNumber(cell.rbi) === nextValue ? 0 : nextValue;
+      setCellRbi(cellEl.dataset.scoreCell, toNumber(cell.rbi) === nextValue ? 0 : nextValue);
       saveState();
       render();
     }
