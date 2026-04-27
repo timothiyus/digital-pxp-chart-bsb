@@ -578,7 +578,20 @@ function importBoxScoreFromCsv(text, filename, meta = {}) {
   render();
 }
 
-const PDF_BRIDGE_URL = "http://127.0.0.1:8766";
+function resolvePdfBridgeUrl() {
+  try {
+    const override = localStorage.getItem("pxp.pdfBridgeUrl");
+    if (override && override.trim()) return override.trim().replace(/\/+$/, "");
+  } catch (_) { /* localStorage may be blocked; fall through */ }
+  const host = location.hostname;
+  if (!host || host === "localhost" || host === "127.0.0.1") {
+    return "http://127.0.0.1:8766";
+  }
+  // Remote origin (e.g. Tailscale magic-DNS hostname or LAN IP).
+  // Assumes `tailscale serve` (or any reverse proxy) routes /api/* to the bridge on this same origin.
+  return `${location.origin}/api`;
+}
+const PDF_BRIDGE_URL = resolvePdfBridgeUrl();
 
 async function pingPdfBridge() {
   try {
@@ -595,16 +608,21 @@ function setPdfBridgeStatus(status, message) {
   els.pdfBridgeStatus.textContent = message;
 }
 
+function pdfBridgeOfflineHint() {
+  const isLocal = PDF_BRIDGE_URL.startsWith("http://127.0.0.1") || PDF_BRIDGE_URL.startsWith("http://localhost");
+  if (isLocal) {
+    return "PDF bridge: offline — start it with `python -m pdf_to_csv.server` from tools/pdf_to_csv";
+  }
+  return `PDF bridge: offline at ${PDF_BRIDGE_URL} — wake the PC, start the bridge, and ensure 'tailscale serve' is routing /api/`;
+}
+
 async function refreshPdfBridgeStatus() {
   setPdfBridgeStatus("busy", "PDF bridge: checking…");
   const ok = await pingPdfBridge();
   if (ok) {
-    setPdfBridgeStatus("ready", "PDF bridge: ready");
+    setPdfBridgeStatus("ready", `PDF bridge: ready (${PDF_BRIDGE_URL})`);
   } else {
-    setPdfBridgeStatus(
-      "offline",
-      "PDF bridge: offline — start it with `python -m pdf_to_csv.server` from tools/pdf_to_csv"
-    );
+    setPdfBridgeStatus("offline", pdfBridgeOfflineHint());
   }
   return ok;
 }

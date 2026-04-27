@@ -38,6 +38,46 @@ The bridge listens on `http://127.0.0.1:8766` (port 8766 to keep 8765 free for w
 
 If the pill says "offline", the app couldn't reach the bridge — start it (or click the pill to retry once the server is up).
 
+### A2. Remote use over Tailscale (iPad / phone / second laptop)
+
+You can keep the bridge running on a home PC and reach the app from any device on your tailnet — no public ports, no auth to write, end-to-end encrypted. Wake-on-LAN pairs nicely: wake the PC, the bridge is back online, you import.
+
+**One-time setup on the PC:**
+
+1. Run the static app and the bridge as you normally would:
+   ```
+   npx http-server -p 8765 -c-1 --silent       # or python -m http.server 8765
+   cd tools/pdf_to_csv && python -m pdf_to_csv.server
+   ```
+2. Tell Tailscale to expose them through the tailnet (one-time, persists across reboots):
+   ```
+   tailscale serve --bg http://127.0.0.1:8765
+   tailscale serve --bg --set-path=/api/ http://127.0.0.1:8766
+   ```
+   The first command serves the app at `https://<your-pc>.<tailnet>.ts.net/`. The second proxies `/api/*` to the bridge. Both bind to `127.0.0.1` locally — nothing is exposed on Wi-Fi/Ethernet.
+
+3. Verify with `tailscale serve status`. You should see the two routes.
+
+**On the iPad (or any tailnet device):**
+
+1. Install the Tailscale app, sign in to the same tailnet.
+2. Open Safari → `https://<your-pc>.<tailnet>.ts.net/`.
+3. Optionally **Add to Home Screen** for a one-tap launcher.
+4. Open the **Data** tab — the pill should turn green ("PDF bridge: ready"). Drop PDFs as you would on the PC.
+
+The browser auto-detects the URL: locally it talks directly to `127.0.0.1:8766`; remotely it uses `/api` on the same origin (which `tailscale serve` proxies to the bridge). No config changes needed in the app.
+
+**Optional override** if you run the bridge on a different host or path: in the browser console,
+```
+localStorage.setItem('pxp.pdfBridgeUrl', 'https://other-host.ts.net:9000');
+```
+Clear it with `localStorage.removeItem('pxp.pdfBridgeUrl')`.
+
+**To stop publishing the routes** (e.g., when you take the laptop somewhere public):
+```
+tailscale serve reset
+```
+
 ### B. CLI (manual PDF → CSV → import)
 
 From the repo root:

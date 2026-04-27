@@ -6,6 +6,7 @@ Local-first baseball charting app for play-by-play radio prep and live game use.
 
 - Import GameChanger-style CSV stat exports.
 - Drop stats / roster / box-score PDFs (Prestosports, Sidearm, etc.) directly into the Data tab — a local Python bridge (`python -m pdf_to_csv.server`) parses them in real time. See [`tools/pdf_to_csv/README.md`](tools/pdf_to_csv/README.md).
+- Reach the app from an iPad / second laptop over Tailscale (no public ports). The browser auto-detects local vs remote and routes the bridge through `tailscale serve`.
 - Manage editable rosters, player numbers, pronunciation guides, positions, class years, and broadcast notes.
 - Build and reorder a lineup board, including substitute rows.
 - Switch between separate charts for your team and the opponent.
