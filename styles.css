@@ -1042,7 +1042,7 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #fff;
-  color: var(--accent-strong);
+  color: var(--active-team-primary, var(--accent-strong));
   font-weight: 900;
   text-align: center;
   white-space: nowrap;
@@ -2384,7 +2384,7 @@ textarea {
   display: grid;
   place-items: center;
   background: #eef4f1;
-  color: var(--accent-strong);
+  color: var(--active-team-primary, var(--accent-strong));
   font-weight: 900;
   font-size: 1.15rem;
   border: 1px solid var(--line);
