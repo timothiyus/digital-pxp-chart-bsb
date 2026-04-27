@@ -857,19 +857,25 @@ textarea {
   color: var(--accent-strong);
 }
 
-.stat-hud[data-hud-mode="compact"] .compact-pitcher-card strong {
+.stat-hud[data-hud-mode="compact"] .compact-pitcher-title {
   grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-pitcher-card strong {
   color: var(--ink);
   font-size: 0.82rem;
-  text-align: center;
+  white-space: nowrap;
 }
 
 .stat-hud[data-hud-mode="compact"] .compact-pitcher-card .pitcher-meta {
-  grid-column: 1 / -1;
   color: var(--muted);
   font-size: 0.66rem;
   font-weight: 800;
-  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1653,10 +1659,10 @@ textarea {
 
 .score-player {
   background: #fffdf8;
-  padding: 10px;
+  padding: 10px 10px 10px 34px;
   display: grid;
   align-content: start;
-  gap: 4px;
+  gap: 6px;
 }
 
 .add-ab-button {
@@ -1772,7 +1778,7 @@ textarea {
 
 .score-player-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   margin-bottom: 2px;
 }
@@ -1780,9 +1786,23 @@ textarea {
 .score-player-headline {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
+}
+
+.score-player-headline strong {
+  font-size: clamp(1.06rem, 0.7vw + 0.94rem, 1.42rem);
+  line-height: 1.02;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.score-player .score-player-meta {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .batting-order-badge {
@@ -1828,14 +1848,17 @@ textarea {
 }
 
 .slot-pill {
-  display: inline-block;
-  align-self: flex-start;
-  padding: 2px 8px;
-  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  padding: 6px 2px;
+  border-radius: 0;
   font-size: 0.66rem;
   font-weight: 900;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: #fff;
+  line-height: 1;
 }
 
 .pill-active {
@@ -1850,7 +1873,7 @@ textarea {
 
 .pill-in-hole {
   background: #d8b87a;
-  color: #4d3a16;
+  color: #fff;
 }
 
 .up-next-strip {
@@ -1923,23 +1946,33 @@ textarea {
 .up-next-tag {
   grid-row: 1;
   grid-column: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  padding: 3px 9px;
+  border-radius: 999px;
   font-size: 0.66rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 900;
-  color: var(--muted);
+  color: #fff;
+  background: var(--accent);
 }
 
 .up-next-now .up-next-tag {
-  color: var(--accent-strong);
+  color: #fff;
+  background: var(--accent);
 }
 
 .up-next-deck .up-next-tag {
-  color: #7a5712;
+  color: #fff;
+  background: var(--gold);
 }
 
 .up-next-hole .up-next-tag {
-  color: #8a6a35;
+  color: #fff;
+  background: #7a5712;
 }
 
 .up-next-slot {
@@ -2122,6 +2155,7 @@ textarea {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
+  align-items: stretch;
 }
 
 .count-card {
@@ -2165,6 +2199,30 @@ textarea {
   font-size: 0.86rem;
 }
 
+.rbi-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.rbi-buttons button {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 2px;
+  background: #e8f5df;
+  border-color: #8dbb67;
+  color: #2f6f10;
+  font-size: 0.7rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.rbi-buttons button.is-on {
+  background: #4c9f2b;
+  border-color: #3f8523;
+  color: #fff;
+}
+
 .score-cell input,
 .score-cell select,
 .score-cell button {
@@ -2175,6 +2233,7 @@ textarea {
   width: min(100%, 150px);
   height: auto;
   aspect-ratio: 1;
+  margin-block: 14px;
   justify-self: center;
   align-self: center;
   position: relative;
@@ -2526,6 +2585,7 @@ textarea {
 .score-cell.is-compact .diamond {
   width: min(100%, 96px);
   height: auto;
+  margin-block: 8px;
 }
 
 .score-cell.is-compact .base-toggle {
@@ -2571,16 +2631,34 @@ textarea {
   color: #fff;
 }
 
+.score-player .slot-pill {
+  color: #fff;
+  font-size: 0.62rem;
+}
+
 .player-pill-row {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 1;
+  width: 24px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: center;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+  overflow: hidden;
+}
+
+.player-pill-row .slot-pill {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
 }
 
 .pitch-buttons {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
 }
 
@@ -2614,6 +2692,10 @@ textarea {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.result-button-row-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .result-buttons button {
   width: 100%;
   min-height: 28px;
@@ -2633,6 +2715,48 @@ textarea {
   display: block;
 }
 
+.pitcher-adjuster {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fbfcfa;
+}
+
+.pitcher-adjuster summary {
+  cursor: pointer;
+  padding: 4px 6px;
+  color: var(--accent-strong);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pitcher-adjust-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 0 6px 6px;
+}
+
+.pitcher-adjust-grid label {
+  display: grid;
+  gap: 2px;
+}
+
+.pitcher-adjust-grid span {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.pitcher-adjust-grid input {
+  min-height: 26px;
+  height: 26px;
+  padding: 2px 4px;
+  font-size: 0.76rem;
+}
+
 .clear-action-button {
   width: 100%;
   min-height: 30px;
@@ -2642,6 +2766,10 @@ textarea {
   background: #fff4f2;
   color: var(--danger);
   border-color: var(--danger);
+}
+
+.control-spacer {
+  height: 8px;
 }
 
 .score-result-row {
@@ -2708,68 +2836,88 @@ textarea {
   padding: 0;
 }
 
-.batter-splits {
+.sub-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.batter-note-box {
+  display: grid;
   gap: 4px;
   margin-top: 4px;
 }
 
-.batter-splits span {
-  border-radius: 4px;
-  padding: 3px 4px;
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-align: center;
-  background: #eef4f1;
+.batter-note-box span {
   color: var(--accent-strong);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.batter-splits .hot {
-  background: #e8f5df;
-  color: #306b12;
+.batter-note-box textarea {
+  min-height: 46px;
+  resize: vertical;
+  padding: 6px 7px;
+  font-size: 0.76rem;
+  line-height: 1.25;
 }
 
-.batter-splits .power {
-  background: #fff1cc;
-  color: #7a5200;
-}
-
-.batter-splits .risk {
-  background: #fff0f0;
-  color: #8f2f29;
-}
-
-.sub-row {
+.sub-block {
   display: grid;
-  grid-template-columns: 1fr 62px;
   gap: 4px;
-  margin-top: 4px;
+  min-width: 0;
 }
 
-.sub-row input:last-child {
-  grid-column: 1 / -1;
+.sub-block span {
+  color: var(--accent-strong);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sub-card-stack {
+  display: grid;
+  gap: 5px;
 }
 
 .sub-card {
   display: grid;
-  gap: 2px;
-  margin-top: 4px;
-  padding: 5px;
+  gap: 3px;
+  padding: 7px 8px;
   border-radius: 5px;
   background: #f1f5f2;
   font-size: 0.72rem;
+  border: 1px solid #d6e3db;
+}
+
+.sub-card strong {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
 }
 
 .sub-card span {
-  font-size: 0.7rem;
+  font-size: 0.78rem;
+  color: var(--ink);
+  line-height: 1.2;
 }
 
-.sub-row select,
-.sub-row input {
-  height: 26px;
-  padding: 3px 5px;
-  font-size: 0.72rem;
+.sub-grid select,
+.sub-grid input {
+  min-height: 30px;
+  padding: 4px 6px;
+  font-size: 0.74rem;
+}
+
+@media (max-width: 900px) {
+  .sub-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .pitching-layout {

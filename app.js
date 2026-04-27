@@ -25,7 +25,8 @@ const emptyStats = () => ({
   BF: 0,
   BAA: 0,
   Pitches: 0,
-  Strikes: 0
+  Strikes: 0,
+  BK: 0
 });
 
 const state = loadState();
@@ -156,6 +157,7 @@ function newChartState() {
     lineupPositions: Array.from({ length: 9 }, () => ""),
     scorecard: {},
     substitutions: {},
+    batterNotes: {},
     activePitcherId: "",
     startingPitcherId: "",
     bullpenIds: [],
@@ -211,6 +213,10 @@ function normalizeState() {
   state.charts.away = { ...newChartState(), ...state.charts.away };
   Object.values(state.charts).forEach((chart) => {
     chart.substitutions = chart.substitutions || {};
+    Object.keys(chart.substitutions).forEach((slotIndex) => {
+      chart.substitutions[slotIndex] = normalizeSubstitutionEntry(chart.substitutions[slotIndex]);
+    });
+    chart.batterNotes = chart.batterNotes || {};
     chart.bullpenIds = chart.bullpenIds || [];
     chart.pitchingLines = chart.pitchingLines || {};
     chart.currentInning = chart.currentInning || 1;
@@ -277,6 +283,114 @@ function formatRate(value) {
 
 function activeChart() {
   return state.charts[state.activeSide];
+}
+
+function cleanSubText(value) {
+  return String(value || "").trim();
+}
+
+function normalizeSubstitutionEntry(entry = {}) {
+  const normalized = {
+    batterPlayerId: "",
+    batterText: "",
+    runnerPlayerId: "",
+    runnerText: ""
+  };
+  if (!entry || typeof entry !== "object") return normalized;
+  if (
+    Object.prototype.hasOwnProperty.call(entry, "batterPlayerId")
+    || Object.prototype.hasOwnProperty.call(entry, "batterText")
+    || Object.prototype.hasOwnProperty.call(entry, "runnerPlayerId")
+    || Object.prototype.hasOwnProperty.call(entry, "runnerText")
+  ) {
+    return {
+      ...normalized,
+      ...entry,
+      batterText: cleanSubText(entry.batterText),
+      runnerText: cleanSubText(entry.runnerText)
+    };
+  }
+
+  const legacyType = String(entry.type || "").toUpperCase();
+  if (/(PR|CR|COURTESY)/.test(legacyType)) {
+    normalized.runnerPlayerId = entry.playerId || "";
+    normalized.runnerText = cleanSubText(entry.text);
+    return normalized;
+  }
+
+  normalized.batterPlayerId = entry.playerId || "";
+  normalized.batterText = cleanSubText(entry.text);
+  return normalized;
+}
+
+function getSlotSubstitution(slotIndex, chart = activeChart()) {
+  chart.substitutions = chart.substitutions || {};
+  chart.substitutions[slotIndex] = normalizeSubstitutionEntry(chart.substitutions[slotIndex]);
+  return chart.substitutions[slotIndex];
+}
+
+function lineupPlayerIdAtSlot(slot) {
+  return activeChart().lineup[slot - 1] || "";
+}
+
+function batterIdAtSlot(slot) {
+  const sub = getSlotSubstitution(slot - 1);
+  return sub.batterPlayerId || lineupPlayerIdAtSlot(slot);
+}
+
+function runnerIdAtSlot(slot) {
+  const sub = getSlotSubstitution(slot - 1);
+  return sub.runnerPlayerId || batterIdAtSlot(slot);
+}
+
+function playerById(playerId) {
+  return playerId ? state.players.find((item) => item.id === playerId) : null;
+}
+
+function playerAtSlot(slot) {
+  return playerById(batterIdAtSlot(slot));
+}
+
+function runnerPlayerAtSlot(slot) {
+  return playerById(runnerIdAtSlot(slot));
+}
+
+function formatPlayerLabel(player, { short = false } = {}) {
+  if (!player) return "";
+  const name = short ? (player.last || fullName(player)) : fullName(player);
+  return `#${player.number} ${name}`.trim();
+}
+
+function batterDisplayLabelAtSlot(slot, opts = {}) {
+  const override = cleanSubText(getSlotSubstitution(slot - 1).batterText);
+  if (override) return override;
+  const player = playerAtSlot(slot);
+  return player ? formatPlayerLabel(player, opts) : `Lineup ${slot}`;
+}
+
+function runnerDisplayLabelAtSlot(slot, opts = {}) {
+  const override = cleanSubText(getSlotSubstitution(slot - 1).runnerText);
+  if (override) return override;
+  const player = runnerPlayerAtSlot(slot);
+  if (player) return formatPlayerLabel(player, opts);
+  return batterDisplayLabelAtSlot(slot, opts);
+}
+
+function slotForRunnerId(runnerId) {
+  if (!runnerId) return 0;
+  for (let slot = 1; slot <= lineupLength(); slot += 1) {
+    if (runnerIdAtSlot(slot) === runnerId) return slot;
+  }
+  return 0;
+}
+
+function baseOccupantLabel(base) {
+  const runnerId = activeChart().baseState[base];
+  if (!runnerId) return "--";
+  const slot = slotForRunnerId(runnerId);
+  if (slot) return runnerDisplayLabelAtSlot(slot, { short: true });
+  const player = playerById(runnerId);
+  return player ? formatPlayerLabel(player, { short: true }) : "--";
 }
 
 function activePlayers() {
@@ -826,6 +940,7 @@ function eventDelta(result) {
   if (result === "hbp") delta.HBP = 1;
   if (result === "strikeout") delta.SO = 1;
   if (result === "sacFly") delta.SF = 1;
+  if (result === "balk") delta.BK = 1;
 
   return delta;
 }
@@ -850,6 +965,7 @@ function resultLabel(result) {
     hr: "Home run",
     walk: "Walk",
     hbp: "Hit by pitch",
+    balk: "Balk",
     strikeout: "Strikeout",
     out: "Out in play",
     sacFly: "Sac fly",
@@ -1056,7 +1172,7 @@ function applyTerminalChange(cellKey, newTerminal) {
   const cell = getScoreCellFromKey(cellKey);
   const { slot, inning } = parseScoreCellKey(cellKey);
   const effectiveInning = cellActualInning(cell, inning);
-  const batterId = chart.lineup[slot - 1];
+  const runnerId = cell.runnerId || runnerIdAtSlot(slot);
   const oldBases = { ...(cell.bases || emptyDiamondPath()) };
   const oldTerminal = activeDiamondTerminal(oldBases);
   const newBases = newTerminal ? diamondPathThrough(newTerminal) : emptyDiamondPath();
@@ -1079,7 +1195,11 @@ function applyTerminalChange(cellKey, newTerminal) {
   Object.entries(inningUpdates).forEach(([key, value]) => {
     cell.inningUpdates[key] = toNumber(cell.inningUpdates[key]) + value;
   });
-  if (batterId) setBatterBaseState(chart, batterId, newTerminal);
+  if (runnerId) {
+    cell.runnerId = runnerId;
+    setBatterBaseState(chart, runnerId, newTerminal);
+  }
+  if (!newTerminal && !cell.result && !cell.notation) delete cell.runnerId;
 }
 
 function nextTerminalFrom(terminal) {
@@ -1116,7 +1236,7 @@ function setBatterBaseState(chart, batterId, terminalBase) {
 }
 
 function blankPitchingLine() {
-  return { outs: 0, H: 0, R: 0, ER: 0, BB: 0, K: 0, HR: 0, BF: 0, pitches: 0, strikes: 0 };
+  return { outs: 0, H: 0, R: 0, ER: 0, BB: 0, K: 0, HR: 0, BF: 0, pitches: 0, strikes: 0, BK: 0 };
 }
 
 function formatIpFromOuts(outs) {
@@ -1125,7 +1245,7 @@ function formatIpFromOuts(outs) {
 
 function getPitchingLine(chart, pitcherId = chart.activePitcherId) {
   if (!pitcherId) return blankPitchingLine();
-  chart.pitchingLines[pitcherId] = chart.pitchingLines[pitcherId] || blankPitchingLine();
+  chart.pitchingLines[pitcherId] = { ...blankPitchingLine(), ...(chart.pitchingLines[pitcherId] || {}) };
   return chart.pitchingLines[pitcherId];
 }
 
@@ -1135,6 +1255,35 @@ function addToPitchingLine(pitcherId, updates) {
   Object.entries(updates).forEach(([key, value]) => {
     line[key] = Math.max(0, toNumber(line[key]) + value);
   });
+}
+
+const pitcherAdjustmentFields = [
+  { key: "outs", label: "OUT" },
+  { key: "H", label: "H" },
+  { key: "R", label: "R" },
+  { key: "ER", label: "ER" },
+  { key: "BB", label: "BB" },
+  { key: "K", label: "K" },
+  { key: "HR", label: "HR" },
+  { key: "BF", label: "BF" },
+  { key: "BK", label: "BK" }
+];
+
+function setCellPitcherUpdate(cellKey, key, value) {
+  const chart = activeChart();
+  const cell = getScoreCellFromKey(cellKey);
+  const pitcherId = cell.pitcherId || chart.activePitcherId;
+  if (!pitcherId) return;
+  cell.pitcherId = pitcherId;
+  cell.pitcherUpdates = cell.pitcherUpdates || {};
+  const oldValue = toNumber(cell.pitcherUpdates[key]);
+  const nextValue = Math.max(0, toNumber(value));
+  const delta = nextValue - oldValue;
+  if (!delta) return;
+  addToPitchingLine(pitcherId, { [key]: delta });
+  if (nextValue) cell.pitcherUpdates[key] = nextValue;
+  else delete cell.pitcherUpdates[key];
+  if (!Object.keys(cell.pitcherUpdates).length) delete cell.pitcherUpdates;
 }
 
 function addToInningTotals(inning, updates, direction = 1) {
@@ -1164,10 +1313,14 @@ function reverseChartCell(cellKey, options = {}) {
   if (!options.preservePitches && cell.pitchDeltas) {
     cell.pitchDeltas.forEach((pitch) => {
       if (pitch.pitcherId) {
-        chart.pitchCounts[pitch.pitcherId] = Math.max(0, toNumber(chart.pitchCounts[pitch.pitcherId]) - 1);
         const line = getPitchingLine(chart, pitch.pitcherId);
-        line.pitches = Math.max(0, toNumber(line.pitches) - 1);
-        if (pitch.type === "strike" || pitch.type === "foul") line.strikes = Math.max(0, toNumber(line.strikes) - 1);
+        if (pitch.type === "balk") {
+          line.BK = Math.max(0, toNumber(line.BK) - 1);
+        } else {
+          chart.pitchCounts[pitch.pitcherId] = Math.max(0, toNumber(chart.pitchCounts[pitch.pitcherId]) - 1);
+          line.pitches = Math.max(0, toNumber(line.pitches) - 1);
+          if (pitch.type === "strike" || pitch.type === "foul") line.strikes = Math.max(0, toNumber(line.strikes) - 1);
+        }
       }
       if (pitch.id) chart.pitchLog = chart.pitchLog.filter((item) => item.id !== pitch.id);
     });
@@ -1207,6 +1360,7 @@ function reverseChartCell(cellKey, options = {}) {
   delete cell.actionKey;
   delete cell.runnerStatDeltas;
   delete cell.runnerPitcherDeltas;
+  delete cell.runnerId;
   delete cell.runnerNote;
   delete cell.outOverlay;
   delete cell.scoredOverlay;
@@ -1330,18 +1484,6 @@ function slotAfter(slot, offset = 1) {
   return ((slot - 1 + offset) % len + len) % len + 1;
 }
 
-function batterIdAtSlot(slot) {
-  const chart = activeChart();
-  const sub = chart.substitutions?.[slot - 1];
-  if (sub && sub.playerId) return sub.playerId;
-  return chart.lineup[slot - 1] || "";
-}
-
-function playerAtSlot(slot) {
-  const id = batterIdAtSlot(slot);
-  return id ? state.players.find((item) => item.id === id) : null;
-}
-
 function abCountForSlotInning(slotIndex, inning) {
   const chart = activeChart();
   return 1 + toNumber(chart.extraAbs[scoreCellKey(slotIndex, inning)] || 0);
@@ -1457,23 +1599,77 @@ function rewindBatter() {
   chart.currentSlot = prevSlot;
 }
 
-function findLatestScoreCellKeyForPlayer(playerId, exceptKey = "") {
+function sortScoreCellKeysNewestFirst(leftKey, rightKey) {
+  const left = parseScoreCellKey(leftKey);
+  const right = parseScoreCellKey(rightKey);
+  return right.inning - left.inning || right.slot - left.slot || right.abNumber - left.abNumber;
+}
+
+function findLatestScoreCellKeyForRunner(playerId, exceptKey = "") {
   const chart = activeChart();
+  const directMatch = Object.keys(chart.scorecard)
+    .filter((key) => {
+      if (key === exceptKey) return false;
+      const cell = chart.scorecard[key];
+      return cell?.runnerId === playerId;
+    })
+    .sort(sortScoreCellKeysNewestFirst)[0];
+  if (directMatch) return directMatch;
+
+  const slot = slotForRunnerId(playerId);
+  if (slot) return findLiveRunnerCellKeyForSlot(slot) || findLatestScoreCellKeyForSlot(slot);
+
   return Object.keys(chart.scorecard)
     .filter((key) => {
       if (key === exceptKey) return false;
-      const { slot } = parseScoreCellKey(key);
-      return chart.lineup[slot - 1] === playerId;
+      const parsed = parseScoreCellKey(key);
+      return chart.lineup[parsed.slot - 1] === playerId;
     })
-    .sort((a, b) => {
-      const left = parseScoreCellKey(a);
-      const right = parseScoreCellKey(b);
-      return right.inning - left.inning || right.slot - left.slot || right.abNumber - left.abNumber;
-    })[0] || "";
+    .sort(sortScoreCellKeysNewestFirst)[0] || "";
+}
+
+function findLiveRunnerCellKeyForSlot(slot) {
+  const chart = activeChart();
+  return Object.keys(chart.scorecard)
+    .filter((key) => {
+      const parsed = parseScoreCellKey(key);
+      if (parsed.slot !== slot) return false;
+      const terminal = activeDiamondTerminal(chart.scorecard[key]?.bases || emptyDiamondPath());
+      return terminal && terminal !== "toHome";
+    })
+    .sort(sortScoreCellKeysNewestFirst)[0] || "";
+}
+
+function findLatestScoreCellKeyForSlot(slot) {
+  const chart = activeChart();
+  return Object.keys(chart.scorecard)
+    .filter((key) => parseScoreCellKey(key).slot === slot)
+    .sort(sortScoreCellKeysNewestFirst)[0] || "";
+}
+
+function liveRunnerIdForSlot(slotIndex, chart = activeChart()) {
+  const liveCellKey = findLiveRunnerCellKeyForSlot(slotIndex + 1);
+  if (!liveCellKey || !chart.scorecard[liveCellKey]) return "";
+  return chart.scorecard[liveCellKey].runnerId || "";
+}
+
+function updateLiveRunnerAssignmentForSlot(slotIndex, previousRunnerId, nextRunnerId) {
+  const chart = activeChart();
+  const slot = slotIndex + 1;
+  const liveCellKey = findLiveRunnerCellKeyForSlot(slot);
+  if (liveCellKey && chart.scorecard[liveCellKey]) {
+    if (nextRunnerId) chart.scorecard[liveCellKey].runnerId = nextRunnerId;
+    else delete chart.scorecard[liveCellKey].runnerId;
+  }
+  if (!previousRunnerId || previousRunnerId === nextRunnerId) return;
+  ["first", "second", "third"].forEach((base) => {
+    if (chart.baseState[base] === previousRunnerId) chart.baseState[base] = nextRunnerId || "";
+  });
+  syncCurrentBaseState(chart);
 }
 
 function updateRunnerDiamond(playerId, terminalBase, exceptKey = "") {
-  const key = findLatestScoreCellKeyForPlayer(playerId, exceptKey);
+  const key = findLatestScoreCellKeyForRunner(playerId, exceptKey);
   if (!key) return null;
   const cell = activeChart().scorecard[key];
   if (!cell) return null;
@@ -1510,8 +1706,9 @@ function tonightLineForPlayer(playerId) {
 
 function currentInningOuts(inning = activeChart().currentInning) {
   const chart = activeChart();
-  return Object.values(chart.scorecard || {}).reduce((outs, cell) => {
-    if (cellActualInning(cell, inning) !== Number(inning)) return outs;
+  return Object.entries(chart.scorecard || {}).reduce((outs, [key, cell]) => {
+    const { inning: cellColumn } = parseScoreCellKey(key);
+    if (cellActualInning(cell, cellColumn) !== Number(inning)) return outs;
     if (cell.outOverlay || ["OUT", "K", "Kc", "SF", "BI"].includes(cell.result) || ["OUT", "K", "KC", "SF", "BI"].includes(cell.actionKey)) return outs + 1;
     return outs;
   }, 0);
@@ -1555,8 +1752,15 @@ function limitWords(text, limit = 250) {
 function batterDetailHtml() {
   const slot = getCurrentSlot();
   const player = playerAtSlot(slot);
+  const displayName = batterDisplayLabelAtSlot(slot);
   if (!player) {
-    return `<div class="batter-detail-card empty"><div class="totals-label">Active Batter</div><p class="meta">Set a player in the lineup board to see their detail.</p></div>`;
+    return `
+      <div class="batter-detail-card empty">
+        <div class="totals-label">Active Batter</div>
+        <strong>${escapeHtml(displayName)}</strong>
+        <p class="meta">Assign a roster player in the lineup or Sub/PH dropdown to unlock HUD stats.</p>
+      </div>
+    `;
   }
   const stats = player.stats;
   const rates = calcStats(stats);
@@ -1588,7 +1792,7 @@ function batterDetailHtml() {
   return `
     <div class="batter-detail-card">
       <div class="compact-player-identity">
-        <strong>#${escapeHtml(player.number)} ${escapeHtml(fullName(player))}</strong>
+        <strong>${escapeHtml(displayName)}</strong>
         <span>${escapeHtml(player.pronunciation || "No pronunciation provided")}</span>
         <span>${escapeHtml(playerMeta)}</span>
         <span>${escapeHtml(player.hometown || "No hometown provided")}</span>
@@ -1699,19 +1903,27 @@ function renderInningTotals() {
   const activeCell = chart.scorecard[activeCellLocation.key] || {};
   const activeCount = activeCell.count || "0-0";
   const runners = ["first", "second", "third"].map((base) => {
-    const player = state.players.find((item) => item.id === chart.baseState[base]);
-    return { base, player };
+    const runnerId = chart.baseState[base];
+    const slot = slotForRunnerId(runnerId);
+    const player = playerById(runnerId);
+    return { base, player, runnerId, slot };
   });
   const pitcher = state.players.find((player) => player.id === chart.activePitcherId);
   const liveLine = getPitchingLine(chart);
   const pitcherRates = pitcher ? calcStats(pitcher.stats) : null;
   const outs = currentInningOuts(inning);
+  const pitcherBio = pitcher
+    ? [pitcher.classYear, pitcher.weight ? `Wt ${pitcher.weight}` : "", pitcher.height ? `Ht ${pitcher.height}` : "", pitcher.hometown].filter(Boolean).join(" | ")
+    : "";
   const pitcherCard = pitcher
     ? `
       <div class="compact-pitcher-card">
-        <strong>P #${escapeHtml(pitcher.number)} ${escapeHtml(fullName(pitcher))}</strong>
-        <span class="pitcher-meta">${escapeHtml([pitcher.classYear, pitcher.weight ? `Wt ${pitcher.weight}` : "", pitcher.height ? `Ht ${pitcher.height}` : "", pitcher.hometown].filter(Boolean).join(" | ") || "No pitcher bio provided")}</span>
+        <div class="compact-pitcher-title">
+          <strong>P #${escapeHtml(pitcher.number)} ${escapeHtml(fullName(pitcher))}</strong>
+          ${pitcherBio ? `<span class="pitcher-meta">${escapeHtml(pitcherBio)}</span>` : ""}
+        </div>
         ${hudStatChip("P/S", `${liveLine.pitches}/${liveLine.strikes}`)}
+        ${hudStatChip("BK", liveLine.BK, "count")}
         ${hudStatChip("K", liveLine.K, "count")}
         ${hudStatChip("BB", liveLine.BB, liveLine.BB <= 1 ? "count" : "neutral")}
         ${hudStatChip("H", liveLine.H)}
@@ -1724,7 +1936,7 @@ function renderInningTotals() {
     : `<div class="compact-pitcher-card empty">P --</div>`;
   const compactBases = runners.map(({ base, player }) => {
     const label = base === "first" ? "1B" : base === "second" ? "2B" : "3B";
-    return `${label} ${player ? `#${player.number} ${player.last}` : "--"}`;
+    return `${label} ${baseOccupantLabel(base)}`;
   }).join(" | ");
   els.inningTotals.innerHTML = `
     ${batterDetailHtml()}
@@ -1732,7 +1944,7 @@ function renderInningTotals() {
       <div class="totals-label">Bases</div>
       <div class="compact-run-state">
         <div class="compact-bases-line">${escapeHtml(compactBases)}</div>
-        <div class="compact-count-line">Count ${escapeHtml(activeCount)} | Outs ${Math.min(3, outs)}/3</div>
+        <div class="compact-count-line">Count ${escapeHtml(activeCount)} | ${liveLine.pitches} P | ${liveLine.BK} Bk | Outs ${Math.min(3, outs)}/3</div>
       </div>
       <div class="mini-diamond">
         <svg class="mini-diamond-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
@@ -1741,11 +1953,11 @@ function renderInningTotals() {
           ${chart.baseState.second ? `<line class="mini-path" x1="92" y1="50" x2="50" y2="8" />` : ""}
           ${chart.baseState.third ? `<line class="mini-path" x1="50" y1="8" x2="8" y2="50" />` : ""}
         </svg>
-        ${runners.map(({ base, player }) => {
+        ${runners.map(({ base, player, slot, runnerId }) => {
           const baseClass = base === "first" ? "mini-base-first" : base === "second" ? "mini-base-second" : "mini-base-third";
-          return `<button type="button" class="mini-base ${baseClass} ${player ? "occupied" : ""}" data-clear-base="${base}" title="${player ? `Clear ${base}` : `${base} empty`}">
+          return `<button type="button" class="mini-base ${baseClass} ${runnerId ? "occupied" : ""}" data-clear-base="${base}" title="${runnerId ? `Clear ${base}` : `${base} empty`}">
             <span class="mini-base-mark"></span>
-            <span class="mini-base-label">${player ? `#${escapeHtml(player.number)} ${escapeHtml(player.last)}` : escapeHtml(base[0].toUpperCase() + base.slice(1))}</span>
+            <span class="mini-base-label">${player || slot ? escapeHtml(slot ? runnerDisplayLabelAtSlot(slot, { short: true }) : formatPlayerLabel(player, { short: true })) : escapeHtml(base[0].toUpperCase() + base.slice(1))}</span>
           </button>`;
         }).join("")}
       </div>
@@ -1825,9 +2037,7 @@ function upNextEntryHtml(slot, label, modifier) {
   const player = playerAtSlot(slot);
   const rates = player ? calcStats(player.stats) : null;
   const position = player ? displayPosition(activeChart().lineupPositions?.[slot - 1] || player.position) : "";
-  const nameLine = player
-    ? `#${escapeHtml(player.number)} ${escapeHtml(fullName(player))}${position ? ` (${escapeHtml(position)})` : ""}`
-    : `Lineup ${slot} (empty)`;
+  const nameLine = `${escapeHtml(batterDisplayLabelAtSlot(slot))}${position ? ` (${escapeHtml(position)})` : ""}`;
   const ratesLine = player
     ? `<span>AVG ${rates.AVG}</span><span>OBP ${rates.OBP}</span><span>OPS ${rates.OPS}</span><span>SLG ${rates.SLG}</span>`
     : "";
@@ -1953,27 +2163,25 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
       </button>
     `;
   };
-  const actionButtons = [
-    ["1B", "2B", "3B", "HR"],
-    ["KWP", "KPB", "BI"],
-    ["HBP", "BALK", "CI"]
-  ].map((row) => `
-    <div class="result-button-row result-button-row-${row.length}">
-      ${row.map(actionButtonHtml).join("")}
-    </div>
-  `).join("");
 
   const displacedBadge = isDisplaced ? `<div class="displaced-tag">FROM INN ${actualInning}</div>` : "";
-  const pitchTotal = (cell.pitchDeltas || []).length;
+  const pitchTotal = (cell.pitchDeltas || []).filter((pitch) => pitch.type !== "balk").length;
+  const balkTotal = (cell.pitchDeltas || []).filter((pitch) => pitch.type === "balk").length;
+  const rbiButtons = [1, 2, 3, 4].map((value) => `
+    <button
+      type="button"
+      class="${toNumber(cell.rbi) === value ? "is-on" : ""}"
+      data-rbi="${value}"
+      aria-pressed="${toNumber(cell.rbi) === value ? "true" : "false"}"
+    >${value} RBI</button>
+  `).join("");
 
   const entrySurface = opts.isCompact ? "" : `
     <div class="score-count-row">
       <div class="count-card">
-        <span>${escapeHtml(cell.count || "0-0")} | ${pitchTotal} P</span>
+        <span>${escapeHtml(cell.count || "0-0")} | ${pitchTotal} P | ${balkTotal} Bk</span>
       </div>
-      <select data-score-field="rbi" aria-label="RBI">
-        ${[0, 1, 2, 3, 4].map((value) => `<option value="${value}" ${value === toNumber(cell.rbi) ? "selected" : ""}>${value} RBI</option>`).join("")}
-      </select>
+      <div class="rbi-buttons" role="group" aria-label="Runs batted in">${rbiButtons}</div>
     </div>
   `;
 
@@ -1982,9 +2190,29 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
       <button type="button" data-pitch="ball">Ball</button>
       <button type="button" data-pitch="strike">Strike</button>
       <button type="button" data-pitch="foul">Foul</button>
+      <button type="button" data-pitch="balk">Balk</button>
     </div>
+    <div class="result-buttons">
+      <div class="result-button-row result-button-row-4">
+        ${["HBP", "KWP", "KPB", "CI"].map(actionButtonHtml).join("")}
+      </div>
+      <div class="result-button-row result-button-row-2">
+        ${["BI", "OUT"].map(actionButtonHtml).join("")}
+      </div>
+    </div>
+    <details class="pitcher-adjuster">
+      <summary>Pitcher line</summary>
+      <div class="pitcher-adjust-grid">
+        ${pitcherAdjustmentFields.map(({ key, label }) => `
+          <label>
+            <span>${label}</span>
+            <input type="number" min="0" max="9" step="1" value="${toNumber(cell.pitcherUpdates?.[key])}" data-pitcher-update="${cellKey}" data-pitcher-update-key="${key}" />
+          </label>
+        `).join("")}
+      </div>
+    </details>
+    <div class="control-spacer" aria-hidden="true"></div>
     <button type="button" data-clear-cell="${cellKey}" class="danger clear-action-button" title="Clear cell">Clear AB Data</button>
-    <div class="result-buttons">${actionButtons}</div>
     ${abIndex > 0 ? `<div class="score-result-row"><button type="button" data-remove-ab="${cellKey}" class="muted remove-ab-button" title="Remove extra at-bat">Remove AB</button></div>` : ""}
   ` : "";
 
@@ -2033,11 +2261,11 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
 
 function rowRunnerTerminalForSlot(slotIndex) {
   const chart = activeChart();
-  const playerId = chart.lineup[slotIndex];
-  if (!playerId) return "";
-  if (chart.baseState.first === playerId) return "toFirst";
-  if (chart.baseState.second === playerId) return "toSecond";
-  if (chart.baseState.third === playerId) return "toThird";
+  const runnerId = runnerIdAtSlot(slotIndex + 1);
+  if (!runnerId) return "";
+  if (chart.baseState.first === runnerId) return "toFirst";
+  if (chart.baseState.second === runnerId) return "toSecond";
+  if (chart.baseState.third === runnerId) return "toThird";
   return "";
 }
 
@@ -2060,16 +2288,27 @@ function renderScorecard() {
 
   const rows = Array.from({ length: slotCount }, (_, slotIndex) => {
     const slotNumber = slotIndex + 1;
-    const player = state.players.find((item) => item.id === chart.lineup[slotIndex]);
-    const sub = chart.substitutions[slotIndex] || { playerId: "", text: "", type: "" };
-    const subPlayer = state.players.find((item) => item.id === sub.playerId);
-    const subRates = subPlayer ? calcStats(subPlayer.stats) : null;
-    const subOptions = [`<option value="">Sub</option>`]
-      .concat(sortedPlayers().map((item) => `<option value="${item.id}" ${item.id === sub.playerId ? "selected" : ""}>#${escapeHtml(item.number)} ${escapeHtml(fullName(item))}</option>`))
+    const player = playerAtSlot(slotNumber);
+    const sub = getSlotSubstitution(slotIndex, chart);
+    const batterSubPlayer = playerById(sub.batterPlayerId);
+    const runnerSubPlayer = playerById(sub.runnerPlayerId);
+    const batterSubOptions = [`<option value="">Sub / PH</option>`]
+      .concat(sortedPlayers().map((item) => `<option value="${item.id}" ${item.id === sub.batterPlayerId ? "selected" : ""}>#${escapeHtml(item.number)} ${escapeHtml(fullName(item))}</option>`))
       .join("");
-    const playerLabel = player ? `#${escapeHtml(player.number)} ${escapeHtml(fullName(player))}` : `Lineup ${slotNumber}`;
-    const playerMeta = player ? escapeHtml([displayPosition(chart.lineupPositions?.[slotIndex] || player.position), player.pronunciation].filter(Boolean).join(" - ")) : "Select player in Lineup Board";
-    const rates = player ? calcStats(player.stats) : null;
+    const runnerSubOptions = [`<option value="">PR / CR</option>`]
+      .concat(sortedPlayers().map((item) => `<option value="${item.id}" ${item.id === sub.runnerPlayerId ? "selected" : ""}>#${escapeHtml(item.number)} ${escapeHtml(fullName(item))}</option>`))
+      .join("");
+    const playerLabel = batterDisplayLabelAtSlot(slotNumber);
+    const batterNote = chart.batterNotes?.[slotIndex] || "";
+    const playerMeta = player
+      ? [
+        player.pronunciation,
+        displayPosition(chart.lineupPositions?.[slotIndex] || player.position),
+        player.classYear,
+        player.weight ? `${player.weight}` : "",
+        player.height
+      ].filter(Boolean).join(" | ")
+      : "Select player in Lineup Board";
 
     const isActive = slotNumber === currentSlot;
     const isOnDeck = !isActive && slotNumber === onDeckSlot;
@@ -2113,35 +2352,46 @@ function renderScorecard() {
     return `
       <div class="${rowClasses.join(" ")}" data-slot="${slotNumber}">
         <div class="score-player">
+          <div class="player-pill-row">${statusPill}${runnerPill}</div>
           <div class="score-player-head">
             <button type="button" class="batting-order-badge" data-focus-slot="${slotNumber}" title="Make at-bat">${slotNumber}</button>
             <div class="score-player-headline">
-              <strong>${playerLabel}</strong>
-              <div class="player-pill-row">${statusPill}${runnerPill}</div>
+              <strong>${escapeHtml(playerLabel)}</strong>
+              <span class="score-player-meta">${escapeHtml(playerMeta)}</span>
             </div>
           </div>
-          <span>${playerMeta}</span>
-          ${player ? `
-            <div class="batter-splits">
-              <span class="${toNumber(rates.AVG) >= 0.3 ? "hot" : ""}" title="Batting average">AVG ${rates.AVG}</span>
-              <span title="On-base percentage">OBP ${rates.OBP}</span>
-              <span class="${toNumber(rates.OPS) >= 0.85 ? "power" : ""}" title="On-base plus slugging">OPS ${rates.OPS}</span>
-              <span class="${player.stats.SO > player.stats.BB * 2 ? "risk" : ""}" title="Walks / strikeouts">BB/K ${player.stats.BB}/${player.stats.SO}</span>
+          <div class="sub-grid">
+            <label class="sub-block">
+              <span>Sub / Pinch Hitter</span>
+              <select data-sub-batter-player="${slotIndex}">${batterSubOptions}</select>
+              <input data-sub-batter-text="${slotIndex}" value="${escapeHtml(sub.batterText || "")}" placeholder="write-in sub / PH" />
+            </label>
+            <label class="sub-block">
+              <span>Pinch Runner / Courtesy</span>
+              <select data-sub-runner-player="${slotIndex}">${runnerSubOptions}</select>
+              <input data-sub-runner-text="${slotIndex}" value="${escapeHtml(sub.runnerText || "")}" placeholder="write-in PR / CR" />
+            </label>
+          </div>
+          ${(batterSubPlayer || cleanSubText(sub.batterText) || runnerSubPlayer || cleanSubText(sub.runnerText)) ? `
+            <div class="sub-card-stack">
+              ${(batterSubPlayer || cleanSubText(sub.batterText)) ? `
+                <div class="sub-card">
+                  <strong>SUB / PH</strong>
+                  <span>${escapeHtml(cleanSubText(sub.batterText) || formatPlayerLabel(batterSubPlayer))}</span>
+                </div>
+              ` : ""}
+              ${(runnerSubPlayer || cleanSubText(sub.runnerText)) ? `
+                <div class="sub-card">
+                  <strong>PR / CR</strong>
+                  <span>${escapeHtml(cleanSubText(sub.runnerText) || formatPlayerLabel(runnerSubPlayer))}</span>
+                </div>
+              ` : ""}
             </div>
           ` : ""}
-          ${isActive ? `
-            <div class="sub-row">
-              <select data-sub-player="${slotIndex}">${subOptions}</select>
-              <input data-sub-type="${slotIndex}" value="${escapeHtml(sub.type || "")}" placeholder="PH/PR/CR/DEF" />
-              <input data-sub-text="${slotIndex}" value="${escapeHtml(sub.text || "")}" placeholder="write-in sub" />
-            </div>
-            ${subPlayer ? `
-              <div class="sub-card">
-                <strong>${escapeHtml(sub.type || "SUB")} #${escapeHtml(subPlayer.number)} ${escapeHtml(fullName(subPlayer))}</strong>
-                <span>AVG ${subRates.AVG} OBP ${subRates.OBP} OPS ${subRates.OPS} BB/K ${subPlayer.stats.BB}/${subPlayer.stats.SO}</span>
-              </div>
-            ` : ""}
-          ` : ""}
+          <label class="batter-note-box">
+            <span>At-bat notes</span>
+            <textarea data-batter-note="${slotIndex}" rows="2" placeholder="Situational notes, approach, broadcast reminder...">${escapeHtml(batterNote)}</textarea>
+          </label>
         </div>
         ${cellRowsByColumn}
       </div>
@@ -2168,7 +2418,9 @@ function readChartScoreCell(chart, slotIndex, inning, abIndex = 0) {
 }
 
 function scoreSummaryHtml(cell) {
-  const pitchText = cell.pitchDeltas?.length ? `${cell.pitchDeltas.length} P` : "";
+  const pitchTotal = (cell.pitchDeltas || []).filter((pitch) => pitch.type !== "balk").length;
+  const balkTotal = (cell.pitchDeltas || []).filter((pitch) => pitch.type === "balk").length;
+  const pitchText = pitchTotal || balkTotal ? `${pitchTotal} P${balkTotal ? ` | ${balkTotal} Bk` : ""}` : "";
   const summaryText = [cell.result || cell.notation, cell.runnerNote, cell.count ? `(${cell.count})` : "", pitchText, cell.rbi ? `${cell.rbi} RBI` : ""].filter(Boolean).join(" ");
   const center = cell.result || cell.notation || "-";
   return `
@@ -2261,7 +2513,7 @@ function renderInningCompletion() {
       <strong>Inning ${inning} completed.</strong>
       <span>Do you wish to edit before locking this inning?</span>
       <div class="inning-complete-actions">
-        <button type="button" data-confirm-inning="${inning}">Confirm edits</button>
+        <button type="button" data-move-next-inning="${inning}">Move to next inning</button>
         <button type="button" class="muted" data-continue-inning-edit="${inning}">Continue editing</button>
       </div>
     </div>
@@ -2273,8 +2525,8 @@ function renderChartHud() {
   const opponentPlayers = playersForSide(oppositeSide());
   const pitcher = state.players.find((player) => player.id === chart.activePitcherId);
   const pitcherRates = pitcher ? calcStats(pitcher.stats) : null;
-  const pitcherCount = chart.pitchCounts[chart.activePitcherId] || 0;
   const liveLine = getPitchingLine(chart);
+  const pitcherCount = liveLine.pitches || 0;
   const bullpen = chart.bullpenIds
     .map((id) => state.players.find((player) => player.id === id))
     .filter(Boolean);
@@ -2287,7 +2539,7 @@ function renderChartHud() {
     <section class="hud-panel pitcher-hud">
       <div class="hud-title">
         <h2>Opposing Pitcher</h2>
-        <span>${escapeHtml(pitcher ? `${pitcherCount} pitches` : "Select above")}</span>
+        <span>${escapeHtml(pitcher ? `${pitcherCount} P | ${liveLine.BK} Bk` : "Select above")}</span>
       </div>
       ${pitcher ? `
         <strong>#${escapeHtml(pitcher.number)} ${escapeHtml(fullName(pitcher))}</strong>
@@ -2300,6 +2552,7 @@ function renderChartHud() {
           <span title="Home runs allowed">HR ${pitcher.stats.P_HR || 0}</span>
           <span title="Walks allowed">BB ${pitcher.stats.P_BB || pitcher.stats.BB || 0}</span>
           <span title="Strikeouts">K ${pitcher.stats.P_SO || pitcher.stats.SO || 0}</span>
+          <span title="Balks">BK ${pitcher.stats.P_BK || pitcher.stats.BK || 0}</span>
           <span title="Batting average against">AVG ${pitcher.stats.BAA || 0}</span>
         </div>
         <div class="live-line">
@@ -2310,6 +2563,7 @@ function renderChartHud() {
           <span title="Earned runs">ER ${liveLine.ER}</span>
           <span title="Walks">BB ${liveLine.BB}</span>
           <span title="Strikeouts">K ${liveLine.K}</span>
+          <span title="Balks">BK ${liveLine.BK}</span>
           <span title="Home runs">HR ${liveLine.HR}</span>
           <span title="Batters faced">BF ${liveLine.BF}</span>
           <span title="Pitches / strikes">P/S ${liveLine.pitches}/${liveLine.strikes}</span>
@@ -2318,8 +2572,8 @@ function renderChartHud() {
       <div class="bullpen-strip">
         <strong>Bullpen</strong>
         ${bullpen.length ? bullpen.map((player) => {
-          const count = chart.pitchCounts[player.id] || 0;
-          return `<span>#${escapeHtml(player.number)} ${escapeHtml(fullName(player))} (${count} P)</span>`;
+          const line = getPitchingLine(chart, player.id);
+          return `<span>#${escapeHtml(player.number)} ${escapeHtml(fullName(player))} (${line.pitches} P | ${line.BK} Bk)</span>`;
         }).join("") : `<span>No bullpen arms selected yet.</span>`}
       </div>
       <label>Bullpen / tendencies<textarea data-hud-field="bullpen" rows="4">${escapeHtml(chart.hud.bullpen)}</textarea></label>
@@ -2569,24 +2823,23 @@ function renderPitching() {
   els.bullpenSelect.innerHTML = allPitcherOptions;
 
   const active = state.players.find((player) => player.id === chart.activePitcherId);
-  const activeCount = chart.pitchCounts[chart.activePitcherId] || 0;
-  els.activePitcherLabel.textContent = active ? `${fullName(active)} - ${activeCount} pitches` : "No active pitcher";
+  const activeLine = getPitchingLine(chart);
+  els.activePitcherLabel.textContent = active ? `${fullName(active)} - ${activeLine.pitches} P | ${activeLine.BK} Bk` : "No active pitcher";
 
   const selectedPitcherIds = [...new Set([chart.startingPitcherId, chart.activePitcherId, ...chart.bullpenIds].filter(Boolean))];
   const selectedPitchers = selectedPitcherIds.map((id) => state.players.find((player) => player.id === id)).filter(Boolean);
   els.pitcherCards.innerHTML = selectedPitchers.map((player) => {
-    const count = chart.pitchCounts[player.id] || 0;
     const line = getPitchingLine(chart, player.id);
     const isBullpen = chart.bullpenIds.includes(player.id);
     return `
       <article class="pitcher-card ${player.id === chart.activePitcherId ? "active" : ""}">
         <div>
           <strong>#${escapeHtml(player.number)} ${escapeHtml(fullName(player))}${player.id === chart.startingPitcherId ? " - SP" : ""}${isBullpen ? " - BP" : ""}</strong>
-          <p class="meta">P ${player.stats.Pitches || 0} - W-L ${player.stats.W || 0}-${player.stats.L || 0} - ERA ${player.stats.ERA || 0} - G/GS ${player.stats.GP || 0}/${player.stats.GS || 0} - IP ${player.stats.IP || 0} - HR ${player.stats.P_HR || 0} - BB ${player.stats.P_BB || player.stats.BB || 0} - K ${player.stats.P_SO || player.stats.SO || 0} - AVG ${player.stats.BAA || 0}</p>
-          <p class="meta">Today: IP ${formatIpFromOuts(line.outs)} H ${line.H} R ${line.R} ER ${line.ER} HR ${line.HR} BB ${line.BB} K ${line.K} BF ${line.BF} P/S ${line.pitches}/${line.strikes}</p>
+          <p class="meta">P ${player.stats.Pitches || 0} - W-L ${player.stats.W || 0}-${player.stats.L || 0} - ERA ${player.stats.ERA || 0} - G/GS ${player.stats.GP || 0}/${player.stats.GS || 0} - IP ${player.stats.IP || 0} - HR ${player.stats.P_HR || 0} - BB ${player.stats.P_BB || player.stats.BB || 0} - K ${player.stats.P_SO || player.stats.SO || 0} - BK ${player.stats.P_BK || player.stats.BK || 0} - AVG ${player.stats.BAA || 0}</p>
+          <p class="meta">Today: IP ${formatIpFromOuts(line.outs)} H ${line.H} R ${line.R} ER ${line.ER} HR ${line.HR} BB ${line.BB} K ${line.K} BK ${line.BK} BF ${line.BF} P/S ${line.pitches}/${line.strikes}</p>
           <textarea data-prev-starts="${player.id}" rows="2" placeholder="Previous starts: IP, H, R, ER, HR, BB, K, BF, P/S">${escapeHtml(player.previousStarts || "")}</textarea>
         </div>
-        <div class="number-badge">${count}</div>
+        <div class="number-badge">${line.pitches}</div>
       </article>
     `;
   }).join("") || `<p class="meta">Choose a starter or add bullpen arms from the dropdown. Only selected pitchers show here.</p>`;
@@ -2753,13 +3006,17 @@ async function addPitchToCell(cellKey, type) {
   if (type === "ball") balls = Math.min(3, balls + 1);
   if (type === "strike") strikes = Math.min(2, strikes + 1);
   if (type === "foul") strikes = strikes < 2 ? strikes + 1 : strikes;
-  cell.count = `${balls}-${strikes}`;
+  if (type !== "balk") cell.count = `${balls}-${strikes}`;
 
   if (chart.activePitcherId) {
-    chart.pitchCounts[chart.activePitcherId] = (chart.pitchCounts[chart.activePitcherId] || 0) + 1;
     const line = getPitchingLine(chart, chart.activePitcherId);
-    line.pitches += 1;
-    if (type === "strike" || type === "foul") line.strikes += 1;
+    if (type === "balk") {
+      line.BK += 1;
+    } else {
+      chart.pitchCounts[chart.activePitcherId] = (chart.pitchCounts[chart.activePitcherId] || 0) + 1;
+      line.pitches += 1;
+      if (type === "strike" || type === "foul") line.strikes += 1;
+    }
   }
 
   const pitchEvent = {
@@ -2767,12 +3024,14 @@ async function addPitchToCell(cellKey, type) {
     pitcherId: chart.activePitcherId,
     type,
     cellKey,
-    count: cell.count,
+    count: cell.count || "0-0",
     createdAt: new Date().toISOString()
   };
   chart.pitchLog.unshift(pitchEvent);
   cell.pitchDeltas = cell.pitchDeltas || [];
   cell.pitchDeltas.push({ id: pitchEvent.id, pitcherId: chart.activePitcherId, type });
+
+  if (type === "balk") return;
 
   const canAutoLogResult = !cell.actionKey && !cell.eventId && !cell.notation && !cell.result;
   if (canAutoLogResult && type === "ball" && ballsRaw >= 3) {
@@ -2788,7 +3047,7 @@ async function addPitchToCell(cellKey, type) {
 function applyChartAction(cellKey, actionKey) {
   const chart = activeChart();
   const [slot, inning, abNumber] = cellKey.split("-").map(Number);
-  const batterId = chart.lineup[slot - 1];
+  const batterId = batterIdAtSlot(slot);
   const action = chartActions[actionKey];
   if (!action || !batterId) return;
 
@@ -2815,7 +3074,10 @@ function applyChartAction(cellKey, actionKey) {
   if (["2B", "3B"].includes(actionKey)) inningUpdates.RISP = (inningUpdates.RISP || 0) + 1;
 
   const batterTerminal = activeDiamondTerminal(cell.bases);
-  setBatterBaseState(chart, batterId, batterTerminal === "toHome" ? "" : batterTerminal);
+  const liveRunnerId = batterTerminal && batterTerminal !== "toHome" ? (runnerIdAtSlot(slot) || batterId) : batterId;
+  if (liveRunnerId) cell.runnerId = liveRunnerId;
+  else delete cell.runnerId;
+  setBatterBaseState(chart, liveRunnerId, batterTerminal === "toHome" ? "" : batterTerminal);
 
   addToInningTotals(effectiveInning, inningUpdates, 1);
 
@@ -3215,20 +3477,28 @@ function setupEvents() {
     container?.addEventListener("click", (event) => {
       const chart = activeChart();
       const confirmInning = event.target.closest("[data-confirm-inning]")?.dataset.confirmInning;
+      const moveNextInning = event.target.closest("[data-move-next-inning]")?.dataset.moveNextInning;
       const continueEdit = event.target.closest("[data-continue-inning-edit]")?.dataset.continueInningEdit;
       const editCompleted = event.target.closest("[data-edit-completed-inning]")?.dataset.editCompletedInning;
       if (confirmInning) {
         chart.completedInnings[confirmInning] = true;
         delete chart.editingCompletedInnings[confirmInning];
       }
+      if (moveNextInning) {
+        chart.completedInnings[moveNextInning] = true;
+        delete chart.editingCompletedInnings[moveNextInning];
+        if (Number(moveNextInning) < Number(state.inningCount || 9)) {
+          setChartInning(chart, Number(moveNextInning) + 1);
+        }
+      }
       if (continueEdit || editCompleted) {
         const inning = continueEdit || editCompleted;
         chart.editingCompletedInnings[inning] = true;
         delete chart.completedInnings[inning];
       }
-      if (confirmInning || continueEdit || editCompleted) {
+      if (confirmInning || moveNextInning || continueEdit || editCompleted) {
         saveState();
-        renderScorecard();
+        render();
       }
     });
   });
@@ -3236,18 +3506,37 @@ function setupEvents() {
   els.scorecardGrid.addEventListener("input", (event) => {
     const cellEl = event.target.closest("[data-score-cell]");
     const field = event.target.dataset.scoreField;
-    const subPlayer = event.target.dataset.subPlayer;
-    const subType = event.target.dataset.subType;
-    const subText = event.target.dataset.subText;
-    if (subPlayer !== undefined || subType !== undefined || subText !== undefined) {
-      const slotIndex = subPlayer ?? subType ?? subText;
+    const batterSubPlayer = event.target.dataset.subBatterPlayer;
+    const batterSubText = event.target.dataset.subBatterText;
+    const runnerSubPlayer = event.target.dataset.subRunnerPlayer;
+    const runnerSubText = event.target.dataset.subRunnerText;
+    const batterNote = event.target.dataset.batterNote;
+    const pitcherUpdateCell = event.target.dataset.pitcherUpdate;
+    const pitcherUpdateKey = event.target.dataset.pitcherUpdateKey;
+    if (batterNote !== undefined) {
       const chart = activeChart();
-      chart.substitutions[slotIndex] = chart.substitutions[slotIndex] || { playerId: "", type: "", text: "" };
-      if (subPlayer !== undefined) chart.substitutions[slotIndex].playerId = event.target.value;
-      if (subType !== undefined) chart.substitutions[slotIndex].type = event.target.value;
-      if (subText !== undefined) chart.substitutions[slotIndex].text = event.target.value;
+      chart.batterNotes = chart.batterNotes || {};
+      chart.batterNotes[batterNote] = event.target.value;
       saveState();
-      if (subPlayer !== undefined) renderScorecard();
+      return;
+    }
+    if (pitcherUpdateCell && pitcherUpdateKey) {
+      setCellPitcherUpdate(pitcherUpdateCell, pitcherUpdateKey, event.target.value);
+      saveState();
+      return;
+    }
+    if (batterSubPlayer !== undefined || batterSubText !== undefined || runnerSubPlayer !== undefined || runnerSubText !== undefined) {
+      const slotIndex = batterSubPlayer ?? batterSubText ?? runnerSubPlayer ?? runnerSubText;
+      const chart = activeChart();
+      if (runnerSubPlayer !== undefined || runnerSubText !== undefined) {
+        event.target.dataset.prevRunnerId = liveRunnerIdForSlot(Number(slotIndex), chart);
+      }
+      const sub = getSlotSubstitution(Number(slotIndex), chart);
+      if (batterSubPlayer !== undefined) sub.batterPlayerId = event.target.value;
+      if (batterSubText !== undefined) sub.batterText = cleanSubText(event.target.value);
+      if (runnerSubPlayer !== undefined) sub.runnerPlayerId = event.target.value;
+      if (runnerSubText !== undefined) sub.runnerText = cleanSubText(event.target.value);
+      saveState();
       return;
     }
     if (!cellEl || !field) return;
@@ -3256,7 +3545,29 @@ function setupEvents() {
     saveState();
   });
 
-  els.scorecardGrid.addEventListener("change", (event) => {
+  els.scorecardGrid.addEventListener("change", async (event) => {
+    const batterSubPlayer = event.target.dataset.subBatterPlayer;
+    const batterSubText = event.target.dataset.subBatterText;
+    const runnerSubPlayer = event.target.dataset.subRunnerPlayer;
+    const runnerSubText = event.target.dataset.subRunnerText;
+    if (batterSubPlayer !== undefined || batterSubText !== undefined || runnerSubPlayer !== undefined || runnerSubText !== undefined) {
+      const slotIndex = Number(batterSubPlayer ?? batterSubText ?? runnerSubPlayer ?? runnerSubText);
+      const chart = activeChart();
+      const previousRunnerId = event.target.dataset.prevRunnerId || liveRunnerIdForSlot(slotIndex, chart);
+      const sub = getSlotSubstitution(slotIndex, chart);
+      if (batterSubPlayer !== undefined) sub.batterPlayerId = event.target.value;
+      if (batterSubText !== undefined) sub.batterText = cleanSubText(event.target.value);
+      if (runnerSubPlayer !== undefined) sub.runnerPlayerId = event.target.value;
+      if (runnerSubText !== undefined) sub.runnerText = cleanSubText(event.target.value);
+      if (runnerSubPlayer !== undefined || runnerSubText !== undefined) {
+        const nextRunnerId = runnerIdAtSlot(slotIndex + 1);
+        updateLiveRunnerAssignmentForSlot(slotIndex, previousRunnerId, nextRunnerId);
+      }
+      delete event.target.dataset.prevRunnerId;
+      saveState();
+      render();
+      return;
+    }
     const cellEl = event.target.closest("[data-score-cell]");
     const field = event.target.dataset.scoreField;
     if (!cellEl || field !== "notation") return;
@@ -3265,6 +3576,13 @@ function setupEvents() {
     cell.notation = typedNotation;
     const actionKey = notationActionKey(typedNotation);
     if (actionKey && cell.actionKey !== actionKey) {
+      if (actionKey === "BALK") {
+        await addPitchToCell(cellEl.dataset.scoreCell, "balk");
+        getScoreCellFromKey(cellEl.dataset.scoreCell).notation = typedNotation;
+        saveState();
+        render();
+        return;
+      }
       applyChartAction(cellEl.dataset.scoreCell, actionKey);
       getScoreCellFromKey(cellEl.dataset.scoreCell).notation = typedNotation;
       saveState();
@@ -3280,6 +3598,7 @@ function setupEvents() {
     const base = baseTarget?.dataset.base;
     const clearKey = event.target.dataset.clearCell;
     const pitch = event.target.dataset.pitch;
+    const rbiValue = event.target.dataset.rbi;
     const chartAction = event.target.dataset.chartAction;
     const addAb = event.target.dataset.addAb;
     const removeAb = event.target.dataset.removeAb;
@@ -3343,7 +3662,7 @@ function setupEvents() {
       const cell = getScoreCellFromKey(stealCellKey);
       clearRunnerOutcome(cell);
       const { slot } = parseScoreCellKey(stealCellKey);
-      const runnerId = activeChart().lineup[slot - 1];
+      const runnerId = cell.runnerId || runnerIdAtSlot(slot);
       if (runnerId && stealTerminal !== "toFirst") addRunnerStatDelta(cell, runnerId, "SB", 1);
       cell.runnerNote = terminalEventLabel("SB", stealTerminal);
       saveState();
@@ -3354,7 +3673,7 @@ function setupEvents() {
       const cell = getScoreCellFromKey(csCellKey);
       const sequence = await promptThrowSequence("Caught stealing", defaultCsSequence(csTerminal));
       const { slot } = parseScoreCellKey(csCellKey);
-      const runnerId = chart.lineup[slot - 1];
+      const runnerId = cell.runnerId || runnerIdAtSlot(slot);
       clearRunnerOutcome(cell);
       if (!cell.baseStateBefore) cell.baseStateBefore = { ...chart.baseState };
       cell.bases = diamondPathThrough(csTerminal);
@@ -3374,7 +3693,7 @@ function setupEvents() {
       const cell = getScoreCellFromKey(pickCellKey);
       const sequence = await promptThrowSequence("Pickoff", defaultPickSequence(pickTerminal));
       const { slot } = parseScoreCellKey(pickCellKey);
-      const runnerId = chart.lineup[slot - 1];
+      const runnerId = cell.runnerId || runnerIdAtSlot(slot);
       clearRunnerOutcome(cell);
       if (!cell.baseStateBefore) cell.baseStateBefore = { ...chart.baseState };
       cell.bases = diamondPathThrough(pickTerminal);
@@ -3390,7 +3709,7 @@ function setupEvents() {
       const chart = activeChart();
       const cell = getScoreCellFromKey(riCellKey);
       const { slot } = parseScoreCellKey(riCellKey);
-      const runnerId = chart.lineup[slot - 1];
+      const runnerId = cell.runnerId || runnerIdAtSlot(slot);
       clearRunnerOutcome(cell);
       if (!cell.baseStateBefore) cell.baseStateBefore = { ...chart.baseState };
       cell.bases = diamondPathThrough(riTerminal);
@@ -3415,6 +3734,14 @@ function setupEvents() {
       activeChart().extraAbs[key] = toNumber(activeChart().extraAbs[key]) + 1;
       saveState();
       renderScorecard();
+    }
+    if (rbiValue !== undefined) {
+      const cellEl = event.target.closest("[data-score-cell]");
+      const cell = getScoreCellFromKey(cellEl.dataset.scoreCell);
+      const nextValue = Number(rbiValue);
+      cell.rbi = toNumber(cell.rbi) === nextValue ? 0 : nextValue;
+      saveState();
+      render();
     }
     if (removeAb) {
       removeExtraAtBat(removeAb);
