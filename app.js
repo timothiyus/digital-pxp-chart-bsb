@@ -172,6 +172,28 @@ const els = {
   appPromptConfirm: document.querySelector("#appPromptConfirm")
 };
 
+function newGameEntry(label) {
+  return {
+    id: uid("game"),
+    label: label || "Game 1",
+    game: {
+      teamName: "Garden City CC",
+      opponentName: "",
+      gameDate: new Date().toISOString().slice(0, 10),
+      notes: ""
+    },
+    inningCount: 9,
+    charts: {
+      home: newChartState(),
+      away: newChartState()
+    },
+    teamMeta: {
+      home: emptyTeamMeta(),
+      away: emptyTeamMeta()
+    }
+  };
+}
+
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
@@ -183,12 +205,8 @@ function loadState() {
   }
 
   return {
-    game: {
-      teamName: "Garden City CC",
-      opponentName: "",
-      gameDate: new Date().toISOString().slice(0, 10),
-      notes: ""
-    },
+    games: [newGameEntry("Game 1")],
+    activeGameIndex: 0,
     activeSide: "home",
     settings: {
       showAtBatControls: false,
@@ -196,15 +214,6 @@ function loadState() {
     },
     players: [],
     events: [],
-    inningCount: 9,
-    charts: {
-      home: newChartState(),
-      away: newChartState()
-    },
-    teamMeta: {
-      home: emptyTeamMeta(),
-      away: emptyTeamMeta()
-    },
     sources: [],
     boxScores: []
   };
@@ -271,26 +280,12 @@ function newChartState() {
   };
 }
 
-function normalizeState() {
-  state.activeSide = state.activeSide || "home";
-  state.inningCount = state.inningCount || 9;
-  if (!state.charts) {
-    state.charts = {
-      home: {
-        ...newChartState(),
-        lineup: state.lineup || Array.from({ length: 9 }, () => ""),
-        lineupPositions: state.lineupPositions || Array.from({ length: 9 }, () => ""),
-        scorecard: state.scorecard || {}
-      },
-      away: newChartState()
-    };
-    delete state.lineup;
-    delete state.lineupPositions;
-    delete state.scorecard;
-  }
-  state.charts.home = { ...newChartState(), ...state.charts.home };
-  state.charts.away = { ...newChartState(), ...state.charts.away };
-  Object.values(state.charts).forEach((chart) => {
+function normalizeCharts(charts) {
+  if (!charts.home) charts.home = newChartState();
+  if (!charts.away) charts.away = newChartState();
+  charts.home = { ...newChartState(), ...charts.home };
+  charts.away = { ...newChartState(), ...charts.away };
+  Object.values(charts).forEach((chart) => {
     chart.substitutions = chart.substitutions || {};
     Object.keys(chart.substitutions).forEach((slotIndex) => {
       chart.substitutions[slotIndex] = normalizeSubstitutionEntry(chart.substitutions[slotIndex]);
@@ -320,21 +315,21 @@ function normalizeState() {
       }
     };
   });
-  state.sources = state.sources || [];
-  state.boxScores = state.boxScores || [];
-  state.events = state.events || [];
-  state.teamMeta = {
-    home: { ...emptyTeamMeta(), ...(state.teamMeta?.home || {}) },
-    away: { ...emptyTeamMeta(), ...(state.teamMeta?.away || {}) }
+}
+
+function normalizeTeamMeta(teamMeta) {
+  const result = {
+    home: { ...emptyTeamMeta(), ...(teamMeta?.home || {}) },
+    away: { ...emptyTeamMeta(), ...(teamMeta?.away || {}) }
   };
   ["home", "away"].forEach((side) => {
-    state.teamMeta[side].records = Array.from({ length: 10 }, (_, index) => ({
+    result[side].records = Array.from({ length: 10 }, (_, index) => ({
       season: "",
       overall: "",
       conference: "",
-      ...((state.teamMeta[side].records || [])[index] || {})
+      ...((result[side].records || [])[index] || {})
     }));
-    state.teamMeta[side].coaches = (state.teamMeta[side].coaches || []).map((coach) => ({
+    result[side].coaches = (result[side].coaches || []).map((coach) => ({
       id: coach.id || uid("coach"),
       name: "",
       title: "",
@@ -343,6 +338,55 @@ function normalizeState() {
       ...coach
     }));
   });
+  return result;
+}
+
+function normalizeState() {
+  state.activeSide = state.activeSide || "home";
+
+  // Migrate old single-game state format to games array
+  if (!state.games) {
+    const charts = state.charts || {
+      home: {
+        ...newChartState(),
+        lineup: state.lineup || Array.from({ length: 9 }, () => ""),
+        lineupPositions: state.lineupPositions || Array.from({ length: 9 }, () => ""),
+        scorecard: state.scorecard || {}
+      },
+      away: newChartState()
+    };
+    state.games = [{
+      id: uid("game"),
+      label: "Game 1",
+      game: state.game || { teamName: "Garden City CC", opponentName: "", gameDate: new Date().toISOString().slice(0, 10), notes: "" },
+      inningCount: state.inningCount || 9,
+      charts,
+      teamMeta: state.teamMeta || { home: emptyTeamMeta(), away: emptyTeamMeta() }
+    }];
+    delete state.game;
+    delete state.inningCount;
+    delete state.charts;
+    delete state.teamMeta;
+    delete state.lineup;
+    delete state.lineupPositions;
+    delete state.scorecard;
+  }
+
+  state.activeGameIndex = Math.min(state.activeGameIndex ?? 0, state.games.length - 1);
+
+  state.games.forEach((entry, i) => {
+    entry.id = entry.id || uid("game");
+    entry.label = entry.label || `Game ${i + 1}`;
+    entry.game = { teamName: "Garden City CC", opponentName: "", gameDate: new Date().toISOString().slice(0, 10), notes: "", ...(entry.game || {}) };
+    entry.inningCount = entry.inningCount || 9;
+    entry.charts = entry.charts || { home: newChartState(), away: newChartState() };
+    normalizeCharts(entry.charts);
+    entry.teamMeta = normalizeTeamMeta(entry.teamMeta);
+  });
+
+  state.sources = state.sources || [];
+  state.boxScores = state.boxScores || [];
+  state.events = state.events || [];
   state.fullChartSide = state.fullChartSide || state.activeSide || "home";
   state.settings = {
     showAtBatControls: false,
@@ -428,8 +472,12 @@ function formatIpValue(value) {
   return formatIpFromOuts(ipToOuts(value));
 }
 
+function activeGame() {
+  return state.games[state.activeGameIndex ?? 0];
+}
+
 function activeChart() {
-  return state.charts[state.activeSide];
+  return activeGame().charts[state.activeSide];
 }
 
 function cleanSubText(value) {
@@ -2042,7 +2090,7 @@ function loadBaseStateForInning(chart, inning) {
 
 function setChartInning(chart, inning) {
   syncCurrentBaseState(chart);
-  chart.currentInning = Math.min(Number(state.inningCount || 9), Math.max(1, Number(inning) || 1));
+  chart.currentInning = Math.min(Number(activeGame().inningCount || 9), Math.max(1, Number(inning) || 1));
   loadBaseStateForInning(chart, chart.currentInning);
 }
 
@@ -2318,17 +2366,17 @@ function renderSetup() {
   document.querySelectorAll(".side-tab").forEach((tab) => {
     applySideTabColors(tab);
     tab.classList.toggle("active", tab.dataset.side === state.activeSide);
-    tab.textContent = tab.dataset.side === "home" ? (state.game.teamName || "My Team") : (state.game.opponentName || "Opponent");
+    tab.textContent = tab.dataset.side === "home" ? (activeGame().game.teamName || "My Team") : (activeGame().game.opponentName || "Opponent");
   });
-  els.teamName.value = state.game.teamName;
-  els.opponentName.value = state.game.opponentName;
-  els.gameDate.value = state.game.gameDate;
-  els.gameNotes.value = state.game.notes;
+  els.teamName.value = activeGame().game.teamName;
+  els.opponentName.value = activeGame().game.opponentName;
+  els.gameDate.value = activeGame().game.gameDate;
+  els.gameNotes.value = activeGame().game.notes;
   if (els.teamProfilePanel) els.teamProfilePanel.innerHTML = teamSetupHtml(state.activeSide);
   if (els.showAtBatControls) els.showAtBatControls.checked = Boolean(state.settings.showAtBatControls);
   if (els.showFocusControls) els.showFocusControls.checked = Boolean(state.settings.showFocusControls);
   if (!state.settings.showFocusControls) {
-    Object.values(state.charts).forEach((chart) => {
+    Object.values(activeGame().charts).forEach((chart) => {
       chart.viewMode = "all";
     });
   }
@@ -2337,10 +2385,10 @@ function renderSetup() {
   els.rosterSummary.textContent = players.length ? `${players.length} editable player cards` : "No players yet";
   els.inningCount.innerHTML = Array.from({ length: 18 }, (_, index) => {
     const value = index + 3;
-    return `<option value="${value}" ${value === Number(state.inningCount) ? "selected" : ""}>${value}</option>`;
+    return `<option value="${value}" ${value === Number(activeGame().inningCount) ? "selected" : ""}>${value}</option>`;
   }).join("");
-  els.inningCount.value = String(state.inningCount);
-  els.currentInning.innerHTML = Array.from({ length: Number(state.inningCount || 9) }, (_, index) => {
+  els.inningCount.value = String(activeGame().inningCount);
+  els.currentInning.innerHTML = Array.from({ length: Number(activeGame().inningCount || 9) }, (_, index) => {
     const value = index + 1;
     return `<option value="${value}" ${value === Number(activeChart().currentInning) ? "selected" : ""}>${value}</option>`;
   }).join("");
@@ -2918,16 +2966,17 @@ function aggregateTeamStats(side) {
 }
 
 function teamMetaForSide(side) {
-  state.teamMeta = state.teamMeta || {};
-  state.teamMeta[side] = { ...emptyTeamMeta(), ...(state.teamMeta[side] || {}) };
-  state.teamMeta[side].records = Array.from({ length: 10 }, (_, index) => ({
+  const game = activeGame();
+  game.teamMeta = game.teamMeta || {};
+  game.teamMeta[side] = { ...emptyTeamMeta(), ...(game.teamMeta[side] || {}) };
+  game.teamMeta[side].records = Array.from({ length: 10 }, (_, index) => ({
     season: "",
     overall: "",
     conference: "",
-    ...((state.teamMeta[side].records || [])[index] || {})
+    ...((game.teamMeta[side].records || [])[index] || {})
   }));
-  state.teamMeta[side].coaches = state.teamMeta[side].coaches || [];
-  return state.teamMeta[side];
+  game.teamMeta[side].coaches = game.teamMeta[side].coaches || [];
+  return game.teamMeta[side];
 }
 
 function teamInitials(name) {
@@ -3372,15 +3421,15 @@ function renderInningTotals() {
       ${pitcherCard}
     </div>
   `;
-  els.inningTotals.style.setProperty("--innings", Number(state.inningCount || 9) + 1);
+  els.inningTotals.style.setProperty("--innings", Number(activeGame().inningCount || 9) + 1);
 }
 
 function sideLabel(side) {
-  return side === "home" ? (state.game.teamName || "My Team") : (state.game.opponentName || "Opponent");
+  return side === "home" ? (activeGame().game.teamName || "My Team") : (activeGame().game.opponentName || "Opponent");
 }
 
 function lineScoreHtml({ inning = Number(activeChart().currentInning || 1), highlightedSide = state.activeSide } = {}) {
-  const innings = Number(state.inningCount || 9);
+  const innings = Number(activeGame().inningCount || 9);
   const totalKeys = ["R", "H", "E", "LOB", "RISP"];
   const sideLineTotals = (chart) => Array.from({ length: innings }, (_, index) => getChartInningTotals(chart, index + 1))
     .reduce((acc, item) => {
@@ -3402,7 +3451,7 @@ function lineScoreHtml({ inning = Number(activeChart().currentInning || 1), high
         </thead>
         <tbody>
           ${["home", "away"].map((side) => {
-            const chart = state.charts[side];
+            const chart = activeGame().charts[side];
             const lineTotals = sideLineTotals(chart);
             return `
               <tr class="${side === highlightedSide ? "active-side" : ""}">
@@ -3872,8 +3921,8 @@ function fullChartSummaryStackHtml(chart, slotIndex, inning) {
 function renderFullScorecard() {
   if (!els.fullScorecardGrid) return;
   const side = state.fullChartSide || state.activeSide;
-  const chart = state.charts[side] || activeChart();
-  const innings = Number(state.inningCount || 9);
+  const chart = activeGame().charts[side] || activeChart();
+  const innings = Number(activeGame().inningCount || 9);
   const lastLineupIndex = chart.lineup.reduce((last, playerId, index) => playerId ? index : last, -1);
   const slotCount = Math.max(9, lastLineupIndex + 1);
   els.fullScorecardGrid.style.setProperty("--innings", innings);
@@ -4253,8 +4302,42 @@ function renderDataView() {
   }
 }
 
+function addGame() {
+  const current = activeGame();
+  const gameNum = state.games.length + 1;
+  const entry = newGameEntry(`Game ${gameNum}`);
+  entry.game.teamName = current.game.teamName;
+  entry.game.opponentName = current.game.opponentName;
+  entry.game.gameDate = current.game.gameDate;
+  entry.inningCount = current.inningCount;
+  entry.teamMeta = JSON.parse(JSON.stringify(current.teamMeta));
+  ["home", "away"].forEach((side) => {
+    const src = current.charts[side];
+    const dst = entry.charts[side];
+    dst.lineup = [...src.lineup];
+    dst.lineupPositions = [...src.lineupPositions];
+    dst.startingPitcherId = src.startingPitcherId;
+    dst.activePitcherId = src.startingPitcherId;
+    dst.bullpenIds = [...src.bullpenIds];
+    dst.hud = JSON.parse(JSON.stringify(src.hud));
+  });
+  state.games.push(entry);
+  state.activeGameIndex = state.games.length - 1;
+  saveState();
+  render();
+}
+
+function renderGameSwitcher() {
+  const el = document.querySelector("#gameSwitcher");
+  if (!el) return;
+  el.innerHTML = state.games.map((entry, i) => `
+    <button class="game-tab${i === state.activeGameIndex ? " active" : ""}" data-game-index="${i}">${escapeHtml(entry.label)}</button>
+  `).join("") + `<button class="game-tab game-tab-add" id="addGameButton">+ Add Game</button>`;
+}
+
 function render() {
   applyActiveTeamColors();
+  renderGameSwitcher();
   renderSetup();
   renderChartHud();
   renderUpNextStrip();
@@ -4687,7 +4770,7 @@ function setupEvents() {
 
   ["teamName", "opponentName", "gameDate", "gameNotes"].forEach((key) => {
     els[key].addEventListener("input", () => {
-      state.game[key === "gameNotes" ? "notes" : key] = els[key].value;
+      activeGame().game[key === "gameNotes" ? "notes" : key] = els[key].value;
       saveState();
     });
   });
@@ -4697,7 +4780,7 @@ function setupEvents() {
     els[key].addEventListener("change", () => {
       state.settings[key] = els[key].checked;
       if (key === "showFocusControls" && !els[key].checked) {
-        Object.values(state.charts).forEach((chart) => {
+        Object.values(activeGame().charts).forEach((chart) => {
           chart.viewMode = "all";
         });
       }
@@ -4890,6 +4973,18 @@ function setupEvents() {
     });
   });
 
+  document.querySelector("#gameSwitcher")?.addEventListener("click", (event) => {
+    const btn = event.target.closest("button");
+    if (!btn) return;
+    if (btn.id === "addGameButton") { addGame(); return; }
+    const idx = Number(btn.dataset.gameIndex);
+    if (!Number.isNaN(idx) && idx !== state.activeGameIndex) {
+      state.activeGameIndex = idx;
+      saveState();
+      render();
+    }
+  });
+
   document.querySelectorAll(".data-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       document.querySelectorAll(".data-tab").forEach((t) => t.classList.toggle("active", t === tab));
@@ -4916,7 +5011,7 @@ function setupEvents() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `pxp-baseball-${state.game.teamName || "team"}.json`;
+    anchor.download = `pxp-baseball-${activeGame().game.teamName || "team"}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
   });
@@ -5113,7 +5208,7 @@ function setupEvents() {
   });
 
   els.inningCount.addEventListener("change", () => {
-    state.inningCount = Number(els.inningCount.value);
+    activeGame().inningCount = Number(els.inningCount.value);
     saveState();
     render();
   });
@@ -5210,7 +5305,7 @@ function setupEvents() {
     const fullChartAb = event.target.dataset.fullChartAb;
     if (!fullChartAb) return;
     const { slot, inning } = parseScoreCellKey(fullChartAb);
-    const chart = state.charts[state.fullChartSide || state.activeSide] || activeChart();
+    const chart = activeGame().charts[state.fullChartSide || state.activeSide] || activeChart();
     setSelectedAbForSlotInning(slot - 1, inning, event.target.value, chart);
     saveState();
     renderFullScorecard();
@@ -5237,7 +5332,7 @@ function setupEvents() {
       if (moveNextInning) {
         chart.completedInnings[moveNextInning] = true;
         delete chart.editingCompletedInnings[moveNextInning];
-        if (Number(moveNextInning) < Number(state.inningCount || 9)) {
+        if (Number(moveNextInning) < Number(activeGame().inningCount || 9)) {
           setChartInning(chart, Number(moveNextInning) + 1);
         }
       }
@@ -5582,9 +5677,11 @@ function setupEvents() {
 
     if (deleteId && confirm("Delete this player?")) {
       state.players = state.players.filter((player) => player.id !== deleteId);
-      Object.values(state.charts).forEach((chart) => {
-        chart.lineup = chart.lineup.map((id) => id === deleteId ? "" : id);
-        if (chart.activePitcherId === deleteId) chart.activePitcherId = "";
+      state.games.forEach((entry) => {
+        Object.values(entry.charts).forEach((chart) => {
+          chart.lineup = chart.lineup.map((id) => id === deleteId ? "" : id);
+          if (chart.activePitcherId === deleteId) chart.activePitcherId = "";
+        });
       });
       saveState();
       render();

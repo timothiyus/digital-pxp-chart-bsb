@@ -282,6 +282,54 @@ textarea {
   margin-bottom: 12px;
 }
 
+.game-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.game-switcher:empty {
+  display: none;
+}
+
+.game-tab {
+  background: #fff;
+  color: var(--active-team-primary, var(--accent-strong));
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.game-tab:hover {
+  background: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
+  border-color: var(--active-team-primary, var(--accent));
+}
+
+.game-tab.active {
+  background: var(--active-team-primary, var(--accent));
+  color: var(--active-team-secondary, #fff);
+  border-color: var(--active-team-primary, var(--accent));
+}
+
+.game-tab-add {
+  background: transparent;
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.game-tab-add:hover {
+  background: var(--accent-faint, #e9efeb);
+  color: var(--active-team-primary, var(--accent-strong));
+  border-color: var(--active-team-primary, var(--accent));
+}
+
 .tab {
   background: #fff;
   color: var(--active-team-primary, var(--accent-strong));
