@@ -1,5 +1,4 @@
-// Bump CACHE_NAME on every deploy so clients pick up the new shell.
-const CACHE_NAME = "pxp-baseball-v1";
+const CACHE_NAME = "pxp-baseball-v2";
 const SHELL = ["./", "./index.html", "./app.js", "./styles.css", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -23,7 +22,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  if (req.mode === "navigate" || req.destination === "document") {
+  if (req.mode === "navigate" || ["document", "script", "style", "manifest"].includes(req.destination)) {
     event.respondWith(
       fetch(req)
         .then((res) => {

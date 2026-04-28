@@ -1,5 +1,5 @@
 const STORAGE_KEY = "pxp-baseball-chart-v1";
-const APP_VERSION = "v1";
+const APP_VERSION = "v2";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -5576,10 +5576,15 @@ function populateNotationDatalist() {
     .join("");
 }
 
+let appEventsWired = false;
+
 function bootApp() {
   normalizeState();
   populateNotationDatalist();
-  setupEvents();
+  if (!appEventsWired) {
+    setupEvents();
+    appEventsWired = true;
+  }
   render();
 }
 
