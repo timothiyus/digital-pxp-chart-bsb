@@ -1,109 +1,48 @@
-create table if not exists teams (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid references auth.users(id) on delete cascade,
-  name text not null,
-  created_at timestamptz not null default now(),
+-- PxP Baseball Chart — Supabase schema (stingray-tracker pattern)
+--
+-- Single JSON-document table per user. The full client state ships up
+-- as a blob. RLS scopes everything to the signed-in user. Realtime fans
+-- changes back out to that user's other devices.
+--
+-- Run this once in the Supabase SQL editor. After running:
+--   1. Database -> Replication -> enable Realtime on `app_state`
+--   2. Authentication -> Email Templates -> set "Magic Link" body to use
+--      {{ .Token }} (6-digit code) instead of {{ .ConfirmationURL }}
+--   3. Authentication -> SMTP -> point at Resend (host smtp.resend.com,
+--      port 465, user `resend`, pass = your Resend API key)
+
+create table if not exists app_state (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  state jsonb not null default '{}'::jsonb,
+  last_client_id text,
   updated_at timestamptz not null default now()
 );
 
-create table if not exists games (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid references auth.users(id) on delete cascade,
-  team_id uuid references teams(id) on delete cascade,
-  opponent_name text,
-  game_date date,
-  notes text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+alter table app_state enable row level security;
 
-create table if not exists players (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid references auth.users(id) on delete cascade,
-  team_id uuid references teams(id) on delete cascade,
-  number text,
-  first_name text,
-  last_name text,
-  pronunciation text,
-  position text,
-  class_year text,
-  notes text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+drop policy if exists "Users read own state" on app_state;
+drop policy if exists "Users insert own state" on app_state;
+drop policy if exists "Users update own state" on app_state;
+drop policy if exists "Users delete own state" on app_state;
 
-create table if not exists player_stats (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid references auth.users(id) on delete cascade,
-  player_id uuid references players(id) on delete cascade,
-  season text,
-  stats jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (player_id, season)
-);
+create policy "Users read own state" on app_state
+  for select using (auth.uid() = user_id);
 
-create table if not exists game_lineups (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid references auth.users(id) on delete cascade,
-  game_id uuid references games(id) on delete cascade,
-  player_id uuid references players(id) on delete set null,
-  batting_order int not null check (batting_order between 1 and 9),
-  position text,
-  created_at timestamptz not null default now(),
-  unique (game_id, batting_order)
-);
+create policy "Users insert own state" on app_state
+  for insert with check (auth.uid() = user_id);
 
-create table if not exists game_events (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid references auth.users(id) on delete cascade,
-  game_id uuid references games(id) on delete cascade,
-  player_id uuid references players(id) on delete set null,
-  result text not null,
-  rbi int not null default 0,
-  sb int not null default 0,
-  cs int not null default 0,
-  context text,
-  created_at timestamptz not null default now()
-);
+create policy "Users update own state" on app_state
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
-create table if not exists source_files (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid references auth.users(id) on delete cascade,
-  team_id uuid references teams(id) on delete cascade,
-  game_id uuid references games(id) on delete set null,
-  file_name text not null,
-  file_type text not null,
-  detail text,
-  storage_path text,
-  imported_at timestamptz not null default now()
-);
+create policy "Users delete own state" on app_state
+  for delete using (auth.uid() = user_id);
 
-alter table teams enable row level security;
-alter table games enable row level security;
-alter table players enable row level security;
-alter table player_stats enable row level security;
-alter table game_lineups enable row level security;
-alter table game_events enable row level security;
-alter table source_files enable row level security;
-
-create policy "Users manage their own teams" on teams
-  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
-
-create policy "Users manage their own games" on games
-  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
-
-create policy "Users manage their own players" on players
-  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
-
-create policy "Users manage their own player stats" on player_stats
-  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
-
-create policy "Users manage their own lineups" on game_lineups
-  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
-
-create policy "Users manage their own events" on game_events
-  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
-
-create policy "Users manage their own source files" on source_files
-  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+-- Enable realtime on this table. Idempotent: ignored if already added.
+do $$
+begin
+  begin
+    execute 'alter publication supabase_realtime add table app_state';
+  exception when duplicate_object then
+    null;
+  end;
+end $$;

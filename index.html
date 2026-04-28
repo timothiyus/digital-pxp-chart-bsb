@@ -3,8 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#167052" />
+    <link rel="manifest" href="./manifest.webmanifest" />
     <title>PxP Baseball Chart</title>
     <link rel="stylesheet" href="./styles.css" />
+    <script>
+      window.PXP_SUPABASE_URL = "https://eznwqmmswkenkobtnvfz.supabase.co";
+      window.PXP_SUPABASE_ANON_KEY = "sb_publishable_XQ2BPv3mHv4xqJLfoZxN2g_7dVRGVEB";
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   </head>
   <body>
     <header class="topbar">
@@ -72,9 +79,23 @@
             <section class="panel supabase-panel">
           <div class="panel-heading">
             <h2>Cloud Sync</h2>
-            <span>Ready later</span>
+            <span id="cloudSyncStatus">Idle</span>
           </div>
-          <p>This version stores everything in your browser. The data model is shaped so Supabase can replace local storage for teams, players, games, and events.</p>
+          <p id="cloudSyncEmail" class="meta">Signed in as &mdash;</p>
+          <div class="inline-actions">
+            <button id="cloudSignOutButton" type="button" class="muted">Sign out</button>
+          </div>
+            </section>
+
+            <section class="panel">
+          <div class="panel-heading">
+            <h2>Updates</h2>
+            <span id="appVersionLabel">v1</span>
+          </div>
+          <p class="meta">App auto-checks for new versions every minute. Use this if you want to force a refresh.</p>
+          <div class="inline-actions">
+            <button id="checkUpdatesButton" type="button">Check for Updates</button>
+          </div>
             </section>
 
             <section class="panel">
@@ -525,6 +546,38 @@
         </section>
       </section>
     </main>
+
+    <div id="authOverlay" class="auth-overlay" aria-hidden="true">
+      <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+        <h2 id="authTitle">PxP Baseball Chart</h2>
+        <p id="authSubtitle" class="auth-subtitle">Sign in to sync your charts across every device.</p>
+        <form id="authEmailForm" class="auth-form">
+          <label>
+            Email
+            <input id="authEmail" type="email" autocomplete="email" required placeholder="you@example.com" />
+          </label>
+          <button id="authEmailSubmit" type="submit">Send code</button>
+        </form>
+        <form id="authCodeForm" class="auth-form" hidden>
+          <p class="meta auth-code-help">A 6-digit code was sent to <strong id="authCodeEmailEcho"></strong>. Check your inbox / spam.</p>
+          <label>
+            Code
+            <input id="authCode" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required placeholder="123456" />
+          </label>
+          <div class="auth-form-actions">
+            <button id="authCodeBack" type="button" class="muted">Use a different email</button>
+            <button id="authCodeSubmit" type="submit">Sign in</button>
+          </div>
+        </form>
+        <p id="authMessage" class="auth-message" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <div id="updateBanner" class="update-banner" hidden>
+      <span>New version ready</span>
+      <button id="updateBannerRefresh" type="button">Refresh</button>
+      <button id="updateBannerDismiss" type="button" class="muted" aria-label="Dismiss">&times;</button>
+    </div>
 
     <datalist id="notation-suggestions"></datalist>
     <div id="appPromptOverlay" class="app-prompt-overlay" hidden>

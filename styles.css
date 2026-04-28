@@ -5401,3 +5401,126 @@ tr:hover td {
   border-color: var(--active-team-secondary, var(--gold));
   color: var(--active-team-primary, var(--accent-strong));
 }
+
+/* ---------------- Auth overlay ---------------- */
+
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 32, 28, 0.62);
+  backdrop-filter: blur(6px);
+}
+
+.auth-overlay.is-shown { display: flex; }
+
+body.auth-locked { overflow: hidden; }
+
+.auth-card {
+  width: min(420px, 100%);
+  background: #fffdf8;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px 22px 20px;
+  box-shadow: 0 18px 48px rgba(15, 32, 28, 0.32);
+  display: grid;
+  gap: 14px;
+}
+
+.auth-card h2 {
+  margin: 0;
+  color: var(--accent-strong);
+  font-size: 1.32rem;
+}
+
+.auth-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.auth-form { display: grid; gap: 10px; }
+
+.auth-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.auth-form input {
+  min-height: 42px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+#authCode {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.4em;
+  text-align: center;
+  font-size: 1.4rem;
+}
+
+.auth-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.auth-code-help { margin: 0; }
+
+.auth-message {
+  margin: 0;
+  min-height: 1.1em;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.auth-message[data-kind="error"] { color: var(--danger); }
+
+/* ---------------- Update banner ---------------- */
+
+.update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 16px;
+  background: var(--accent-strong);
+  color: #fff;
+  border-radius: 999px;
+  box-shadow: 0 10px 26px rgba(15, 32, 28, 0.28);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.update-banner button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--accent-strong);
+  border-color: var(--gold);
+}
+
+.update-banner button.muted {
+  background: transparent;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
+  padding: 0 10px;
+}

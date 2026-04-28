@@ -1,4 +1,25 @@
 const STORAGE_KEY = "pxp-baseball-chart-v1";
+const APP_VERSION = "v1";
+const CLIENT_ID = (() => {
+  let id = localStorage.getItem("pxp.clientId");
+  if (!id) {
+    id = `c-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+    try { localStorage.setItem("pxp.clientId", id); } catch (_) { /* ignore */ }
+  }
+  return id;
+})();
+const SUPABASE_URL = window.PXP_SUPABASE_URL;
+const SUPABASE_ANON_KEY = window.PXP_SUPABASE_ANON_KEY;
+const supabaseClient = window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, storage: window.localStorage },
+    })
+  : null;
+let supabaseSession = null;
+let realtimeChannel = null;
+let pushTimer = null;
+let lastPushedSerialized = null;
+let lastSyncedAt = 0;
 
 const emptyStats = () => ({
   GP: 0,
@@ -353,6 +374,7 @@ function normalizeState() {
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   els.saveState.textContent = `Saved ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  schedulePushState();
 }
 
 function uid(prefix) {
@@ -5554,7 +5576,305 @@ function populateNotationDatalist() {
     .join("");
 }
 
-normalizeState();
-populateNotationDatalist();
-setupEvents();
-render();
+function bootApp() {
+  normalizeState();
+  populateNotationDatalist();
+  setupEvents();
+  render();
+}
+
+// ---------------- Supabase auth + sync ----------------
+
+const authEls = {
+  overlay: document.querySelector("#authOverlay"),
+  emailForm: document.querySelector("#authEmailForm"),
+  email: document.querySelector("#authEmail"),
+  emailSubmit: document.querySelector("#authEmailSubmit"),
+  codeForm: document.querySelector("#authCodeForm"),
+  code: document.querySelector("#authCode"),
+  codeSubmit: document.querySelector("#authCodeSubmit"),
+  codeBack: document.querySelector("#authCodeBack"),
+  codeEmailEcho: document.querySelector("#authCodeEmailEcho"),
+  message: document.querySelector("#authMessage"),
+  cloudStatus: document.querySelector("#cloudSyncStatus"),
+  cloudEmail: document.querySelector("#cloudSyncEmail"),
+  signOut: document.querySelector("#cloudSignOutButton"),
+};
+
+function setAuthMessage(text, kind = "info") {
+  if (!authEls.message) return;
+  authEls.message.textContent = text || "";
+  authEls.message.dataset.kind = kind;
+}
+
+function showAuthOverlay() {
+  if (!authEls.overlay) return;
+  authEls.overlay.removeAttribute("aria-hidden");
+  authEls.overlay.classList.add("is-shown");
+  document.body.classList.add("auth-locked");
+}
+
+function hideAuthOverlay() {
+  if (!authEls.overlay) return;
+  authEls.overlay.setAttribute("aria-hidden", "true");
+  authEls.overlay.classList.remove("is-shown");
+  document.body.classList.remove("auth-locked");
+}
+
+function setCloudSyncStatus(text) {
+  if (authEls.cloudStatus) authEls.cloudStatus.textContent = text;
+}
+
+function setCloudSyncEmail(email) {
+  if (authEls.cloudEmail) authEls.cloudEmail.innerHTML = `Signed in as <strong>${escapeHtml(email || "—")}</strong>`;
+}
+
+function wireAuthForms() {
+  if (!supabaseClient || !authEls.emailForm) return;
+
+  authEls.emailForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const email = authEls.email.value.trim().toLowerCase();
+    if (!email) return;
+    authEls.emailSubmit.disabled = true;
+    setAuthMessage("Sending code…");
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true },
+    });
+    authEls.emailSubmit.disabled = false;
+    if (error) {
+      setAuthMessage(error.message || "Could not send code.", "error");
+      return;
+    }
+    authEls.codeEmailEcho.textContent = email;
+    authEls.emailForm.hidden = true;
+    authEls.codeForm.hidden = false;
+    authEls.code.value = "";
+    authEls.code.focus();
+    setAuthMessage("Check your inbox for a 6-digit code.");
+  });
+
+  authEls.codeBack.addEventListener("click", () => {
+    authEls.codeForm.hidden = true;
+    authEls.emailForm.hidden = false;
+    authEls.email.focus();
+    setAuthMessage("");
+  });
+
+  authEls.codeForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const email = authEls.codeEmailEcho.textContent;
+    const token = authEls.code.value.trim();
+    if (!email || !token) return;
+    authEls.codeSubmit.disabled = true;
+    setAuthMessage("Verifying…");
+    const { data, error } = await supabaseClient.auth.verifyOtp({ email, token, type: "email" });
+    authEls.codeSubmit.disabled = false;
+    if (error || !data?.session) {
+      setAuthMessage(error?.message || "Invalid code.", "error");
+      return;
+    }
+    setAuthMessage("Signed in!");
+  });
+
+  if (authEls.signOut) {
+    authEls.signOut.addEventListener("click", async () => {
+      if (!supabaseClient) return;
+      await supabaseClient.auth.signOut();
+      window.location.reload();
+    });
+  }
+}
+
+async function onSignedIn(session) {
+  supabaseSession = session;
+  setCloudSyncEmail(session.user.email || session.user.id);
+  setCloudSyncStatus("Loading…");
+
+  const { data: row, error } = await supabaseClient
+    .from("app_state")
+    .select("state, last_client_id, updated_at")
+    .eq("user_id", session.user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("Could not load remote state:", error.message);
+    setCloudSyncStatus("Offline (local only)");
+  }
+
+  if (row && row.state && Object.keys(row.state).length > 0) {
+    applyRemoteState(row.state, row.updated_at);
+    setCloudSyncStatus("Synced");
+  } else {
+    bootApp();
+    if (Object.keys(state).length) {
+      await pushStateNow();
+      setCloudSyncStatus("Synced");
+    } else {
+      setCloudSyncStatus("Synced");
+    }
+  }
+
+  subscribeRealtime();
+  hideAuthOverlay();
+}
+
+function applyRemoteState(remote, updatedAt) {
+  Object.keys(state).forEach((k) => delete state[k]);
+  Object.assign(state, remote);
+  lastPushedSerialized = JSON.stringify(state);
+  lastSyncedAt = updatedAt ? new Date(updatedAt).getTime() : Date.now();
+  try { localStorage.setItem(STORAGE_KEY, lastPushedSerialized); } catch (_) {}
+  bootApp();
+}
+
+function schedulePushState() {
+  if (!supabaseClient || !supabaseSession) return;
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => { pushStateNow(); }, 1500);
+}
+
+async function pushStateNow() {
+  if (!supabaseClient || !supabaseSession) return;
+  const serialized = JSON.stringify(state);
+  if (serialized === lastPushedSerialized) return;
+  setCloudSyncStatus("Saving…");
+  const { error } = await supabaseClient
+    .from("app_state")
+    .upsert({
+      user_id: supabaseSession.user.id,
+      state,
+      last_client_id: CLIENT_ID,
+      updated_at: new Date().toISOString(),
+    });
+  if (error) {
+    console.warn("Push failed:", error.message);
+    setCloudSyncStatus("Offline (will retry)");
+    return;
+  }
+  lastPushedSerialized = serialized;
+  lastSyncedAt = Date.now();
+  setCloudSyncStatus(`Synced ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
+}
+
+function subscribeRealtime() {
+  if (!supabaseClient || !supabaseSession) return;
+  if (realtimeChannel) {
+    supabaseClient.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+  realtimeChannel = supabaseClient
+    .channel(`app_state:${supabaseSession.user.id}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "app_state",
+        filter: `user_id=eq.${supabaseSession.user.id}`,
+      },
+      (payload) => {
+        const next = payload.new;
+        if (!next) return;
+        if (next.last_client_id === CLIENT_ID) return;
+        if (next.updated_at && new Date(next.updated_at).getTime() <= lastSyncedAt) return;
+        applyRemoteState(next.state, next.updated_at);
+        setCloudSyncStatus("Synced (remote update)");
+      }
+    )
+    .subscribe();
+}
+
+// ---------------- Service worker + update banner ----------------
+
+const updateBanner = document.querySelector("#updateBanner");
+const updateBannerRefresh = document.querySelector("#updateBannerRefresh");
+const updateBannerDismiss = document.querySelector("#updateBannerDismiss");
+const checkUpdatesButton = document.querySelector("#checkUpdatesButton");
+const appVersionLabel = document.querySelector("#appVersionLabel");
+let pendingWaitingWorker = null;
+
+if (appVersionLabel) appVersionLabel.textContent = APP_VERSION;
+
+function showUpdateBanner(worker) {
+  pendingWaitingWorker = worker;
+  if (updateBanner) updateBanner.hidden = false;
+}
+
+function activatePendingWorker() {
+  if (pendingWaitingWorker) {
+    pendingWaitingWorker.postMessage("SKIP_WAITING");
+  }
+  window.location.reload();
+}
+
+if (updateBannerRefresh) updateBannerRefresh.addEventListener("click", activatePendingWorker);
+if (updateBannerDismiss) updateBannerDismiss.addEventListener("click", () => { if (updateBanner) updateBanner.hidden = true; });
+
+async function hardCheckForUpdates() {
+  if (!("serviceWorker" in navigator)) {
+    window.location.reload();
+    return;
+  }
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((r) => r.unregister()));
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+  } catch (_) { /* ignore */ }
+  window.location.reload();
+}
+
+if (checkUpdatesButton) checkUpdatesButton.addEventListener("click", hardCheckForUpdates);
+
+if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").then((registration) => {
+      if (registration.waiting) showUpdateBanner(registration.waiting);
+      registration.addEventListener("updatefound", () => {
+        const installing = registration.installing;
+        if (!installing) return;
+        installing.addEventListener("statechange", () => {
+          if (installing.state === "installed" && navigator.serviceWorker.controller) {
+            showUpdateBanner(installing);
+          }
+        });
+      });
+      setInterval(() => { registration.update().catch(() => {}); }, 60 * 1000);
+    }).catch(() => {});
+
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
+  });
+}
+
+// ---------------- Boot gate ----------------
+
+if (!supabaseClient) {
+  console.warn("Supabase SDK or config missing — running in local-only mode.");
+  setCloudSyncStatus("Local only");
+  bootApp();
+} else {
+  wireAuthForms();
+  showAuthOverlay();
+  supabaseClient.auth.getSession().then(({ data }) => {
+    if (data?.session) onSignedIn(data.session);
+  });
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === "SIGNED_IN" && session) onSignedIn(session);
+    if (event === "SIGNED_OUT") {
+      supabaseSession = null;
+      if (realtimeChannel) { supabaseClient.removeChannel(realtimeChannel); realtimeChannel = null; }
+      showAuthOverlay();
+      setCloudSyncEmail("");
+      setCloudSyncStatus("Signed out");
+    }
+  });
+}
