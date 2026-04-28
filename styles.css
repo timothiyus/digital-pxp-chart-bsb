@@ -5489,38 +5489,57 @@ body.auth-locked { overflow: hidden; }
 
 .auth-message[data-kind="error"] { color: var(--danger); }
 
-/* ---------------- Update banner ---------------- */
+/* ---------------- Theme outlines ---------------- */
 
-.update-banner {
-  position: fixed;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
-  z-index: 1100;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px 8px 16px;
-  background: var(--accent-strong);
-  color: #fff;
-  border-radius: 999px;
-  box-shadow: 0 10px 26px rgba(15, 32, 28, 0.28);
-  font-weight: 800;
-  font-size: 0.9rem;
-}
-
-.update-banner button {
-  min-height: 32px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: var(--gold);
-  color: var(--accent-strong);
-  border-color: var(--gold);
-}
-
-.update-banner button.muted {
-  background: transparent;
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.4);
-  padding: 0 10px;
+body :where(
+  button,
+  .file-button,
+  input,
+  select,
+  textarea,
+  .panel,
+  .table-panel,
+  .lineup-board,
+  .spotlight,
+  .hud-panel,
+  .stat-hud,
+  .setting-toggle,
+  .chart-team-switch,
+  .segmented-toggle,
+  .hud-scope-toggle,
+  .team-record-history,
+  .team-setup-grid,
+  .coach-photo,
+  .coach-image-uploader,
+  .setup-logo-preview,
+  .live-line,
+  .bullpen-strip,
+  .defense-diamond,
+  .def-pos span,
+  .presto-column,
+  .source-item,
+  .batter-recent-games,
+  .data-tab,
+  .pill,
+  .slot-pill,
+  .number-badge,
+  .batting-order-badge,
+  .up-next-entry,
+  .up-next-slot,
+  .auth-card,
+  .app-prompt-dialog,
+  [class$="-card"],
+  [class*="-card "],
+  [class$="-chip"],
+  [class*="-chip "],
+  [class$="-pill"],
+  [class*="-pill "],
+  [class$="-badge"],
+  [class*="-badge "],
+  [class$="-panel"],
+  [class*="-panel "]
+):not(.diamond-chart-area *):not(.scorecard-grid *):not(.full-scorecard-panel):not(.full-scorecard-panel *):not(.full-scorecard-grid *) {
+  border-color: var(--active-team-primary, var(--accent));
+  outline: 1px solid var(--active-team-primary, var(--accent));
+  outline-offset: -1px;
 }

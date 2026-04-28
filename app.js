@@ -5786,31 +5786,12 @@ function subscribeRealtime() {
     .subscribe();
 }
 
-// ---------------- Service worker + update banner ----------------
+// ---------------- Service worker ----------------
 
-const updateBanner = document.querySelector("#updateBanner");
-const updateBannerRefresh = document.querySelector("#updateBannerRefresh");
-const updateBannerDismiss = document.querySelector("#updateBannerDismiss");
 const checkUpdatesButton = document.querySelector("#checkUpdatesButton");
 const appVersionLabel = document.querySelector("#appVersionLabel");
-let pendingWaitingWorker = null;
 
 if (appVersionLabel) appVersionLabel.textContent = APP_VERSION;
-
-function showUpdateBanner(worker) {
-  pendingWaitingWorker = worker;
-  if (updateBanner) updateBanner.hidden = false;
-}
-
-function activatePendingWorker() {
-  if (pendingWaitingWorker) {
-    pendingWaitingWorker.postMessage("SKIP_WAITING");
-  }
-  window.location.reload();
-}
-
-if (updateBannerRefresh) updateBannerRefresh.addEventListener("click", activatePendingWorker);
-if (updateBannerDismiss) updateBannerDismiss.addEventListener("click", () => { if (updateBanner) updateBanner.hidden = true; });
 
 async function hardCheckForUpdates() {
   if (!("serviceWorker" in navigator)) {
@@ -5833,16 +5814,6 @@ if (checkUpdatesButton) checkUpdatesButton.addEventListener("click", hardCheckFo
 if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").then((registration) => {
-      if (registration.waiting) showUpdateBanner(registration.waiting);
-      registration.addEventListener("updatefound", () => {
-        const installing = registration.installing;
-        if (!installing) return;
-        installing.addEventListener("statechange", () => {
-          if (installing.state === "installed" && navigator.serviceWorker.controller) {
-            showUpdateBanner(installing);
-          }
-        });
-      });
       setInterval(() => { registration.update().catch(() => {}); }, 60 * 1000);
     }).catch(() => {});
 
