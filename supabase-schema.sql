@@ -7,7 +7,7 @@
 -- Run this once in the Supabase SQL editor. After running:
 --   1. Database -> Replication -> enable Realtime on `app_state`
 --   2. Authentication -> Email Templates -> set "Magic Link" body to use
---      {{ .Token }} (6-digit code) instead of {{ .ConfirmationURL }}
+--      {{ .Token }} (8-digit code in this project) instead of {{ .ConfirmationURL }}
 --   3. Authentication -> SMTP -> point at Resend (host smtp.resend.com,
 --      port 465, user `resend`, pass = your Resend API key)
 

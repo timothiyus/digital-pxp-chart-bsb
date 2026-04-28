@@ -4,7 +4,7 @@ Handoff for continuing the Baseball PxP Chart app.
 
 ## Project Goal
 
-Build a local-first HTML/CSS/JS baseball play-by-play scorecard/HUD for radio PxP prep and live game charting. The app should eventually support GitHub deployment and Supabase syncing, but the current build is a static browser app using `localStorage`.
+Build a local-first HTML/CSS/JS baseball play-by-play scorecard/HUD for radio PxP prep and live game charting. The current build is still static HTML/CSS/JS, but it now syncs a single JSON state document through Supabase Auth/Realtime while retaining `localStorage` as the local cache.
 
 Primary user need: duplicate the usefulness of a handwritten baseball scorecard, especially the diamond notation, while making player stats, pitching data, line score, substitutions, and notes dynamic.
 
@@ -19,7 +19,7 @@ Primary user need: duplicate the usefulness of a handwritten baseball scorecard,
 
 ## Current Data Model
 
-State is stored in browser `localStorage` under:
+State is stored in browser `localStorage` under this key and mirrored to Supabase `app_state` when signed in:
 
 ```js
 pxp-baseball-chart-v1
@@ -271,11 +271,9 @@ Suggested path:
 
 See `docs/DATA_PIPELINE.md`.
 
-### 5. Supabase Sync Is Future Work
+### 5. Supabase Sync
 
-No Supabase client is wired yet.
-
-Future tables likely needed:
+Supabase is wired as a single JSON-document sync layer in `app_state`, with email OTP auth and realtime updates. Future normalized tables may still be useful if this grows beyond document sync:
 
 - teams
 - players

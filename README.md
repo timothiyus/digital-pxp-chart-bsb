@@ -36,26 +36,16 @@ python -m http.server 5173
 
 Then visit `http://localhost:5173`.
 
-## Supabase path
+## Supabase sync
 
-The app state is already separated into:
-
-- `game`
-- `players`
-- `events`
-- `lineup`
-- `sources`
-
-Those can map cleanly into Supabase tables later. The browser `localStorage` calls in `app.js` are the storage boundary to replace first.
-
-`supabase-schema.sql` contains a starter table/RLS layout for that migration.
+The app now syncs a single JSON state document per signed-in user through Supabase Auth, Realtime, and the `app_state` table in `supabase-schema.sql`. Email OTP sign-in expects the 8-digit token delivered by Supabase/Resend.
 
 ## Next build targets
 
 - Dedicated team and season views.
 - Pitching and fielding live event updates.
 - Multiple plate appearances in the same inning for bat-around frames.
-- Supabase auth and sync.
+- Broader regression coverage for scorecard and sync workflows.
 - AI-assisted player rundown generation from notes plus stat context.
 
 Two dummy CSVs are included in `Sample Data` for testing non-Garden City rosters:

@@ -372,8 +372,16 @@ function normalizeState() {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  els.saveState.textContent = `Saved ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  const serialized = JSON.stringify(state);
+  try {
+    localStorage.setItem(STORAGE_KEY, serialized);
+  } catch (error) {
+    console.warn("Could not save local state:", error?.message || error);
+    setCloudSyncStatus(supabaseSession ? "Cloud save pending" : "Local save failed");
+  }
+  if (els.saveState) {
+    els.saveState.textContent = `Saved ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+  }
   schedulePushState();
 }
 
@@ -1348,11 +1356,22 @@ function makeBoxScoreLine({ number = "", first = "", last = "", rawName = "", st
   return line;
 }
 
+function boxScoreImportKey(box) {
+  return [
+    box.side || state.activeSide,
+    String(box.gameDate || "").trim(),
+    String(box.opponent || "").trim().toLowerCase(),
+    String(box.filename || "").trim().toLowerCase(),
+    String(box.format || "").trim().toLowerCase()
+  ].join("|");
+}
+
 function saveImportedBoxScore(lines, filename, meta = {}, sourceFormat = "CSV") {
   if (!lines.length) {
     throw new Error(`No player rows found in this ${sourceFormat} box score.`);
   }
 
+  const format = sourceFormat.toLowerCase();
   const box = {
     id: uid("box"),
     side: state.activeSide,
@@ -1360,12 +1379,16 @@ function saveImportedBoxScore(lines, filename, meta = {}, sourceFormat = "CSV") 
     opponent: meta.opponent || "",
     resultNote: meta.resultNote || "",
     filename,
-    format: sourceFormat.toLowerCase(),
+    format,
     importedAt: new Date().toISOString(),
     lines
   };
+  const importKey = boxScoreImportKey(box);
+  box.importKey = importKey;
+  state.boxScores = (state.boxScores || []).filter((item) => boxScoreImportKey(item) !== importKey);
   state.boxScores.unshift(box);
 
+  state.sources = (state.sources || []).filter((source) => source.boxImportKey !== importKey);
   state.sources.unshift({
     id: uid("source"),
     type: "box-score",
@@ -1374,7 +1397,8 @@ function saveImportedBoxScore(lines, filename, meta = {}, sourceFormat = "CSV") 
     detail: `${lines.length} players, ${box.opponent || "opponent unknown"} ${box.gameDate}`,
     source: "gamechanger",
     scope: "box-score",
-    variant: sourceFormat.toLowerCase()
+    variant: format,
+    boxImportKey: importKey
   });
 
   saveState();
@@ -4378,6 +4402,7 @@ function savePlayerFromForm(event) {
     height: document.querySelector("#playerHeight").value.trim(),
     weight: document.querySelector("#playerWeight").value.trim(),
     notes: document.querySelector("#playerNotes").value.trim(),
+    handedness: existing?.handedness || "",
     side: existing?.side || state.activeSide,
     stats,
     confStats: existing?.confStats || emptyStats()
@@ -5692,7 +5717,15 @@ function wireAuthForms() {
   }
 }
 
+let signedInUserId = "";
+let signedInLoadStarted = false;
+
 async function onSignedIn(session) {
+  const userId = session?.user?.id;
+  if (!userId) return;
+  if (signedInLoadStarted && signedInUserId === userId) return;
+  signedInUserId = userId;
+  signedInLoadStarted = true;
   supabaseSession = session;
   setCloudSyncEmail(session.user.email || session.user.id);
   setCloudSyncStatus("Loading…");
@@ -5742,6 +5775,10 @@ function schedulePushState() {
 
 async function pushStateNow() {
   if (!supabaseClient || !supabaseSession) return;
+  if (pushTimer) {
+    clearTimeout(pushTimer);
+    pushTimer = null;
+  }
   const serialized = JSON.stringify(state);
   if (serialized === lastPushedSerialized) return;
   setCloudSyncStatus("Saving…");
@@ -5761,6 +5798,14 @@ async function pushStateNow() {
   lastPushedSerialized = serialized;
   lastSyncedAt = Date.now();
   setCloudSyncStatus(`Synced ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
+}
+
+function flushPendingStatePush() {
+  if (!supabaseClient || !supabaseSession) return;
+  if (JSON.stringify(state) === lastPushedSerialized) return;
+  pushStateNow().catch((error) => {
+    console.warn("Final push failed:", error?.message || error);
+  });
 }
 
 function subscribeRealtime() {
@@ -5816,6 +5861,11 @@ async function hardCheckForUpdates() {
 
 if (checkUpdatesButton) checkUpdatesButton.addEventListener("click", hardCheckForUpdates);
 
+window.addEventListener("pagehide", flushPendingStatePush);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushPendingStatePush();
+});
+
 if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").then((registration) => {
@@ -5847,6 +5897,8 @@ if (!supabaseClient) {
     if (event === "SIGNED_IN" && session) onSignedIn(session);
     if (event === "SIGNED_OUT") {
       supabaseSession = null;
+      signedInUserId = "";
+      signedInLoadStarted = false;
       if (realtimeChannel) { supabaseClient.removeChannel(realtimeChannel); realtimeChannel = null; }
       showAuthOverlay();
       setCloudSyncEmail("");

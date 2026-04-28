@@ -23,7 +23,7 @@ Without this, other devices won't get live updates — they'll still sync on nex
 
 ## 3. Wire up Resend as the email sender
 
-The 6-digit codes go through Supabase Auth. Point Auth at Resend's SMTP so emails actually deliver.
+The 8-digit codes go through Supabase Auth. Point Auth at Resend's SMTP so emails actually deliver.
 
 - **Project Settings → Auth → SMTP Settings**
 - **Enable Custom SMTP**
@@ -36,7 +36,7 @@ The 6-digit codes go through Supabase Auth. Point Auth at Resend's SMTP so email
   - Sender name: `PxP Baseball Chart`
 - Save
 
-## 4. Switch the email template to a 6-digit code
+## 4. Switch the email template to an 8-digit code
 
 By default Supabase sends a magic link. We want a code instead.
 
@@ -50,7 +50,7 @@ By default Supabase sends a magic link. We want a code instead.
   <p>This code expires shortly. If you didn't ask for it, ignore this email.</p>
   ```
 
-The key bit is `{{ .Token }}` — that's what surfaces the 6-digit code to the email body. The app calls `verifyOtp({ type: "email", token })` to consume it.
+The key bit is `{{ .Token }}` — that's what surfaces the 8-digit code to the email body. The app calls `verifyOtp({ type: "email", token })` to consume it.
 
 ## 5. Set the site URL + redirect URLs
 
@@ -64,7 +64,7 @@ This isn't strictly required for OTP-code flow but it keeps the auth machinery h
 
 - Open the deployed app
 - Enter your email → click **Send code**
-- Inbox should get a Resend-sourced email with a 6-digit code
+- Inbox should get a Resend-sourced email with an 8-digit code
 - Enter the code → app loads
 
 If the email never arrives, check **Authentication → Logs** in Supabase — usually it's an SMTP setting.
