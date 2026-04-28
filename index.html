@@ -559,10 +559,10 @@
           <button id="authEmailSubmit" type="submit">Send code</button>
         </form>
         <form id="authCodeForm" class="auth-form" hidden>
-          <p class="meta auth-code-help">A 6-digit code was sent to <strong id="authCodeEmailEcho"></strong>. Check your inbox / spam.</p>
+          <p class="meta auth-code-help">An 8-digit code was sent to <strong id="authCodeEmailEcho"></strong>. Check your inbox / spam.</p>
           <label>
             Code
-            <input id="authCode" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required placeholder="123456" />
+            <input id="authCode" type="text" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" autocomplete="one-time-code" required placeholder="12345678" />
           </label>
           <div class="auth-form-actions">
             <button id="authCodeBack" type="button" class="muted">Use a different email</button>

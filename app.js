@@ -5652,7 +5652,7 @@ function wireAuthForms() {
     authEls.codeForm.hidden = false;
     authEls.code.value = "";
     authEls.code.focus();
-    setAuthMessage("Check your inbox for a 6-digit code.");
+    setAuthMessage("Check your inbox for an 8-digit code.");
   });
 
   authEls.codeBack.addEventListener("click", () => {
