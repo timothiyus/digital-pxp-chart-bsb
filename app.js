@@ -93,6 +93,7 @@ const els = {
   gcBoxScoreInput: document.querySelector("#gcBoxScoreInput"),
   teamProfilePanel: document.querySelector("#teamProfilePanel"),
   exportButton: document.querySelector("#exportButton"),
+  clearImportsButton: document.querySelector("#clearImportsButton"),
   resetButton: document.querySelector("#resetButton"),
   saveState: document.querySelector("#saveState"),
   teamName: document.querySelector("#teamName"),
@@ -688,6 +689,11 @@ function valueFromFirst(row, headers, lookups) {
 }
 
 function gameChangerStatsFromRow(row, headers) {
+  const pitchesRaw = toNumber(valueFromFirst(row, headers, ["#P", "NumberOfPitches", "Number Of Pitches", "Pitches", "NP"]));
+  const strikePctRaw = toNumber(valueFrom(row, headers, "S%", 1));
+  const strikesDerived = pitchesRaw && strikePctRaw ? Math.round(pitchesRaw * strikePctRaw / 100) : 0;
+  const balks = toNumber(valueFromFirst(row, headers, ["BK", "Balks", "BalksAgainst"]));
+
   return {
     ...emptyStats(),
     GP: toNumber(valueFrom(row, headers, "GP", 1)),
@@ -705,16 +711,18 @@ function gameChangerStatsFromRow(row, headers) {
     SF: toNumber(valueFrom(row, headers, "SF")),
     SB: toNumber(valueFrom(row, headers, "SB", 1)),
     CS: toNumber(valueFrom(row, headers, "CS", 1)),
+    TB: toNumber(valueFrom(row, headers, "TB")),
     IP: toNumber(valueFromFirst(row, headers, ["IP", "InningsPitched", "Innings Pitched"])),
     GS: toNumber(valueFrom(row, headers, "GS")),
     BF: toNumber(valueFromFirst(row, headers, ["BF", "BattersFaced", "Batters Faced"])),
     W: toNumber(valueFrom(row, headers, "W")),
     L: toNumber(valueFrom(row, headers, "L")),
-    Pitches: toNumber(valueFromFirst(row, headers, ["#P", "NumberOfPitches", "Number Of Pitches", "Pitches", "NP"])),
-    Strikes: toNumber(valueFrom(row, headers, "S%", 1)),
+    Pitches: pitchesRaw,
+    Strikes: strikesDerived,
     ERA: toNumber(valueFrom(row, headers, "ERA")),
     WHIP: toNumber(valueFrom(row, headers, "WHIP")),
     BAA: toNumber(valueFrom(row, headers, "BAA")),
+    BK: balks,
     P_HR: toNumber(valueFromFirst(row, headers, [["HR", 2], "HomeRunsAgainst", "Home Runs Against", "HRA"])),
     P_2B: toNumber(valueFromFirst(row, headers, [["2B", 2], "DoublesAgainst", "Doubles Against"])),
     P_3B: toNumber(valueFromFirst(row, headers, [["3B", 2], "TriplesAgainst", "Triples Against"])),
@@ -723,7 +731,7 @@ function gameChangerStatsFromRow(row, headers) {
     P_H: toNumber(valueFromFirst(row, headers, [["H", 2], "HitsAgainst", "Hits Against", "HA"])),
     P_R: toNumber(valueFromFirst(row, headers, [["R", 2], "RunsAgainst", "Runs Against", "RA"])),
     P_ER: toNumber(valueFromFirst(row, headers, ["ER", "EarnedRuns", "Earned Runs"])),
-    P_BK: toNumber(valueFromFirst(row, headers, ["BK", "Balks", "BalksAgainst"])),
+    P_BK: balks,
     P_HBP: toNumber(valueFromFirst(row, headers, [["HBP", 2], "HitBatter", "Hit Batter", "HitBatters", "HB"])),
     P_WP: toNumber(valueFromFirst(row, headers, ["WP", "WildPitches", "Wild Pitches"])),
     P_AB: toNumber(valueFromFirst(row, headers, [["AB", 2], "AtBatsAgainst", "At Bats Against", "ABAgainst"])),
@@ -731,7 +739,18 @@ function gameChangerStatsFromRow(row, headers) {
     SHO: toNumber(valueFromFirst(row, headers, ["SHO", "Shutouts"])),
     SV: toNumber(valueFromFirst(row, headers, ["SV", "Saves"])),
     SFA: toNumber(valueFromFirst(row, headers, ["SFA", "SacFliesAgainst", "Sac Flies Against"])),
-    SHA: toNumber(valueFromFirst(row, headers, ["SHA", "SacHitsAgainst", "Sac Hits Against"]))
+    SHA: toNumber(valueFromFirst(row, headers, ["SHA", "SacHitsAgainst", "Sac Hits Against"])),
+    TC: toNumber(valueFrom(row, headers, "TC")),
+    PO: toNumber(valueFrom(row, headers, "PO")),
+    A: toNumber(valueFrom(row, headers, "A")),
+    E: toNumber(valueFrom(row, headers, "E")),
+    F_PCT: toNumber(valueFromFirst(row, headers, ["FPCT", "F%"])),
+    DP: toNumber(valueFrom(row, headers, "DP")),
+    SBA: toNumber(valueFromFirst(row, headers, ["SBATT", "SBA"])),
+    RCS: toNumber(valueFrom(row, headers, "CS", 3)),
+    RCS_PCT: toNumber(valueFromFirst(row, headers, ["CS%", "RCS%"])),
+    PB: toNumber(valueFrom(row, headers, "PB")),
+    CI: toNumber(valueFrom(row, headers, "CI", 2))
   };
 }
 
@@ -4901,6 +4920,26 @@ function setupEvents() {
     anchor.click();
     URL.revokeObjectURL(url);
   });
+
+  if (els.clearImportsButton) {
+    els.clearImportsButton.addEventListener("click", () => {
+      const sourceCount = (state.sources || []).length;
+      const boxCount = (state.boxScores || []).length;
+      if (!sourceCount && !boxCount && !state.players.some((p) => Object.keys(p.stats || {}).length || Object.keys(p.confStats || {}).length)) {
+        alert("No imported documents to clear.");
+        return;
+      }
+      if (!confirm(`Clear ${sourceCount} import source(s) and ${boxCount} box score(s), and reset every player's stat lines? Roster identity and live scorecard data will be kept.`)) return;
+      state.sources = [];
+      state.boxScores = [];
+      state.players.forEach((player) => {
+        player.stats = emptyStats();
+        player.confStats = emptyStats();
+      });
+      saveState();
+      render();
+    });
+  }
 
   els.resetButton.addEventListener("click", () => {
     if (!confirm("Reset this local chart workspace?")) return;
