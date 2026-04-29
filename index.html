@@ -62,6 +62,34 @@
             Game date
             <input id="gameDate" type="date" />
           </label>
+          <div class="form-grid game-detail-grid">
+            <label>
+              Location
+              <input id="gameLocation" type="text" placeholder="Garden City, KS" />
+            </label>
+            <label>
+              Venue / facility
+              <input id="gameVenue" type="text" placeholder="Garden City Community College" />
+            </label>
+            <label>
+              Stadium
+              <input id="gameFieldName" type="text" placeholder="William Stadium / Scooter's Coffee Field" />
+            </label>
+            <label>
+              First pitch
+              <input id="firstPitchTime" type="text" placeholder="1:05 PM" />
+            </label>
+          </div>
+          <label>
+            First-pitch weather
+            <input id="firstPitchWeather" type="text" placeholder="72 degrees, wind S 12 mph, partly cloudy" />
+          </label>
+          <div class="form-grid umpire-grid">
+            <label>HP umpire <input id="umpireHp" type="text" /></label>
+            <label>1B umpire <input id="umpireFirst" type="text" /></label>
+            <label>2B umpire <input id="umpireSecond" type="text" /></label>
+            <label>3B umpire <input id="umpireThird" type="text" /></label>
+          </div>
           <label>
             Game type
             <select id="gameType">
@@ -71,7 +99,7 @@
           </label>
           <label>
             Chart notes
-            <textarea id="gameNotes" rows="5" placeholder="Weather, umpire tendencies, broadcast angles, coach notes..."></textarea>
+            <textarea id="gameNotes" rows="5" placeholder="Broadcast angles, coach notes, matchup context..."></textarea>
           </label>
             </section>
 

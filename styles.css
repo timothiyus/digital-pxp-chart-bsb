@@ -577,6 +577,29 @@ textarea {
   margin: 0;
 }
 
+.game-detail-grid,
+.umpire-grid {
+  margin-bottom: 12px;
+}
+
+.game-context-strip {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.game-context-strip span {
+  display: block;
+}
+
+.game-context-strip b {
+  color: var(--team-primary, var(--active-team-primary, var(--accent-strong)));
+  margin-right: 6px;
+}
+
 .team-record-row {
   display: flex;
   align-items: center;
@@ -5725,56 +5748,18 @@ body.auth-locked { overflow: hidden; }
 /* ---------------- Theme outlines ---------------- */
 
 body :where(
-  button,
-  .file-button,
-  input,
-  select,
-  textarea,
   .panel,
   .table-panel,
   .lineup-board,
   .spotlight,
   .hud-panel,
   .stat-hud,
-  .setting-toggle,
   .chart-team-switch,
-  .segmented-toggle,
-  .hud-scope-toggle,
-  .team-record-history,
-  .team-setup-grid,
-  .coach-photo,
-  .coach-image-uploader,
-  .setup-logo-preview,
-  .live-line,
-  .bullpen-strip,
-  .defense-diamond,
-  .def-pos span,
-  .presto-column,
-  .source-item,
-  .batter-recent-games,
-  .data-tab,
-  .pill,
-  .slot-pill,
-  .number-badge,
-  .batting-order-badge,
-  .up-next-entry,
-  .up-next-slot,
   .auth-card,
-  .app-prompt-dialog,
-  [class$="-card"],
-  [class*="-card "],
-  [class$="-chip"],
-  [class*="-chip "],
-  [class$="-pill"],
-  [class*="-pill "],
-  [class$="-badge"],
-  [class*="-badge "],
-  [class$="-panel"],
-  [class*="-panel "]
+  .app-prompt-dialog
 ):not(.diamond-chart-area *):not(.scorecard-grid *):not(.full-scorecard-panel):not(.full-scorecard-panel *):not(.full-scorecard-grid *) {
-  border-color: var(--active-team-primary, var(--accent));
-  outline: 1px solid var(--active-team-primary, var(--accent));
-  outline-offset: -1px;
+  border-color: color-mix(in srgb, var(--active-team-primary, var(--accent)) 34%, var(--line));
+  outline: 0;
 }
 
 body .pitcher-card {

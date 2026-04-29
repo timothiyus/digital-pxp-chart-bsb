@@ -1,5 +1,5 @@
 const STORAGE_KEY = "pxp-baseball-chart-v1";
-const APP_VERSION = "v5";
+const APP_VERSION = "v6";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -101,6 +101,15 @@ const els = {
   opponentName: document.querySelector("#opponentName"),
   gameDate: document.querySelector("#gameDate"),
   gameType: document.querySelector("#gameType"),
+  gameLocation: document.querySelector("#gameLocation"),
+  gameVenue: document.querySelector("#gameVenue"),
+  gameFieldName: document.querySelector("#gameFieldName"),
+  firstPitchTime: document.querySelector("#firstPitchTime"),
+  firstPitchWeather: document.querySelector("#firstPitchWeather"),
+  umpireHp: document.querySelector("#umpireHp"),
+  umpireFirst: document.querySelector("#umpireFirst"),
+  umpireSecond: document.querySelector("#umpireSecond"),
+  umpireThird: document.querySelector("#umpireThird"),
   gameNotes: document.querySelector("#gameNotes"),
   showAtBatControls: document.querySelector("#showAtBatControls"),
   showFocusControls: document.querySelector("#showFocusControls"),
@@ -174,17 +183,31 @@ const els = {
   appPromptConfirm: document.querySelector("#appPromptConfirm")
 };
 
+function emptyUmpires() {
+  return { hp: "", first: "", second: "", third: "" };
+}
+
+function defaultGameInfo() {
+  return {
+    teamName: "Garden City CC",
+    opponentName: "",
+    gameDate: new Date().toISOString().slice(0, 10),
+    gameType: "nonconference",
+    location: "",
+    venue: "",
+    fieldName: "",
+    firstPitchTime: "",
+    firstPitchWeather: "",
+    umpires: emptyUmpires(),
+    notes: ""
+  };
+}
+
 function newGameEntry(label) {
   return {
     id: uid("game"),
     label: label || "Game 1",
-    game: {
-      teamName: "Garden City CC",
-      opponentName: "",
-      gameDate: new Date().toISOString().slice(0, 10),
-      gameType: "nonconference",
-      notes: ""
-    },
+    game: defaultGameInfo(),
     inningCount: 9,
     charts: {
       home: newChartState(),
@@ -211,6 +234,10 @@ function loadState() {
     games: [newGameEntry("Game 1")],
     activeGameIndex: 0,
     activeSide: "away",
+    teamMeta: {
+      home: emptyTeamMeta(),
+      away: emptyTeamMeta()
+    },
     settings: {
       showAtBatControls: false,
       showFocusControls: false
@@ -345,6 +372,100 @@ function normalizeTeamMeta(teamMeta) {
   return result;
 }
 
+function cloneTeamMeta(teamMeta) {
+  return JSON.parse(JSON.stringify(normalizeTeamMeta(teamMeta)));
+}
+
+function recordHasData(row = {}) {
+  return Boolean(row.season || row.overall || row.conference);
+}
+
+function mergeTeamMetaCandidate(target, candidate) {
+  if (!candidate) return;
+  const normalized = normalizeTeamMeta(candidate);
+  const textFields = [
+    "logo",
+    "abbreviation",
+    "mascot",
+    "conferenceName",
+    "leagueName",
+    "overallRecord",
+    "conferenceRecord",
+    "location",
+    "institutionInfo",
+    "primaryColor"
+  ];
+  ["home", "away"].forEach((side) => {
+    textFields.forEach((field) => {
+      const value = normalized[side]?.[field];
+      if (String(value || "").trim()) target[side][field] = value;
+    });
+    if ((normalized[side]?.records || []).some(recordHasData)) {
+      target[side].records = normalized[side].records.map((row) => ({ ...row }));
+    }
+    if ((normalized[side]?.coaches || []).length) {
+      target[side].coaches = normalized[side].coaches.map((coach) => ({ ...coach }));
+    }
+  });
+}
+
+function consolidatedTeamMeta() {
+  const result = normalizeTeamMeta();
+  const activeMeta = state.games?.[state.activeGameIndex ?? 0]?.teamMeta;
+  const candidates = [
+    state.teamMeta,
+    ...(state.games || []).map((game) => game.teamMeta)
+  ];
+  candidates.forEach((candidate) => mergeTeamMetaCandidate(result, candidate));
+
+  const booleanSource = normalizeTeamMeta(activeMeta || state.teamMeta);
+  ["home", "away"].forEach((side) => {
+    ["showSnapshot", "showRecords", "showCoaches"].forEach((field) => {
+      result[side][field] = Boolean(booleanSource[side][field]);
+    });
+  });
+  return result;
+}
+
+function syncSharedTeamMetaToGames() {
+  if (!Array.isArray(state.games)) return;
+  state.teamMeta = cloneTeamMeta(state.teamMeta);
+  state.games.forEach((entry) => {
+    entry.teamMeta = cloneTeamMeta(state.teamMeta);
+  });
+}
+
+function normalizeGameInfo(game = {}) {
+  const normalized = {
+    ...defaultGameInfo(),
+    ...(game || {})
+  };
+  normalized.gameType = normalizeGameType(normalized.gameType);
+  normalized.umpires = {
+    ...emptyUmpires(),
+    ...(game?.umpires || {})
+  };
+  return normalized;
+}
+
+function sharedTeamNameFromGames(key, fallback) {
+  const activeValue = state.games?.[state.activeGameIndex ?? 0]?.game?.[key] || "";
+  const newestNonDefault = [...(state.games || [])]
+    .reverse()
+    .map((game) => String(game.game?.[key] || "").trim())
+    .find((value) => value && value !== fallback);
+  return newestNonDefault || activeValue || fallback;
+}
+
+function syncSharedTeamNames() {
+  const homeName = sharedTeamNameFromGames("teamName", "Garden City CC");
+  const awayName = sharedTeamNameFromGames("opponentName", "");
+  (state.games || []).forEach((entry) => {
+    entry.game.teamName = homeName;
+    entry.game.opponentName = awayName;
+  });
+}
+
 function normalizeState() {
   state.activeSide = state.activeSide || "away";
 
@@ -362,7 +483,7 @@ function normalizeState() {
     state.games = [{
       id: uid("game"),
       label: "Game 1",
-      game: state.game || { teamName: "Garden City CC", opponentName: "", gameDate: new Date().toISOString().slice(0, 10), notes: "" },
+      game: normalizeGameInfo(state.game),
       inningCount: state.inningCount || 9,
       charts,
       teamMeta: state.teamMeta || { home: emptyTeamMeta(), away: emptyTeamMeta() }
@@ -381,13 +502,15 @@ function normalizeState() {
   state.games.forEach((entry, i) => {
     entry.id = entry.id || uid("game");
     entry.label = entry.label || `Game ${i + 1}`;
-    entry.game = { teamName: "Garden City CC", opponentName: "", gameDate: new Date().toISOString().slice(0, 10), gameType: "nonconference", notes: "", ...(entry.game || {}) };
-    entry.game.gameType = normalizeGameType(entry.game.gameType);
+    entry.game = normalizeGameInfo(entry.game);
     entry.inningCount = entry.inningCount || 9;
     entry.charts = entry.charts || { home: newChartState(), away: newChartState() };
     normalizeCharts(entry.charts);
     entry.teamMeta = normalizeTeamMeta(entry.teamMeta);
   });
+  syncSharedTeamNames();
+  state.teamMeta = consolidatedTeamMeta();
+  syncSharedTeamMetaToGames();
 
   state.sources = state.sources || [];
   state.boxScores = state.boxScores || [];
@@ -434,6 +557,7 @@ function normalizeState() {
 }
 
 function saveState() {
+  syncSharedTeamMetaToGames();
   const serialized = JSON.stringify(state);
   try {
     localStorage.setItem(STORAGE_KEY, serialized);
@@ -2811,11 +2935,21 @@ function renderSetup() {
     const role = tab.dataset.side === "home" ? "Home" : "Away";
     tab.textContent = `${role}: ${sideLabel(tab.dataset.side)}`;
   });
-  els.teamName.value = activeGame().game.teamName;
-  els.opponentName.value = activeGame().game.opponentName;
-  els.gameDate.value = activeGame().game.gameDate;
+  const gameInfo = activeGame().game;
+  els.teamName.value = gameInfo.teamName;
+  els.opponentName.value = gameInfo.opponentName;
+  els.gameDate.value = gameInfo.gameDate;
   if (els.gameType) els.gameType.value = activeGameType();
-  els.gameNotes.value = activeGame().game.notes;
+  if (els.gameLocation) els.gameLocation.value = gameInfo.location || "";
+  if (els.gameVenue) els.gameVenue.value = gameInfo.venue || "";
+  if (els.gameFieldName) els.gameFieldName.value = gameInfo.fieldName || "";
+  if (els.firstPitchTime) els.firstPitchTime.value = gameInfo.firstPitchTime || "";
+  if (els.firstPitchWeather) els.firstPitchWeather.value = gameInfo.firstPitchWeather || "";
+  if (els.umpireHp) els.umpireHp.value = gameInfo.umpires?.hp || "";
+  if (els.umpireFirst) els.umpireFirst.value = gameInfo.umpires?.first || "";
+  if (els.umpireSecond) els.umpireSecond.value = gameInfo.umpires?.second || "";
+  if (els.umpireThird) els.umpireThird.value = gameInfo.umpires?.third || "";
+  els.gameNotes.value = gameInfo.notes;
   if (els.teamProfilePanel) els.teamProfilePanel.innerHTML = teamSetupHtml(state.activeSide);
   if (els.showAtBatControls) els.showAtBatControls.checked = Boolean(state.settings.showAtBatControls);
   if (els.showFocusControls) els.showFocusControls.checked = Boolean(state.settings.showFocusControls);
@@ -3504,17 +3638,8 @@ function aggregateTeamStats(side) {
 }
 
 function teamMetaForSide(side) {
-  const game = activeGame();
-  game.teamMeta = game.teamMeta || {};
-  game.teamMeta[side] = { ...emptyTeamMeta(), ...(game.teamMeta[side] || {}) };
-  game.teamMeta[side].records = Array.from({ length: 10 }, (_, index) => ({
-    season: "",
-    overall: "",
-    conference: "",
-    ...((game.teamMeta[side].records || [])[index] || {})
-  }));
-  game.teamMeta[side].coaches = game.teamMeta[side].coaches || [];
-  return game.teamMeta[side];
+  state.teamMeta = normalizeTeamMeta(state.teamMeta);
+  return state.teamMeta[side];
 }
 
 function teamInitials(name) {
@@ -3623,6 +3748,31 @@ function teamSnapshotHeaderHtml(side) {
         <em>${escapeHtml([meta.overallRecord, meta.conferenceRecord ? `(${meta.conferenceRecord})` : ""].filter(Boolean).join(" ") || "Record not set")}</em>
         ${meta.institutionInfo ? `<p>${escapeHtml(meta.institutionInfo)}</p>` : ""}
       </div>
+    </div>
+  `;
+}
+
+function gameContextHtml() {
+  const game = activeGame().game || {};
+  const site = [game.location, game.venue, game.fieldName].filter(Boolean).join(" | ");
+  const firstPitch = [game.firstPitchTime, game.firstPitchWeather].filter(Boolean).join(" | ");
+  const umpires = game.umpires || {};
+  const umpireLine = [
+    umpires.hp ? `HP ${umpires.hp}` : "",
+    umpires.first ? `1B ${umpires.first}` : "",
+    umpires.second ? `2B ${umpires.second}` : "",
+    umpires.third ? `3B ${umpires.third}` : ""
+  ].filter(Boolean).join(" | ");
+  const rows = [
+    game.gameDate ? ["Date", game.gameDate] : null,
+    site ? ["Site", site] : null,
+    firstPitch ? ["First pitch", firstPitch] : null,
+    umpireLine ? ["Umpires", umpireLine] : null
+  ].filter(Boolean);
+  if (!rows.length) return "";
+  return `
+    <div class="game-context-strip">
+      ${rows.map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(value)}</span>`).join("")}
     </div>
   `;
 }
@@ -4558,6 +4708,7 @@ function renderChartHud() {
         <span>${escapeHtml(sideLabel(snapshotSide))}</span>
       </div>
       ${teamSnapshotHeaderHtml(snapshotSide)}
+      ${gameContextHtml()}
       <div class="team-snapshot-divider"></div>
       ${meta.showRecords ? teamRecordTableHtml(snapshotSide, true) : ""}
       ${meta.showCoaches ? teamCoachesHtml(snapshotSide) : ""}
@@ -4861,8 +5012,14 @@ function addGame() {
   entry.game.opponentName = current.game.opponentName;
   entry.game.gameDate = current.game.gameDate;
   entry.game.gameType = normalizeGameType(current.game.gameType);
+  entry.game.location = current.game.location || "";
+  entry.game.venue = current.game.venue || "";
+  entry.game.fieldName = current.game.fieldName || "";
+  entry.game.firstPitchTime = current.game.firstPitchTime || "";
+  entry.game.firstPitchWeather = current.game.firstPitchWeather || "";
+  entry.game.umpires = { ...emptyUmpires(), ...(current.game.umpires || {}) };
   entry.inningCount = current.inningCount;
-  entry.teamMeta = JSON.parse(JSON.stringify(current.teamMeta));
+  entry.teamMeta = cloneTeamMeta(state.teamMeta);
   ["home", "away"].forEach((side) => {
     const src = current.charts[side];
     const dst = entry.charts[side];
@@ -5670,10 +5827,55 @@ function setupEvents() {
     });
   });
 
-  ["teamName", "opponentName", "gameDate", "gameNotes"].forEach((key) => {
+  ["teamName", "opponentName"].forEach((key) => {
     els[key].addEventListener("input", () => {
-      activeGame().game[key === "gameNotes" ? "notes" : key] = els[key].value;
+      state.games.forEach((entry) => {
+        entry.game[key] = els[key].value;
+      });
       saveState();
+      document.querySelectorAll(".side-tab").forEach((tab) => {
+        applySideTabColors(tab);
+        const role = tab.dataset.side === "home" ? "Home" : "Away";
+        tab.textContent = `${role}: ${sideLabel(tab.dataset.side)}`;
+      });
+      renderGameSwitcher();
+      renderChartHud();
+      renderInningTotals();
+      renderDiamondLineScore();
+      renderFullScorecard();
+    });
+  });
+
+  const gameFieldMap = {
+    gameDate: "gameDate",
+    gameLocation: "location",
+    gameVenue: "venue",
+    gameFieldName: "fieldName",
+    firstPitchTime: "firstPitchTime",
+    firstPitchWeather: "firstPitchWeather",
+    gameNotes: "notes"
+  };
+  Object.entries(gameFieldMap).forEach(([key, field]) => {
+    if (!els[key]) return;
+    els[key].addEventListener("input", () => {
+      activeGame().game[field] = els[key].value;
+      saveState();
+      renderChartHud();
+    });
+  });
+
+  [
+    ["umpireHp", "hp"],
+    ["umpireFirst", "first"],
+    ["umpireSecond", "second"],
+    ["umpireThird", "third"]
+  ].forEach(([key, field]) => {
+    if (!els[key]) return;
+    els[key].addEventListener("input", () => {
+      activeGame().game.umpires = { ...emptyUmpires(), ...(activeGame().game.umpires || {}) };
+      activeGame().game.umpires[field] = els[key].value;
+      saveState();
+      renderChartHud();
     });
   });
 
