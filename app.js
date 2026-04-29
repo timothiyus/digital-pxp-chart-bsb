@@ -1,5 +1,5 @@
 const STORAGE_KEY = "pxp-baseball-chart-v1";
-const APP_VERSION = "v10";
+const APP_VERSION = "v11";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -3367,12 +3367,24 @@ function hudStatClass(value, type = "neutral") {
   return "stat-neutral";
 }
 
+function hudStatSizeClass(label, value) {
+  const valueText = String(value ?? "");
+  const labelText = String(label ?? "");
+  const classes = [];
+  if (valueText.length >= 9) classes.push("stat-value-xlong");
+  else if (valueText.length >= 6 || (valueText.endsWith("%") && valueText.length >= 5)) classes.push("stat-value-long");
+  if (labelText.length >= 8) classes.push("stat-label-long");
+  if (labelText.length >= 14) classes.push("stat-label-xlong");
+  return classes.join(" ");
+}
+
 function hudStatChip(label, value, type = "neutral") {
-  return `<span class="hud-stat-chip ${hudStatClass(value, type)}"><b>${escapeHtml(String(value))}</b><i>${escapeHtml(label)}</i></span>`;
+  return `<span class="hud-stat-chip ${hudStatClass(value, type)} ${hudStatSizeClass(label, value)}"><b>${escapeHtml(String(value))}</b><i>${escapeHtml(label)}</i></span>`;
 }
 
 function statPill({ label, value, type = "neutral", show = true, className = "" }) {
-  return show ? `<span class="hud-stat-chip ${hudStatClass(value, type)} ${className}"><b>${escapeHtml(String(value))}</b><i>${escapeHtml(label)}</i></span>` : "";
+  const classes = ["hud-stat-chip", hudStatClass(value, type), hudStatSizeClass(label, value), className].filter(Boolean).join(" ");
+  return show ? `<span class="${classes}"><b>${escapeHtml(String(value))}</b><i>${escapeHtml(label)}</i></span>` : "";
 }
 
 function renderPillGroups(groups) {
