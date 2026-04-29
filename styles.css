@@ -286,7 +286,7 @@ textarea {
 .side-tab:hover,
 .side-tab.active {
   background: var(--side-primary, var(--active-team-primary, var(--accent)));
-  color: var(--side-secondary, #fff);
+  color: #fff;
   border-color: var(--side-primary, var(--active-team-primary, var(--accent)));
 }
 
@@ -322,13 +322,13 @@ textarea {
 
 .game-tab:hover {
   background: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  color: #fff;
   border-color: var(--active-team-primary, var(--accent));
 }
 
 .game-tab.active {
   background: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  color: #fff;
   border-color: var(--active-team-primary, var(--accent));
 }
 
@@ -352,7 +352,7 @@ textarea {
 .tab:hover,
 .tab.active {
   background: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  color: #fff;
   border-color: var(--active-team-primary, var(--accent));
 }
 
@@ -459,7 +459,7 @@ textarea {
 
 .hud-scope-toggle button.active {
   background: var(--team-primary, var(--active-team-primary, var(--accent)));
-  color: var(--team-secondary, #fff);
+  color: #fff;
 }
 
 .hud-scope-toggle button:disabled {
@@ -573,7 +573,7 @@ textarea {
 .team-snapshot-divider {
   height: 1px;
   margin: 9px 0;
-  background: linear-gradient(90deg, var(--team-primary, var(--accent)), var(--team-secondary, var(--gold)));
+  background: var(--team-primary, var(--accent));
 }
 
 .team-snapshot-stat-groups {
@@ -620,7 +620,7 @@ textarea {
   gap: 8px;
   padding: 8px;
   border: 1px solid var(--line);
-  border-left: 4px solid var(--team-secondary, var(--gold));
+  border-left: 4px solid var(--team-primary, var(--accent));
   border-radius: 6px;
   background: #fbfcfa;
 }
@@ -704,7 +704,7 @@ textarea {
   margin-bottom: 12px;
   border: 1px solid color-mix(in srgb, var(--team-primary, var(--accent)) 36%, var(--line));
   border-radius: 8px;
-  background: color-mix(in srgb, var(--team-secondary, var(--gold)) 7%, #fff);
+  background: color-mix(in srgb, var(--team-primary, var(--accent)) 7%, #fff);
 }
 
 .team-logo-uploader {
@@ -858,8 +858,8 @@ textarea {
 }
 
 .hud-stat-chip.game-context-chip {
-  background: var(--team-secondary, var(--active-team-secondary, var(--accent)));
-  border-color: color-mix(in srgb, var(--team-secondary, var(--active-team-secondary, var(--accent))) 82%, #15231e);
+  background: var(--team-primary, var(--active-team-primary, var(--accent)));
+  border-color: color-mix(in srgb, var(--team-primary, var(--active-team-primary, var(--accent))) 82%, #15231e);
   color: #fff;
 }
 
@@ -1079,8 +1079,8 @@ textarea {
   place-items: center;
   border-radius: 4px;
   padding: 4px 2px;
-  background: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  background: #050505;
+  color: #fff;
   font-size: 0.5rem;
   line-height: 1;
   writing-mode: vertical-rl;
@@ -1138,17 +1138,17 @@ textarea {
 }
 
 .stat-hud[data-hud-mode="compact"] .up-next-now .up-next-tag {
-  background: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  background: #050505;
+  color: #fff;
 }
 
 .stat-hud[data-hud-mode="compact"] .up-next-deck .up-next-tag {
-  background: var(--active-team-secondary, var(--gold));
-  color: var(--active-team-primary, var(--accent-strong));
+  background: #4b5563;
+  color: #fff;
 }
 
 .stat-hud[data-hud-mode="compact"] .up-next-hole .up-next-tag {
-  background: var(--accent);
+  background: #9ca3af;
   color: #fff;
 }
 
@@ -1328,6 +1328,15 @@ textarea {
   line-height: 1;
 }
 
+.stat-hud[data-hud-mode="compact"] .hud-stat-chip.pitch-count-chip {
+  grid-column: span 2;
+}
+
+.stat-hud[data-hud-mode="compact"] .hud-stat-chip.pitch-count-chip b {
+  font-size: clamp(0.58rem, 0.62vw, 0.7rem);
+  letter-spacing: 0;
+}
+
 .stat-hud[data-hud-mode="compact"] .hud-stat-chip i {
   font-style: normal;
   color: var(--muted);
@@ -1359,8 +1368,8 @@ textarea {
 }
 
 .stat-hud[data-hud-mode="compact"] .hud-stat-chip.game-context-chip {
-  background: var(--team-secondary, var(--active-team-secondary, var(--accent)));
-  border-color: color-mix(in srgb, var(--team-secondary, var(--active-team-secondary, var(--accent))) 82%, #15231e);
+  background: var(--team-primary, var(--active-team-primary, var(--accent)));
+  border-color: color-mix(in srgb, var(--team-primary, var(--active-team-primary, var(--accent))) 82%, #15231e);
 }
 
 .stat-hud[data-hud-mode="compact"] .hud-stat-chip.game-context-chip b {
@@ -1590,8 +1599,8 @@ textarea {
 }
 
 .traditional-line-score .active {
-  background: #fff8e8;
-  box-shadow: inset 0 0 0 1px var(--active-team-secondary, var(--gold));
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 8%, #fff);
+  box-shadow: inset 0 0 0 1px var(--active-team-primary, var(--accent));
 }
 
 .traditional-line-score .active-side th:first-child {
@@ -1601,8 +1610,45 @@ textarea {
 .traditional-line-score .metric-total {
   background: var(--active-team-primary, var(--accent));
   color: #fff;
-  border-color: var(--active-team-primary, var(--accent-strong));
+  border-color: rgba(255, 255, 255, 0.82);
   font-weight: 900;
+}
+
+.line-score-team-toggle {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.line-score-team-toggle:hover {
+  text-decoration: underline;
+}
+
+.traditional-line-score.is-expanded .line-score-detail-row th {
+  padding-left: 16px;
+  background: #fbfcfa;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.traditional-line-score.is-expanded .line-score-detail-row td {
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.68rem;
+}
+
+.traditional-line-score .metric-total.detail-muted {
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 22%, #fff);
+  color: transparent;
+}
+
+.traditional-line-score .metric-total.detail-match {
+  border-color: rgba(255, 255, 255, 0.9);
 }
 
 .diamond-inning-editor {
@@ -1638,7 +1684,7 @@ textarea {
 .diamond-inning-editor[open] summary {
   background: var(--active-team-primary, var(--accent));
   border-color: var(--active-team-primary, var(--accent-strong));
-  color: var(--active-team-secondary, #fff);
+  color: #fff;
 }
 
 .diamond-edit-fields {
@@ -2057,7 +2103,7 @@ textarea {
 .inning-edit-banner button:not(.danger) {
   background: var(--active-team-primary, var(--accent));
   border-color: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  color: #fff;
 }
 
 .chart-nav-actions button:not(.danger):hover,
@@ -2087,7 +2133,7 @@ textarea {
 
 #pinChartButton.active {
   background: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  color: #fff;
   border-color: var(--active-team-primary, var(--accent-strong));
 }
 
@@ -2252,12 +2298,12 @@ textarea {
   text-align: center;
   justify-items: center;
   color: var(--active-team-primary, var(--accent-strong));
-  box-shadow: inset 0 -3px 0 var(--active-team-secondary, var(--gold));
+  box-shadow: inset 0 -3px 0 var(--active-team-primary, var(--accent));
 }
 
 .score-head.is-current-col {
   color: var(--active-team-primary, var(--accent-strong));
-  background: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 12%, #fff);
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 10%, #fff);
 }
 
 .score-head:first-child,
@@ -2345,7 +2391,7 @@ textarea {
   max-width: 108px;
   background: #fffefa;
   color: var(--active-team-primary, var(--accent-strong));
-  border-color: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 64%, var(--line));
+  border-color: color-mix(in srgb, var(--active-team-primary, var(--accent)) 64%, var(--line));
 }
 
 .score-cell.is-out {
@@ -2415,11 +2461,11 @@ textarea {
 }
 
 .score-row.is-on-deck .score-player {
-  box-shadow: inset 4px 0 0 var(--active-team-secondary, var(--gold));
+  box-shadow: inset 4px 0 0 #4b5563;
 }
 
 .score-row.is-in-hole .score-player {
-  box-shadow: inset 4px 0 0 var(--accent);
+  box-shadow: inset 4px 0 0 #9ca3af;
 }
 
 .score-row.has-runner-on-base .score-player {
@@ -2486,22 +2532,22 @@ textarea {
 }
 
 .score-row.is-active .batting-order-badge {
-  background: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
-  border-color: var(--active-team-primary, var(--accent-strong));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--active-team-primary, var(--accent)) 20%, transparent);
+  background: #050505;
+  color: #fff;
+  border-color: #050505;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.16);
 }
 
 .score-row.is-on-deck .batting-order-badge {
-  background: var(--active-team-secondary, var(--gold));
-  color: var(--active-team-primary, var(--accent-strong));
-  border-color: var(--active-team-secondary, var(--gold));
+  background: #4b5563;
+  color: #fff;
+  border-color: #4b5563;
 }
 
 .score-row.is-in-hole .batting-order-badge {
-  background: var(--accent);
+  background: #9ca3af;
   color: #fff;
-  border-color: var(--accent-strong);
+  border-color: #9ca3af;
 }
 
 .slot-pill {
@@ -2519,17 +2565,17 @@ textarea {
 }
 
 .pill-active {
-  background: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  background: #050505;
+  color: #fff;
 }
 
 .pill-on-deck {
-  background: var(--active-team-secondary, var(--gold));
-  color: var(--active-team-primary, var(--accent-strong));
+  background: #4b5563;
+  color: #fff;
 }
 
 .pill-in-hole {
-  background: var(--accent);
+  background: #9ca3af;
   color: #fff;
 }
 
@@ -2593,11 +2639,11 @@ textarea {
 }
 
 .up-next-entry.up-next-deck {
-  border-color: var(--active-team-secondary, var(--gold));
+  border-color: #4b5563;
 }
 
 .up-next-entry.up-next-hole {
-  border-color: #d8b87a;
+  border-color: #9ca3af;
 }
 
 .up-next-tag {
@@ -2618,18 +2664,18 @@ textarea {
 }
 
 .up-next-now .up-next-tag {
-  color: var(--active-team-secondary, #fff);
-  background: var(--active-team-primary, var(--accent));
+  color: #fff;
+  background: #050505;
 }
 
 .up-next-deck .up-next-tag {
-  color: var(--active-team-primary, var(--accent-strong));
-  background: var(--active-team-secondary, var(--gold));
+  color: #fff;
+  background: #4b5563;
 }
 
 .up-next-hole .up-next-tag {
   color: #fff;
-  background: var(--accent);
+  background: #9ca3af;
 }
 
 .up-next-slot {
@@ -2648,19 +2694,19 @@ textarea {
 }
 
 .up-next-now .up-next-slot {
-  background: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
-  border-color: var(--active-team-primary, var(--accent-strong));
+  background: #050505;
+  color: #fff;
+  border-color: #050505;
 }
 
 .up-next-deck .up-next-slot {
-  background: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 18%, #fff);
-  color: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 72%, #15231e);
-  border-color: var(--active-team-secondary, var(--gold));
+  background: #4b5563;
+  color: #fff;
+  border-color: #4b5563;
 }
 
 .up-next-hole .up-next-slot {
-  background: var(--accent);
+  background: #9ca3af;
   color: #fff;
   border-color: var(--accent-strong);
 }
@@ -2695,7 +2741,7 @@ textarea {
   padding: 0 18px;
   background: var(--active-team-primary, var(--accent));
   border-color: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  color: #fff;
   font-weight: 900;
   font-size: 0.95rem;
   letter-spacing: 0.04em;
@@ -2705,7 +2751,7 @@ textarea {
 .up-next-actions .next-ab-button {
   background: var(--active-team-primary, var(--accent));
   border-color: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  color: #fff;
 }
 
 .segmented-toggle {
@@ -3755,14 +3801,14 @@ tr:hover td {
   background: var(--bg);
   border-color: var(--line);
   color: var(--active-team-primary, var(--accent-strong));
-  box-shadow: inset 0 -2px 0 var(--active-team-secondary, var(--accent));
+  box-shadow: inset 0 -2px 0 var(--active-team-primary, var(--accent));
 }
 
 :is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) button:not(.danger):not(.data-tab),
 :is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .file-button:not(.danger) {
   background: var(--active-team-primary, var(--accent));
   border-color: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  color: #fff;
 }
 
 :is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) button.muted:not(.danger):not(.data-tab),
@@ -3788,7 +3834,7 @@ tr:hover td {
 
 :is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .number-badge {
   background: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  color: #fff;
 }
 
 :is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) th {
@@ -3797,11 +3843,11 @@ tr:hover td {
 }
 
 :is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) tr:hover td {
-  background: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 8%, #fff);
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 8%, #fff);
 }
 
 :is(#setupView, #rosterView, #pitchingView, #defenseView, #gameLogView, #dataView) .micro-copy {
-  border-left-color: var(--active-team-secondary, var(--gold));
+  border-left-color: var(--active-team-primary, var(--accent));
 }
 
 .data-section {
@@ -3834,9 +3880,15 @@ tr:hover td {
 
 #exportSection .data-actions > button,
 #exportSection .data-actions > .file-button {
-  min-width: 220px;
+  width: 240px;
+  min-width: 240px;
+  height: 44px;
   min-height: 44px;
   padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .presto-roster-row {
@@ -5444,55 +5496,55 @@ tr:hover td {
 #autoLineupButton {
   background: var(--active-team-primary, var(--accent));
   border-color: var(--active-team-primary, var(--accent));
-  color: var(--active-team-secondary, #fff);
+  color: #fff;
 }
 #autoLineupButton:hover {
   background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 88%, #fff);
   border-color: var(--active-team-primary, var(--accent-strong));
-  color: var(--active-team-secondary, #fff);
+  color: #fff;
 }
 
 #addLineupSlotButton.muted,
 #addLineupSlotButton {
-  background: var(--active-team-secondary, #eef4f1);
-  border-color: var(--active-team-secondary, var(--line));
-  color: var(--active-team-primary, var(--accent-strong));
+  background: var(--active-team-primary, var(--accent));
+  border-color: var(--active-team-primary, var(--accent));
+  color: #fff;
 }
 #addLineupSlotButton.muted:hover,
 #addLineupSlotButton:hover {
-  background: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 88%, #fff);
-  border-color: var(--active-team-secondary, var(--gold));
-  color: var(--active-team-primary, var(--accent-strong));
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 88%, #fff);
+  border-color: var(--active-team-primary, var(--accent));
+  color: #fff;
 }
 
 .chart-nav-actions #prevInningButton:not(.danger),
 #prevInningButton {
-  background: var(--active-team-secondary, #eef4f1);
-  border-color: var(--active-team-secondary, var(--line));
-  color: var(--active-team-primary, var(--accent-strong));
+  background: var(--active-team-primary, var(--accent));
+  border-color: var(--active-team-primary, var(--accent));
+  color: #fff;
 }
 .chart-nav-actions #prevInningButton:not(.danger):hover,
 #prevInningButton:hover {
-  background: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 88%, #fff);
-  border-color: var(--active-team-secondary, var(--gold));
-  color: var(--active-team-primary, var(--accent-strong));
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 88%, #fff);
+  border-color: var(--active-team-primary, var(--accent));
+  color: #fff;
 }
 
 .up-next-actions > #prevAtBatButton,
 .up-next-actions > #toggleFullChartButton,
 #prevAtBatButton.muted,
 #toggleFullChartButton.muted {
-  background: var(--active-team-secondary, #eef4f1);
-  border-color: var(--active-team-secondary, var(--line));
-  color: var(--active-team-primary, var(--accent-strong));
+  background: var(--active-team-primary, var(--accent));
+  border-color: var(--active-team-primary, var(--accent));
+  color: #fff;
 }
 .up-next-actions > #prevAtBatButton:hover,
 .up-next-actions > #toggleFullChartButton:hover,
 #prevAtBatButton.muted:hover,
 #toggleFullChartButton.muted:hover {
-  background: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 88%, #fff);
-  border-color: var(--active-team-secondary, var(--gold));
-  color: var(--active-team-primary, var(--accent-strong));
+  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 88%, #fff);
+  border-color: var(--active-team-primary, var(--accent));
+  color: #fff;
 }
 
 /* ---------------- Auth overlay ---------------- */

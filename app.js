@@ -1,5 +1,5 @@
 const STORAGE_KEY = "pxp-baseball-chart-v1";
-const APP_VERSION = "v3";
+const APP_VERSION = "v4";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -210,7 +210,7 @@ function loadState() {
   return {
     games: [newGameEntry("Game 1")],
     activeGameIndex: 0,
-    activeSide: "home",
+    activeSide: "away",
     settings: {
       showAtBatControls: false,
       showFocusControls: false
@@ -234,7 +234,6 @@ function emptyTeamMeta() {
     location: "",
     institutionInfo: "",
     primaryColor: "#167052",
-    secondaryColor: "#b67a14",
     showSnapshot: true,
     showRecords: true,
     showCoaches: true,
@@ -347,7 +346,7 @@ function normalizeTeamMeta(teamMeta) {
 }
 
 function normalizeState() {
-  state.activeSide = state.activeSide || "home";
+  state.activeSide = state.activeSide || "away";
 
   // Migrate old single-game state format to games array
   if (!state.games) {
@@ -398,10 +397,11 @@ function normalizeState() {
     event.gameId = event.gameId || fallbackGameId;
     event.gameType = normalizeGameType(event.gameType || state.games.find((game) => game.id === event.gameId)?.game?.gameType);
   });
-  state.fullChartSide = state.fullChartSide || state.activeSide || "home";
+  state.fullChartSide = state.fullChartSide || state.activeSide || "away";
   state.settings = {
     showAtBatControls: false,
     showFocusControls: false,
+    lineScoreExpanded: false,
     ...(state.settings || {})
   };
   state.hudStatScopes = {
@@ -2678,7 +2678,6 @@ function teamSetupHtml(side) {
         <label>Overall record <input type="text" data-team-meta-side="${side}" data-team-meta-field="overallRecord" value="${escapeHtml(meta.overallRecord)}" placeholder="21-31" /></label>
         <label>Conference record <input type="text" data-team-meta-side="${side}" data-team-meta-field="conferenceRecord" value="${escapeHtml(meta.conferenceRecord)}" placeholder="13-14" /></label>
         <label>Primary color <input type="color" data-team-meta-side="${side}" data-team-meta-field="primaryColor" value="${escapeHtml(safeHex(meta.primaryColor, "#167052"))}" /></label>
-        <label>Secondary color <input type="color" data-team-meta-side="${side}" data-team-meta-field="secondaryColor" value="${escapeHtml(safeHex(meta.secondaryColor, "#b67a14"))}" /></label>
       </div>
     </div>
     <label>Institution info
@@ -3049,6 +3048,70 @@ function tonightLineForPlayer(playerId) {
   return { line, events: tonightEvents };
 }
 
+function currentGameBatterStats(playerId) {
+  const stats = emptyStats();
+  if (!playerId) return stats;
+  activeGameEvents()
+    .filter((event) => event.playerId === playerId)
+    .forEach((event) => {
+      const delta = eventDelta(event.result);
+      Object.entries(delta).forEach(([key, value]) => {
+        stats[key] = Math.max(0, toNumber(stats[key]) + toNumber(value));
+      });
+      stats.RBI = Math.max(0, toNumber(stats.RBI) + toNumber(event.rbi));
+      stats.SB = Math.max(0, toNumber(stats.SB) + toNumber(event.sb));
+      stats.CS = Math.max(0, toNumber(stats.CS) + toNumber(event.cs));
+    });
+  return stats;
+}
+
+function gameLineForPlayer(playerId, gameId) {
+  const line = { PA: 0, AB: 0, H: 0, "2B": 0, "3B": 0, HR: 0, BB: 0, SO: 0, HBP: 0, RBI: 0, SB: 0, CS: 0 };
+  const events = (state.events || []).filter((event) => event.gameId === gameId && event.playerId === playerId);
+  events.forEach((event) => {
+    const delta = eventDelta(event.result);
+    Object.entries(delta).forEach(([key, value]) => {
+      if (line[key] !== undefined) line[key] += toNumber(value);
+    });
+    line.RBI += toNumber(event.rbi);
+    line.SB += toNumber(event.sb);
+    line.CS += toNumber(event.cs);
+  });
+  return { line, events };
+}
+
+function chartedRecentGamesForPlayer(playerId) {
+  return (state.games || [])
+    .map((game, index) => ({ game, index, ...gameLineForPlayer(playerId, game.id) }))
+    .filter((item) => item.index !== state.activeGameIndex && item.events.length)
+    .sort((a, b) => b.index - a.index)
+    .map((item) => ({
+      source: "chart",
+      order: item.index,
+      date: item.game.game?.gameDate || "",
+      opponent: item.game.game?.opponentName || "",
+      label: item.game.label || `Game ${item.index + 1}`,
+      line: item.line
+    }));
+}
+
+function recentGamesForPlayer(playerId) {
+  const boxGames = boxScoreLinesForPlayer(playerId).map(({ box, line }) => ({
+    source: "box",
+    order: Number.MAX_SAFE_INTEGER,
+    date: box.gameDate || "",
+    opponent: box.opponent || "",
+    label: box.gameDate ? formatBoxDate(box.gameDate) : "Box",
+    line
+  }));
+  return [...chartedRecentGamesForPlayer(playerId), ...boxGames]
+    .sort((a, b) => {
+      if (a.source !== b.source) return a.source === "chart" ? -1 : 1;
+      if (a.source === "chart") return b.order - a.order;
+      return String(b.date).localeCompare(String(a.date));
+    });
+}
+
 function currentInningOuts(inning = activeChart().currentInning) {
   const chart = activeChart();
   return Object.entries(chart.scorecard || {}).reduce((outs, [key, cell]) => {
@@ -3307,7 +3370,7 @@ function currentPitcherPills(line) {
   const rates = livePitchingRates(line);
   return [
     { label: "IP", value: formatIpFromOuts(line.outs) },
-    { label: "P/S/B/F", value: `${line.pitches}/${line.strikes}/${line.balls}/${line.fouls}` },
+    { label: "P/S/B/F", value: `${line.pitches}/${line.strikes}/${line.balls}/${line.fouls}`, className: "pitch-count-chip" },
     { label: "H", value: line.H },
     { label: "R", value: line.R },
     { label: "ER", value: line.ER },
@@ -3401,20 +3464,21 @@ function safeHex(value, fallback) {
 
 function teamColorStyle(side) {
   const meta = teamMetaForSide(side);
-  return `--team-primary:${safeHex(meta.primaryColor, "#167052")}; --team-secondary:${safeHex(meta.secondaryColor, "#b67a14")}`;
+  const primary = safeHex(meta.primaryColor, "#167052");
+  return `--team-primary:${primary}`;
 }
 
 function applyActiveTeamColors() {
   const meta = teamMetaForSide(state.activeSide);
-  document.documentElement.style.setProperty("--active-team-primary", safeHex(meta.primaryColor, "#167052"));
-  document.documentElement.style.setProperty("--active-team-secondary", safeHex(meta.secondaryColor, "#b67a14"));
+  const primary = safeHex(meta.primaryColor, "#167052");
+  document.documentElement.style.setProperty("--active-team-primary", primary);
 }
 
 function applySideTabColors(tab) {
   if (!tab?.dataset?.side) return;
   const meta = teamMetaForSide(tab.dataset.side);
-  tab.style.setProperty("--side-primary", safeHex(meta.primaryColor, "#167052"));
-  tab.style.setProperty("--side-secondary", safeHex(meta.secondaryColor, "#b67a14"));
+  const primary = safeHex(meta.primaryColor, "#167052");
+  tab.style.setProperty("--side-primary", primary);
 }
 
 function teamRecordTableHtml(side, compact = false) {
@@ -3574,7 +3638,7 @@ function teamSnapshotGroupsHtml(side) {
 
 function selectedHudStatScope(kind, player) {
   const requested = state.hudStatScopes?.[kind] || "overall";
-  if (kind === "pitcher" && requested === "currentgame") return "currentgame";
+  if (requested === "currentgame") return "currentgame";
   if (requested === "conference" && hasConferenceStats(player, kind)) return "conference";
   if (requested === "nonconference" && hasNonConferenceStats(player, kind)) return "nonconference";
   return "overall";
@@ -3582,6 +3646,7 @@ function selectedHudStatScope(kind, player) {
 
 function hudStatsFor(player, kind) {
   const scope = selectedHudStatScope(kind, player);
+  if (scope === "currentgame" && kind === "batter") return currentGameBatterStats(player?.id);
   if (scope === "nonconference") return nonConferenceStatsFor(player);
   const source = scope === "conference" ? player?.confStats : player?.stats;
   return { ...emptyStats(), ...(source || {}) };
@@ -3595,7 +3660,7 @@ function hudScopeToggleHtml(kind, player) {
   const side = player?.side || state.activeSide;
   return `
     <div class="hud-scope-toggle" role="group" aria-label="${label}" style="${teamColorStyle(side)}">
-      ${kind === "pitcher" ? `<button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="currentgame" class="${selected === "currentgame" ? "active" : ""}">CURRENT GAME</button>` : ""}
+      <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="currentgame" class="${selected === "currentgame" ? "active" : ""}">CG</button>
       <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="overall" class="${selected === "overall" ? "active" : ""}">OVERALL</button>
       <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="conference" class="${selected === "conference" ? "active" : ""}" ${canUseConference ? "" : "disabled"} title="${canUseConference ? "Show conference stats" : "No conference stats imported"}">CONF</button>
       <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="nonconference" class="${selected === "nonconference" ? "active" : ""}" ${canUseNonConference ? "" : "disabled"} title="${canUseNonConference ? "Show overall minus conference stats" : "Overall and conference stats are needed"}">NON-CONF</button>
@@ -3609,7 +3674,6 @@ function applyHudStatScopeFromEvent(event) {
   const kind = button.dataset.hudStatKind;
   const scope = button.dataset.hudStatScope;
   if (!["batter", "pitcher"].includes(kind) || !["overall", "conference", "nonconference", "currentgame"].includes(scope)) return false;
-  if (kind !== "pitcher" && scope === "currentgame") return false;
   state.hudStatScopes = state.hudStatScopes || { batter: "overall", pitcher: "overall" };
   state.hudStatScopes[kind] = scope;
   saveState();
@@ -3657,9 +3721,9 @@ function batterDetailHtml() {
 
   const { line, events } = tonightLineForPlayer(player.id);
   const recentEvents = events.slice(0, 4);
-  const recentBoxLines = boxScoreLinesForPlayer(player.id).slice(0, 3);
-  const recentGameText = recentBoxLines.length
-    ? recentBoxLines.map(({ box, line: boxLine }) => `${formatBoxDate(box.gameDate)} ${boxLine.H}/${boxLine.AB}${boxLine.HR ? ` ${boxLine.HR}HR` : ""}${boxLine.RBI ? ` ${boxLine.RBI}RBI` : ""}`).join(" | ")
+  const recentGames = recentGamesForPlayer(player.id).slice(0, 3);
+  const recentGameText = recentGames.length
+    ? recentGames.map((item) => `${item.label} ${item.line.H}/${item.line.AB}${item.line.HR ? ` ${item.line.HR}HR` : ""}${item.line.RBI ? ` ${item.line.RBI}RBI` : ""}`).join(" | ")
     : "No recent games";
 
   const tonightSummary = line.PA > 0
@@ -3732,15 +3796,14 @@ function batterDetailHtml() {
 }
 
 function recentBoxScoresHtml(playerId) {
-  const boxes = boxScoreLinesForPlayer(playerId).slice(0, 5);
-  if (!boxes.length) return "";
+  const games = recentGamesForPlayer(playerId).slice(0, 5);
+  if (!games.length) return "";
   return `
     <div class="batter-recent-games">
       <span class="totals-label small">Recent Games</span>
       <ul class="batter-recent-list">
-        ${boxes.map(({ box, line }) => {
-          const opponent = box.opponent ? `vs ${escapeHtml(box.opponent)}` : "vs ?";
-          const date = box.gameDate ? formatBoxDate(box.gameDate) : "";
+        ${games.map(({ label, opponent, line, source }) => {
+          const opponentText = opponent ? `vs ${escapeHtml(opponent)}` : "vs ?";
           const slash = `${line.H}/${line.AB}`;
           const extras = [];
           if (line.HR) extras.push(`${line.HR} HR`);
@@ -3748,7 +3811,7 @@ function recentBoxScoresHtml(playerId) {
           if (line.BB) extras.push(`${line.BB} BB`);
           if (line.SO) extras.push(`${line.SO} K`);
           if (line.SB) extras.push(`${line.SB} SB`);
-          return `<li><b>${date}</b> <span>${opponent}</span> <em>${slash}</em>${extras.length ? ` &middot; ${escapeHtml(extras.join(", "))}` : ""}</li>`;
+          return `<li><b>${escapeHtml(label)}</b> <span>${opponentText}</span> <em>${slash}</em>${source === "chart" ? ` &middot; charted` : ""}${extras.length ? ` &middot; ${escapeHtml(extras.join(", "))}` : ""}</li>`;
         }).join("")}
       </ul>
     </div>
@@ -3836,6 +3899,7 @@ const lineScoreSideOrder = ["away", "home"];
 function lineScoreHtml({ inning = Number(activeChart().currentInning || 1), highlightedSide = state.activeSide } = {}) {
   const innings = Number(activeGame().inningCount || 9);
   const totalKeys = ["R", "H", "E", "LOB", "RISP"];
+  const expanded = Boolean(state.settings?.lineScoreExpanded);
   const sideLineTotals = (chart) => Array.from({ length: innings }, (_, index) => getChartInningTotals(chart, index + 1))
     .reduce((acc, item) => {
       totalKeys.forEach((key) => {
@@ -3843,9 +3907,19 @@ function lineScoreHtml({ inning = Number(activeChart().currentInning || 1), high
       });
       return acc;
     }, blankInningTotals());
+  const detailRows = (chart, side, lineTotals) => expanded ? totalKeys.map((key) => `
+    <tr class="line-score-detail-row ${side === highlightedSide ? "active-side" : ""}">
+      <th>${escapeHtml(key)}</th>
+      ${Array.from({ length: innings }, (_, index) => {
+        const item = getChartInningTotals(chart, index + 1);
+        return `<td class="${index + 1 === inning ? "active" : ""}">${item[key] || 0}</td>`;
+      }).join("")}
+      ${totalKeys.map((totalKey) => `<td class="metric-total ${totalKey === key ? "detail-match" : "detail-muted"}">${totalKey === key ? (lineTotals[key] || 0) : ""}</td>`).join("")}
+    </tr>
+  `).join("") : "";
 
   return `
-    <div class="traditional-line-score">
+    <div class="traditional-line-score ${expanded ? "is-expanded" : ""}">
       <table>
         <thead>
           <tr>
@@ -3860,13 +3934,14 @@ function lineScoreHtml({ inning = Number(activeChart().currentInning || 1), high
             const lineTotals = sideLineTotals(chart);
             return `
               <tr class="${side === highlightedSide ? "active-side" : ""}">
-                <th>${escapeHtml(sideLabel(side))}</th>
+                <th><button type="button" class="line-score-team-toggle" data-line-score-toggle title="Show inning detail">${escapeHtml(sideLabel(side))}</button></th>
                 ${Array.from({ length: innings }, (_, index) => {
                   const item = getChartInningTotals(chart, index + 1);
                   return `<td class="${index + 1 === inning ? "active" : ""}">${item.R || 0}</td>`;
                 }).join("")}
                 ${totalKeys.map((key) => `<td class="metric-total">${lineTotals[key] || 0}</td>`).join("")}
               </tr>
+              ${detailRows(chart, side, lineTotals)}
             `;
           }).join("")}
         </tbody>
@@ -3893,6 +3968,14 @@ function renderDiamondLineScore() {
       </div>
     </details>
   `;
+}
+
+function toggleLineScoreExpanded() {
+  state.settings = state.settings || {};
+  state.settings.lineScoreExpanded = !state.settings.lineScoreExpanded;
+  saveState();
+  renderDiamondLineScore();
+  renderFullScorecard();
 }
 
 function upNextEntryHtml(slot, label, modifier) {
@@ -4341,7 +4424,7 @@ function renderFullScorecard() {
   if (els.fullChartToolbar) {
     els.fullChartToolbar.innerHTML = `
       <div class="segmented-toggle" role="group" aria-label="Full chart team">
-        ${["home", "away"].map((item) => `
+        ${lineScoreSideOrder.map((item) => `
           <button type="button" data-full-chart-side="${item}" class="${item === side ? "is-on" : ""}">${escapeHtml(sideLabel(item))}</button>
         `).join("")}
       </div>
@@ -4567,6 +4650,7 @@ function renderSpotlight() {
 }
 
 function renderPlayerTable() {
+  if (!els.playerSearch || !els.playerTable) return;
   const query = els.playerSearch.value.trim().toLowerCase();
   const rows = sortedPlayers().filter((player) => {
     const haystack = `${player.number} ${fullName(player)} ${player.pronunciation} ${player.notes}`.toLowerCase();
@@ -4742,6 +4826,8 @@ function addGame() {
   });
   state.games.push(entry);
   state.activeGameIndex = state.games.length - 1;
+  state.activeSide = "away";
+  state.fullChartSide = "away";
   saveState();
   render();
 }
@@ -5476,7 +5562,7 @@ function setupEvents() {
       const chartHudField = event.target.dataset.chartHudField;
       if (metaSide && metaField) {
         teamMetaForSide(metaSide)[metaField] = event.target.value;
-        if (metaField === "primaryColor" || metaField === "secondaryColor") {
+        if (metaField === "primaryColor") {
           applyActiveTeamColors();
           document.querySelectorAll(".side-tab").forEach(applySideTabColors);
         }
@@ -5863,6 +5949,11 @@ function setupEvents() {
     renderDiamondLineScore();
   });
 
+  els.diamondLineScore.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-line-score-toggle]")) return;
+    toggleLineScoreExpanded();
+  });
+
   els.inningTotals.addEventListener("click", (event) => {
     if (applyHudStatScopeFromEvent(event)) return;
     const clearBase = event.target.closest("[data-clear-base]")?.dataset.clearBase;
@@ -5985,6 +6076,10 @@ function setupEvents() {
     if (event.target.closest("[data-close-full-chart]")) {
       els.fullScorecardPanel.hidden = true;
       renderUpNextStrip();
+      return;
+    }
+    if (event.target.closest("[data-line-score-toggle]")) {
+      toggleLineScoreExpanded();
       return;
     }
     const side = event.target.closest("[data-full-chart-side]")?.dataset.fullChartSide;
@@ -6367,7 +6462,7 @@ function setupEvents() {
   });
 
   els.spotlightSelect.addEventListener("change", renderSpotlight);
-  els.playerSearch.addEventListener("input", renderPlayerTable);
+  els.playerSearch?.addEventListener("input", renderPlayerTable);
   els.playerForm.addEventListener("submit", savePlayerFromForm);
   els.newPlayerButton.addEventListener("click", () => fillPlayerForm(null));
 
