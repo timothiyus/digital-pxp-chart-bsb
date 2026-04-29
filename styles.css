@@ -512,7 +512,7 @@ textarea {
 }
 
 .team-snapshot-stat-pitching .team-snapshot-pills {
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
 }
 
 .team-snapshot-identity {
@@ -5735,9 +5735,12 @@ tr:hover td {
     gap: 5px;
   }
 
-  .team-snapshot-stat-batting .team-snapshot-pills,
-  .team-snapshot-stat-pitching .team-snapshot-pills {
+  .team-snapshot-stat-batting .team-snapshot-pills {
     grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  }
+
+  .team-snapshot-stat-pitching .team-snapshot-pills {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
   }
 
   .hud-stats span,

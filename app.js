@@ -1,5 +1,5 @@
 const STORAGE_KEY = "pxp-baseball-chart-v1";
-const APP_VERSION = "v9";
+const APP_VERSION = "v10";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -3844,8 +3844,6 @@ function teamSnapshotGroups(side) {
         { label: "Staff ERA", value: hasStaffPitching && ipToOuts(stats.IP) ? formatFixed(stats.ERA, 2) : "-", type: "era" },
         { label: "WHIP", value: hasStaffPitching && ipToOuts(stats.IP) ? formatFixed(stats.WHIP, 2) : "-", type: "whip" },
         { label: "P AVG", value: hasStaffPitching && (stats.P_AB || stats.BF) ? formatRate(toNumber(stats.BAA)) : "-", type: "baa" },
-        { label: "W/L", value: `${stats.W || 0}/${stats.L || 0}` },
-        { label: "GP/GS", value: `${pitcherAppearanceCount(stats)}/${stats.GS || 0}` },
         { label: "SV", value: stats.SV || 0 },
         { label: "CG", value: stats.CG || 0 },
         { label: "SHO", value: stats.SHO || 0 },
