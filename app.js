@@ -1,5 +1,5 @@
 const STORAGE_KEY = "pxp-baseball-chart-v1";
-const APP_VERSION = "v2";
+const APP_VERSION = "v3";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -93,12 +93,14 @@ const els = {
   gcBoxScoreInput: document.querySelector("#gcBoxScoreInput"),
   teamProfilePanel: document.querySelector("#teamProfilePanel"),
   exportButton: document.querySelector("#exportButton"),
+  importJsonInput: document.querySelector("#importJsonInput"),
   clearImportsButton: document.querySelector("#clearImportsButton"),
   resetButton: document.querySelector("#resetButton"),
   saveState: document.querySelector("#saveState"),
   teamName: document.querySelector("#teamName"),
   opponentName: document.querySelector("#opponentName"),
   gameDate: document.querySelector("#gameDate"),
+  gameType: document.querySelector("#gameType"),
   gameNotes: document.querySelector("#gameNotes"),
   showAtBatControls: document.querySelector("#showAtBatControls"),
   showFocusControls: document.querySelector("#showFocusControls"),
@@ -180,6 +182,7 @@ function newGameEntry(label) {
       teamName: "Garden City CC",
       opponentName: "",
       gameDate: new Date().toISOString().slice(0, 10),
+      gameType: "nonconference",
       notes: ""
     },
     inningCount: 9,
@@ -224,6 +227,8 @@ function emptyTeamMeta() {
     logo: "",
     abbreviation: "",
     mascot: "",
+    conferenceName: "",
+    leagueName: "",
     overallRecord: "",
     conferenceRecord: "",
     location: "",
@@ -377,7 +382,8 @@ function normalizeState() {
   state.games.forEach((entry, i) => {
     entry.id = entry.id || uid("game");
     entry.label = entry.label || `Game ${i + 1}`;
-    entry.game = { teamName: "Garden City CC", opponentName: "", gameDate: new Date().toISOString().slice(0, 10), notes: "", ...(entry.game || {}) };
+    entry.game = { teamName: "Garden City CC", opponentName: "", gameDate: new Date().toISOString().slice(0, 10), gameType: "nonconference", notes: "", ...(entry.game || {}) };
+    entry.game.gameType = normalizeGameType(entry.game.gameType);
     entry.inningCount = entry.inningCount || 9;
     entry.charts = entry.charts || { home: newChartState(), away: newChartState() };
     normalizeCharts(entry.charts);
@@ -387,6 +393,11 @@ function normalizeState() {
   state.sources = state.sources || [];
   state.boxScores = state.boxScores || [];
   state.events = state.events || [];
+  const fallbackGameId = state.games[state.activeGameIndex ?? 0]?.id || state.games[0]?.id || "";
+  state.events.forEach((event) => {
+    event.gameId = event.gameId || fallbackGameId;
+    event.gameType = normalizeGameType(event.gameType || state.games.find((game) => game.id === event.gameId)?.game?.gameType);
+  });
   state.fullChartSide = state.fullChartSide || state.activeSide || "home";
   state.settings = {
     showAtBatControls: false,
@@ -478,6 +489,72 @@ function activeGame() {
 
 function activeChart() {
   return activeGame().charts[state.activeSide];
+}
+
+function normalizeGameType(value) {
+  return value === "conference" ? "conference" : "nonconference";
+}
+
+function activeGameType() {
+  return normalizeGameType(activeGame()?.game?.gameType);
+}
+
+function statBucketsForGameType(gameType = activeGameType()) {
+  return normalizeGameType(gameType) === "conference" ? ["stats", "confStats"] : ["stats"];
+}
+
+function eventBelongsToGame(event, gameId = activeGame()?.id) {
+  return (event?.gameId || gameId) === gameId;
+}
+
+function activeGameEvents() {
+  const gameId = activeGame()?.id;
+  return (state.events || []).filter((event) => eventBelongsToGame(event, gameId));
+}
+
+function applyRunnerStatDeltaToBuckets(item, direction, buckets) {
+  const player = state.players.find((candidate) => candidate.id === item.playerId);
+  if (!player) return;
+  buckets.forEach((bucket) => {
+    const stats = ensureStatBucket(player, bucket);
+    stats[item.key] = Math.max(0, toNumber(stats[item.key]) + toNumber(item.value) * direction);
+  });
+}
+
+function migrateActiveGameConferenceStats(oldType, nextType) {
+  if (oldType === nextType) return;
+  const direction = nextType === "conference" ? 1 : -1;
+  const confOnly = ["confStats"];
+  activeGameEvents().forEach((event) => {
+    applyEventToBuckets(event, direction, confOnly);
+    event.gameType = nextType;
+  });
+  Object.values(activeGame().charts || {}).forEach((chart) => {
+    Object.entries(chart.pitchingLines || {}).forEach(([pitcherId, line]) => {
+      applyPitchingStatUpdatesToBuckets(pitcherId, line, confOnly, direction);
+    });
+    Object.values(chart.scorecard || {}).forEach((cell) => {
+      cell.gameType = nextType;
+      (cell.pitchDeltas || []).forEach((pitch) => { pitch.gameType = nextType; });
+      (cell.runnerPitcherDeltas || []).forEach((delta) => { delta.gameType = nextType; });
+      (cell.runnerStatDeltas || []).forEach((delta) => {
+        applyRunnerStatDeltaToBuckets(delta, direction, confOnly);
+        delta.gameType = nextType;
+      });
+    });
+  });
+}
+
+function setActiveGameType(value) {
+  const game = activeGame();
+  const oldType = activeGameType();
+  const nextType = normalizeGameType(value);
+  if (oldType === nextType) {
+    game.game.gameType = nextType;
+    return;
+  }
+  migrateActiveGameConferenceStats(oldType, nextType);
+  game.game.gameType = nextType;
 }
 
 function cleanSubText(value) {
@@ -1749,16 +1826,36 @@ function eventDelta(result) {
   return delta;
 }
 
-function applyEvent(event, direction = 1) {
+function ensureStatBucket(player, bucket) {
+  player[bucket] = { ...emptyStats(), ...(player[bucket] || {}) };
+  return player[bucket];
+}
+
+function applyStatDeltaToBuckets(player, delta, direction, buckets) {
+  buckets.forEach((bucket) => {
+    const stats = ensureStatBucket(player, bucket);
+    Object.entries(delta).forEach(([key, value]) => {
+      stats[key] = Math.max(0, toNumber(stats[key]) + toNumber(value) * direction);
+    });
+  });
+}
+
+function applyEventToBuckets(event, direction = 1, buckets = statBucketsForGameType(event.gameType)) {
   const player = state.players.find((item) => item.id === event.playerId);
   if (!player) return;
   const delta = eventDelta(event.result);
-  Object.entries(delta).forEach(([key, value]) => {
-    player.stats[key] = Math.max(0, toNumber(player.stats[key]) + value * direction);
+  applyStatDeltaToBuckets(player, delta, direction, buckets);
+  buckets.forEach((bucket) => {
+    const stats = ensureStatBucket(player, bucket);
+    stats.RBI = Math.max(0, toNumber(stats.RBI) + toNumber(event.rbi) * direction);
+    stats.SB = Math.max(0, toNumber(stats.SB) + toNumber(event.sb) * direction);
+    stats.CS = Math.max(0, toNumber(stats.CS) + toNumber(event.cs) * direction);
   });
-  player.stats.RBI = Math.max(0, toNumber(player.stats.RBI) + toNumber(event.rbi) * direction);
-  player.stats.SB = Math.max(0, toNumber(player.stats.SB) + toNumber(event.sb) * direction);
-  player.stats.CS = Math.max(0, toNumber(player.stats.CS) + toNumber(event.cs) * direction);
+}
+
+function applyEvent(event, direction = 1) {
+  event.gameType = normalizeGameType(event.gameType || activeGameType());
+  applyEventToBuckets(event, direction, statBucketsForGameType(event.gameType));
 }
 
 function resultLabel(result) {
@@ -1804,12 +1901,37 @@ function normalizedNotation(text) {
   return String(text || "").trim().toUpperCase();
 }
 
+function compactPlayNotation(text) {
+  return normalizedNotation(text)
+    .replace(/\s*-\s*/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/^([FGLP])\s+([1-9])/, "$1$2");
+}
+
+function isThrowSequenceNotation(text) {
+  const compact = compactPlayNotation(text);
+  return /^(?:[1-9]|U)(?:-(?:[1-9]|U))+$/.test(compact)
+    || /^[1-9]U$/.test(compact)
+    || /^U[1-9]$/.test(compact)
+    || /^U-[1-9]$/.test(compact);
+}
+
+function isBattedOutNotation(text) {
+  const compact = compactPlayNotation(text);
+  return /^[FGLP][1-9](?:-(?:[1-9]|U))*$/.test(compact)
+    || isThrowSequenceNotation(compact)
+    || /^[1-9]$/.test(compact);
+}
+
 function notationActionKey(text) {
   const normalized = normalizedNotation(text);
-  if (/^[FGLP][1-9]$/.test(normalized)) return "OUT";
+  const compact = compactPlayNotation(text);
+  if (/^FC\b/.test(normalized)) return "FC";
+  if (/^E[1-9]?\b/.test(normalized)) return "ROE";
+  if (isBattedOutNotation(compact)) return "OUT";
   if (/^K\s+[1-9](?:-[1-9U])+$/.test(normalized)) return "K";
-  if (/^[1-9](?:-[1-9U])+$/.test(normalized)) return "OUT";
-  if (["FO", "GO", "LO", "DP", "TP", "PO"].includes(normalized)) return "OUT";
+  if (/^(?:DP|TP)\b/.test(compact)) return "OUT";
+  if (["FO", "GO", "LO", "DP", "TP", "PO"].includes(compact)) return "OUT";
   return notationStatMap[normalized] || "";
 }
 
@@ -1894,6 +2016,7 @@ const basePathForResult = {
   KPB: ["toFirst"],
   KWP: ["toFirst"],
   ROE: ["toFirst"],
+  FC: ["toFirst"],
   "2B": ["toFirst", "toSecond"],
   "3B": ["toFirst", "toSecond", "toThird"],
   HR: ["toFirst", "toSecond", "toThird", "toHome"]
@@ -1915,7 +2038,8 @@ function activeDiamondTerminal(bases = {}) {
 }
 
 function scoringPathActive(bases = {}) {
-  return Boolean(bases.toSecond || bases.toThird);
+  const terminal = activeDiamondTerminal(bases);
+  return terminal === "toSecond" || terminal === "toThird";
 }
 
 const diamondCornerPoints = {
@@ -1964,9 +2088,13 @@ function terminalEventLabel(prefix, terminal) {
 function addRunnerStatDelta(cell, playerId, key, value) {
   const player = state.players.find((item) => item.id === playerId);
   if (!player) return;
-  player.stats[key] = Math.max(0, toNumber(player.stats[key]) + value);
+  const gameType = activeGameType();
+  statBucketsForGameType(gameType).forEach((bucket) => {
+    const stats = ensureStatBucket(player, bucket);
+    stats[key] = Math.max(0, toNumber(stats[key]) + value);
+  });
   cell.runnerStatDeltas = cell.runnerStatDeltas || [];
-  cell.runnerStatDeltas.push({ playerId, key, value });
+  cell.runnerStatDeltas.push({ playerId, key, value, gameType });
 }
 
 function addRunnerPitcherOut(cell) {
@@ -1976,9 +2104,10 @@ function addRunnerPitcherOut(cell) {
 function addRunnerPitcherDelta(cell, updates) {
   const chart = activeChart();
   if (!chart.activePitcherId) return;
-  addToPitchingLine(chart.activePitcherId, updates);
+  const gameType = cell.gameType || activeGameType();
+  addToPitchingLine(chart.activePitcherId, updates, gameType);
   cell.runnerPitcherDeltas = cell.runnerPitcherDeltas || [];
-  cell.runnerPitcherDeltas.push({ pitcherId: chart.activePitcherId, updates: { ...updates } });
+  cell.runnerPitcherDeltas.push({ pitcherId: chart.activePitcherId, updates: { ...updates }, gameType });
 }
 
 function reverseRunnerPitcherDelta(item) {
@@ -1987,14 +2116,71 @@ function reverseRunnerPitcherDelta(item) {
   Object.entries(updates).forEach(([key, value]) => {
     reverseUpdates[key] = -toNumber(value);
   });
-  addToPitchingLine(item.pitcherId, reverseUpdates);
+  addToPitchingLine(item.pitcherId, reverseUpdates, item.gameType || activeGameType());
+}
+
+function addRunnerInningDelta(cell, inning, updates) {
+  const cleanUpdates = Object.fromEntries(
+    Object.entries(updates || {}).filter(([, value]) => toNumber(value))
+  );
+  if (!Object.keys(cleanUpdates).length) return;
+  addToInningTotals(inning, cleanUpdates, 1);
+  cell.runnerInning = inning;
+  cell.runnerInningUpdates = cell.runnerInningUpdates || {};
+  Object.entries(cleanUpdates).forEach(([key, value]) => {
+    cell.runnerInningUpdates[key] = toNumber(cell.runnerInningUpdates[key]) + toNumber(value);
+  });
+}
+
+function reverseRunnerInningDelta(cell) {
+  if (cell.runnerInning && cell.runnerInningUpdates) {
+    addToInningTotals(cell.runnerInning, cell.runnerInningUpdates, -1);
+  }
+  delete cell.runnerInning;
+  delete cell.runnerInningUpdates;
+}
+
+function addRunnerDefensiveInningDelta(cell, inning, updates) {
+  const defensiveSide = oppositeSide();
+  const defensiveChart = activeGame().charts[defensiveSide];
+  if (!defensiveChart) return;
+  const cleanUpdates = Object.fromEntries(
+    Object.entries(updates || {}).filter(([, value]) => toNumber(value))
+  );
+  if (!Object.keys(cleanUpdates).length) return;
+  addToChartInningTotals(defensiveChart, inning, cleanUpdates, 1);
+  cell.runnerDefensiveInning = inning;
+  cell.runnerDefensiveInningSide = defensiveSide;
+  cell.runnerDefensiveInningUpdates = cell.runnerDefensiveInningUpdates || {};
+  Object.entries(cleanUpdates).forEach(([key, value]) => {
+    cell.runnerDefensiveInningUpdates[key] = toNumber(cell.runnerDefensiveInningUpdates[key]) + toNumber(value);
+  });
+}
+
+function reverseRunnerDefensiveInningDelta(cell) {
+  if (cell.runnerDefensiveInning && cell.runnerDefensiveInningSide && cell.runnerDefensiveInningUpdates) {
+    const defensiveChart = activeGame().charts[cell.runnerDefensiveInningSide];
+    if (defensiveChart) {
+      addToChartInningTotals(defensiveChart, cell.runnerDefensiveInning, cell.runnerDefensiveInningUpdates, -1);
+    }
+  }
+  delete cell.runnerDefensiveInning;
+  delete cell.runnerDefensiveInningSide;
+  delete cell.runnerDefensiveInningUpdates;
 }
 
 function clearRunnerOutcome(cell) {
+  reverseRunnerInningDelta(cell);
+  reverseRunnerDefensiveInningDelta(cell);
   if (cell.runnerStatDeltas) {
     cell.runnerStatDeltas.forEach((item) => {
       const player = state.players.find((candidate) => candidate.id === item.playerId);
-      if (player) player.stats[item.key] = Math.max(0, toNumber(player.stats[item.key]) - toNumber(item.value));
+      if (player) {
+        statBucketsForGameType(item.gameType || activeGameType()).forEach((bucket) => {
+          const stats = ensureStatBucket(player, bucket);
+          stats[item.key] = Math.max(0, toNumber(stats[item.key]) - toNumber(item.value));
+        });
+      }
     });
   }
   if (cell.runnerPitcherDeltas) {
@@ -2024,6 +2210,104 @@ function defaultPickSequence(terminal) {
     toThird: "1-5",
     toHome: "1-2"
   }[terminal] || "1-3";
+}
+
+function defaultForceSequence(terminal) {
+  return {
+    toFirst: "4-3",
+    toSecond: "6-4",
+    toThird: "5-6",
+    toHome: "5-2"
+  }[terminal] || "6-4";
+}
+
+function defaultTagSequence(terminal) {
+  return {
+    toFirst: "1-3",
+    toSecond: "9-6",
+    toThird: "8-5",
+    toHome: "7-2"
+  }[terminal] || "9-6";
+}
+
+const runnerEventOptions = [
+  { value: "FC_OUT", label: "FC out", prefix: "FC", mode: "out", target: "next", defaultKind: "force" },
+  { value: "FORCE_OUT", label: "Force out", prefix: "FO", mode: "out", target: "next", defaultKind: "force" },
+  { value: "TAG_OUT", label: "Tag out", prefix: "TO", mode: "out", target: "next", defaultKind: "tag" },
+  { value: "ADV_OUT", label: "Out advancing", prefix: "OA", mode: "out", target: "next", defaultKind: "tag" },
+  { value: "DP_OUT", label: "Double play", prefix: "DP", mode: "out", target: "next", defaultKind: "force" },
+  { value: "TP_OUT", label: "Triple play", prefix: "TP", mode: "out", target: "next", defaultKind: "force" },
+  { value: "APPEAL_OUT", label: "Appeal out", prefix: "AP", mode: "out", target: "current", defaultKind: "current" },
+  { value: "RI_OUT", label: "Runner INT", prefix: "RI", mode: "out", target: "current", defaultKind: "current" },
+  { value: "CS", label: "Caught stealing", prefix: "CS", mode: "out", target: "next", defaultKind: "cs", runnerStat: "CS" },
+  { value: "PO", label: "Pickoff", prefix: "PO", mode: "out", target: "current", defaultKind: "pick" },
+  { value: "POCS", label: "Pickoff CS", prefix: "POCS", mode: "out", target: "next", defaultKind: "pick", runnerStat: "CS" },
+  { value: "SB", label: "Stolen base", prefix: "SB", mode: "advance", target: "next", runnerStat: "SB" },
+  { value: "DI", label: "Def. indiff.", prefix: "DI", mode: "advance", target: "next" },
+  { value: "WP_ADV", label: "Wild pitch", prefix: "WP", mode: "advance", target: "next", pitcher: { WP: 1 } },
+  { value: "PB_ADV", label: "Passed ball", prefix: "PB", mode: "advance", target: "next" },
+  { value: "BK_ADV", label: "Balk advance", prefix: "BK", mode: "advance", target: "next", pitcher: { BK: 1 } },
+  { value: "ADV_THROW", label: "Adv. throw", prefix: "AOT", mode: "advance", target: "next" },
+  { value: "ADV_ERROR", label: "Adv. error", prefix: "E", mode: "advance", target: "next", defensive: { E: 1 } },
+  { value: "ADV_HIT", label: "Adv. hit", prefix: "ADV", mode: "advance", target: "next" },
+  { value: "ADV_FC", label: "Adv. FC", prefix: "FC", mode: "advance", target: "next" },
+  { value: "SCORED", label: "Scored", prefix: "R", mode: "score", target: "home" },
+  { value: "OTHER_SAFE", label: "Other safe", prefix: "", mode: "advance", target: "next" },
+  { value: "OTHER_OUT", label: "Other out", prefix: "", mode: "out", target: "next", defaultKind: "tag" }
+];
+
+function runnerEventByValue(value) {
+  return runnerEventOptions.find((option) => option.value === value);
+}
+
+function runnerEventOptionsHtml() {
+  return [`<option value="">Runner play</option>`]
+    .concat(runnerEventOptions.map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`))
+    .join("");
+}
+
+function terminalForRunnerCell(cellKey, cell) {
+  const terminal = activeDiamondTerminal(cell.bases || emptyDiamondPath());
+  if (terminal) return terminal;
+  const { slot } = parseScoreCellKey(cellKey);
+  const runnerId = cell.runnerId || runnerIdAtSlot(slot);
+  const chart = activeChart();
+  if (runnerId && chart.baseState.first === runnerId) return "toFirst";
+  if (runnerId && chart.baseState.second === runnerId) return "toSecond";
+  if (runnerId && chart.baseState.third === runnerId) return "toThird";
+  return "";
+}
+
+function runnerIdForCell(cellKey, cell) {
+  const { slot } = parseScoreCellKey(cellKey);
+  return cell.runnerId || runnerIdAtSlot(slot);
+}
+
+function targetTerminalForRunnerEvent(option, currentTerminal) {
+  if (option.target === "home") return "toHome";
+  if (option.target === "current") return currentTerminal || "toFirst";
+  return nextTerminalFrom(currentTerminal || "toFirst") || currentTerminal || "toFirst";
+}
+
+function defaultRunnerEventInput(option, terminal) {
+  if (option.defaultKind === "cs") return defaultCsSequence(terminal);
+  if (option.defaultKind === "pick") return defaultPickSequence(terminal);
+  if (option.defaultKind === "force") return defaultForceSequence(terminal);
+  if (option.defaultKind === "tag") return defaultTagSequence(terminal);
+  if (option.defaultKind === "current") return baseLabelShort(terminal) || "";
+  if (option.mode === "score") return "R";
+  if (option.runnerStat === "SB") return terminalEventLabel("SB", terminal);
+  if (option.prefix) return option.prefix;
+  return option.label;
+}
+
+function formatRunnerEventNotation(option, rawValue, terminal) {
+  const typed = compactPlayNotation(rawValue || defaultRunnerEventInput(option, terminal));
+  if (!typed) return option.label;
+  if (!option.prefix) return typed;
+  if (typed === option.prefix || typed.startsWith(`${option.prefix} `) || typed.startsWith(`${option.prefix}-`)) return typed;
+  if (option.runnerStat === "SB" && typed.startsWith("SB")) return typed;
+  return `${option.prefix} ${typed}`.trim();
 }
 
 async function promptThrowSequence(title, defaultValue) {
@@ -2108,6 +2392,57 @@ function blankPitchingLine() {
   return { outs: 0, H: 0, R: 0, ER: 0, BB: 0, K: 0, KC: 0, HR: 0, "2B": 0, "3B": 0, HBP: 0, WP: 0, BF: 0, pitches: 0, strikes: 0, balls: 0, fouls: 0, twoStrikePitches: 0, BK: 0 };
 }
 
+const pitchingLiveToSeasonStat = {
+  H: "P_H",
+  R: "P_R",
+  ER: "P_ER",
+  BB: "P_BB",
+  K: "P_SO",
+  HR: "P_HR",
+  "2B": "P_2B",
+  "3B": "P_3B",
+  HBP: "P_HBP",
+  WP: "P_WP",
+  BF: "BF",
+  pitches: "Pitches",
+  strikes: "Strikes",
+  BK: "P_BK"
+};
+
+function applyPitchingStatUpdateToStats(stats, key, value) {
+  const delta = toNumber(value);
+  if (!delta) return;
+  if (key === "outs") {
+    stats.IP = outsToIpValue(Math.max(0, ipToOuts(stats.IP) + Math.round(delta)));
+    return;
+  }
+  const seasonKey = pitchingLiveToSeasonStat[key];
+  if (!seasonKey) return;
+  stats[seasonKey] = Math.max(0, toNumber(stats[seasonKey]) + delta);
+}
+
+function signedUpdates(updates, direction = 1) {
+  return Object.fromEntries(Object.entries(updates || {}).map(([key, value]) => [key, toNumber(value) * direction]));
+}
+
+function applyPitchingStatUpdatesToBuckets(pitcherId, updates, buckets = statBucketsForGameType(activeGameType()), direction = 1) {
+  if (!pitcherId) return;
+  const pitcher = state.players.find((player) => player.id === pitcherId);
+  if (!pitcher) return;
+  const adjusted = direction === 1 ? updates : signedUpdates(updates, direction);
+  buckets.forEach((bucket) => {
+    const stats = ensureStatBucket(pitcher, bucket);
+    Object.entries(adjusted || {}).forEach(([key, value]) => {
+      applyPitchingStatUpdateToStats(stats, key, value);
+    });
+    calculatePitchingRates(stats);
+  });
+}
+
+function applyPitchingStatUpdates(pitcherId, updates, gameType = activeGameType()) {
+  applyPitchingStatUpdatesToBuckets(pitcherId, updates, statBucketsForGameType(gameType));
+}
+
 function formatIpFromOuts(outs) {
   return `${Math.floor(outs / 3)}.${outs % 3}`;
 }
@@ -2132,12 +2467,13 @@ function getPitchingLine(chart, pitcherId = chart.activePitcherId) {
   return chart.pitchingLines[pitcherId];
 }
 
-function addToPitchingLine(pitcherId, updates) {
+function addToPitchingLine(pitcherId, updates, gameType = activeGameType()) {
   if (!pitcherId) return;
   const line = getPitchingLine(activeChart(), pitcherId);
   Object.entries(updates).forEach(([key, value]) => {
-    line[key] = Math.max(0, toNumber(line[key]) + value);
+    line[key] = Math.max(0, toNumber(line[key]) + toNumber(value));
   });
+  applyPitchingStatUpdates(pitcherId, updates, gameType);
 }
 
 const pitcherAdjustmentFields = [
@@ -2165,7 +2501,7 @@ function setPitcherUpdateValue(cell, pitcherId, key, value) {
   const nextValue = Math.max(0, toNumber(value));
   const delta = nextValue - oldValue;
   if (!delta) return;
-  addToPitchingLine(pitcherId, { [key]: delta });
+  addToPitchingLine(pitcherId, { [key]: delta }, cell.gameType || activeGameType());
   if (nextValue) cell.pitcherUpdates[key] = nextValue;
   else delete cell.pitcherUpdates[key];
   if (!Object.keys(cell.pitcherUpdates).length) delete cell.pitcherUpdates;
@@ -2180,10 +2516,7 @@ function setCellPitcherUpdate(cellKey, key, value) {
 }
 
 function addToInningTotals(inning, updates, direction = 1) {
-  const totals = getInningTotals(inning);
-  Object.entries(updates || {}).forEach(([key, value]) => {
-    totals[key] = Math.max(0, toNumber(totals[key]) + value * direction);
-  });
+  addToChartInningTotals(activeChart(), inning, updates, direction);
 }
 
 function reverseChartCell(cellKey, options = {}) {
@@ -2201,7 +2534,7 @@ function reverseChartCell(cellKey, options = {}) {
     Object.entries(cell.pitcherUpdates).forEach(([key, value]) => {
       reversePitcher[key] = -value;
     });
-    addToPitchingLine(cell.pitcherId, reversePitcher);
+    addToPitchingLine(cell.pitcherId, reversePitcher, cell.gameType || activeGameType());
   }
   if (!options.preservePitches && cell.pitchDeltas) {
     cell.pitchDeltas.forEach((pitch) => {
@@ -2211,7 +2544,7 @@ function reverseChartCell(cellKey, options = {}) {
           Object.entries(pitch.updates).forEach(([key, value]) => {
             reverseUpdates[key] = -toNumber(value);
           });
-          addToPitchingLine(pitch.pitcherId, reverseUpdates);
+          addToPitchingLine(pitch.pitcherId, reverseUpdates, pitch.gameType || cell.gameType || activeGameType());
           if (pitch.type !== "balk") chart.pitchCounts[pitch.pitcherId] = Math.max(0, toNumber(chart.pitchCounts[pitch.pitcherId]) - 1);
         } else {
           const line = getPitchingLine(chart, pitch.pitcherId);
@@ -2230,10 +2563,19 @@ function reverseChartCell(cellKey, options = {}) {
   if (cell.inning && cell.inningUpdates) {
     addToInningTotals(cell.inning, cell.inningUpdates, -1);
   }
+  if (cell.inning && cell.defensiveInningSide && cell.defensiveInningUpdates) {
+    const defensiveChart = activeGame().charts[cell.defensiveInningSide];
+    if (defensiveChart) addToChartInningTotals(defensiveChart, cell.inning, cell.defensiveInningUpdates, -1);
+  }
   if (cell.runnerStatDeltas) {
     cell.runnerStatDeltas.forEach((item) => {
       const player = state.players.find((candidate) => candidate.id === item.playerId);
-      if (player) player.stats[item.key] = Math.max(0, toNumber(player.stats[item.key]) - toNumber(item.value));
+      if (player) {
+        statBucketsForGameType(item.gameType || cell.gameType || activeGameType()).forEach((bucket) => {
+          const stats = ensureStatBucket(player, bucket);
+          stats[item.key] = Math.max(0, toNumber(stats[item.key]) - toNumber(item.value));
+        });
+      }
     });
   }
   if (cell.runnerPitcherDeltas) {
@@ -2241,9 +2583,25 @@ function reverseChartCell(cellKey, options = {}) {
       reverseRunnerPitcherDelta(item);
     });
   }
+  reverseRunnerInningDelta(cell);
+  reverseRunnerDefensiveInningDelta(cell);
   if (cell.runnerDiamondBefore) {
     cell.runnerDiamondBefore.forEach((item) => {
-      if (chart.scorecard[item.key]) chart.scorecard[item.key].bases = { ...item.bases };
+      const targetCell = chart.scorecard[item.key];
+      if (!targetCell) return;
+      targetCell.bases = { ...item.bases };
+      if ("outOverlay" in item) {
+        if (item.outOverlay) targetCell.outOverlay = true;
+        else delete targetCell.outOverlay;
+      }
+      if ("scoredOverlay" in item) {
+        if (item.scoredOverlay) targetCell.scoredOverlay = true;
+        else delete targetCell.scoredOverlay;
+      }
+      if ("runnerNote" in item) {
+        if (item.runnerNote) targetCell.runnerNote = item.runnerNote;
+        else delete targetCell.runnerNote;
+      }
     });
   }
   if (cell.baseStateBefore) {
@@ -2258,10 +2616,18 @@ function reverseChartCell(cellKey, options = {}) {
   delete cell.runnerDiamondBefore;
   delete cell.inning;
   delete cell.inningUpdates;
+  delete cell.defensiveInningSide;
+  delete cell.defensiveInningUpdates;
   delete cell.baseStateBefore;
   delete cell.actionKey;
+  delete cell.gameType;
   delete cell.runnerStatDeltas;
   delete cell.runnerPitcherDeltas;
+  delete cell.runnerInning;
+  delete cell.runnerInningUpdates;
+  delete cell.runnerDefensiveInning;
+  delete cell.runnerDefensiveInningSide;
+  delete cell.runnerDefensiveInningUpdates;
   delete cell.runnerId;
   delete cell.runnerNote;
   delete cell.outOverlay;
@@ -2307,6 +2673,8 @@ function teamSetupHtml(side) {
         <label>Mascot <input type="text" data-team-meta-side="${side}" data-team-meta-field="mascot" value="${escapeHtml(meta.mascot)}" placeholder="Broncbusters" /></label>
         <label>Abbrev <input type="text" data-team-meta-side="${side}" data-team-meta-field="abbreviation" value="${escapeHtml(meta.abbreviation)}" placeholder="GCCC" /></label>
         <label>Location <input type="text" data-team-meta-side="${side}" data-team-meta-field="location" value="${escapeHtml(meta.location)}" placeholder="Garden City, KS" /></label>
+        <label>Conference <input type="text" data-team-meta-side="${side}" data-team-meta-field="conferenceName" value="${escapeHtml(meta.conferenceName)}" placeholder="KJCCC" /></label>
+        <label>League <input type="text" data-team-meta-side="${side}" data-team-meta-field="leagueName" value="${escapeHtml(meta.leagueName)}" placeholder="NJCAA" /></label>
         <label>Overall record <input type="text" data-team-meta-side="${side}" data-team-meta-field="overallRecord" value="${escapeHtml(meta.overallRecord)}" placeholder="21-31" /></label>
         <label>Conference record <input type="text" data-team-meta-side="${side}" data-team-meta-field="conferenceRecord" value="${escapeHtml(meta.conferenceRecord)}" placeholder="13-14" /></label>
         <label>Primary color <input type="color" data-team-meta-side="${side}" data-team-meta-field="primaryColor" value="${escapeHtml(safeHex(meta.primaryColor, "#167052"))}" /></label>
@@ -2371,6 +2739,7 @@ function renderSetup() {
   els.teamName.value = activeGame().game.teamName;
   els.opponentName.value = activeGame().game.opponentName;
   els.gameDate.value = activeGame().game.gameDate;
+  if (els.gameType) els.gameType.value = activeGameType();
   els.gameNotes.value = activeGame().game.notes;
   if (els.teamProfilePanel) els.teamProfilePanel.innerHTML = teamSetupHtml(state.activeSide);
   if (els.showAtBatControls) els.showAtBatControls.checked = Boolean(state.settings.showAtBatControls);
@@ -2641,8 +3010,33 @@ function getInningTotals(inning = activeChart().currentInning) {
   return getChartInningTotals(activeChart(), inning);
 }
 
+function addToChartInningTotals(chart, inning, updates, direction = 1) {
+  if (!chart) return;
+  const totals = getChartInningTotals(chart, inning);
+  Object.entries(updates || {}).forEach(([key, value]) => {
+    totals[key] = Math.max(0, toNumber(totals[key]) + toNumber(value) * direction);
+  });
+}
+
+function countBaseStateRunners(baseState = {}) {
+  return ["first", "second", "third"].filter((base) => Boolean(baseState[base])).length;
+}
+
+function countBaseStateRisp(baseState = {}) {
+  return ["second", "third"].filter((base) => Boolean(baseState[base])).length;
+}
+
+function syncInningBaseTotals(chart, inning) {
+  const baseState = Number(chart.currentInning || 1) === Number(inning)
+    ? chart.baseState
+    : (chart.baseStates?.[Number(inning)] || emptyBaseState());
+  const totals = getChartInningTotals(chart, inning);
+  totals.LOB = countBaseStateRunners(baseState);
+  totals.RISP = countBaseStateRisp(baseState);
+}
+
 function tonightLineForPlayer(playerId) {
-  const tonightEvents = state.events.filter((event) => event.playerId === playerId);
+  const tonightEvents = activeGameEvents().filter((event) => event.playerId === playerId);
   const line = { PA: 0, AB: 0, H: 0, "2B": 0, "3B": 0, HR: 0, BB: 0, SO: 0, HBP: 0, RBI: 0, R: 0 };
   tonightEvents.forEach((event) => {
     const delta = eventDelta(event.result);
@@ -2664,10 +3058,15 @@ function currentInningOuts(inning = activeChart().currentInning) {
   }, 0);
 }
 
+function eventInningText(event) {
+  const match = String(event?.context || "").match(/Inning\s+(\d+)/i);
+  return match ? `Inn ${match[1]}` : "Inn ?";
+}
+
 function recentPaText(events, limit = 4) {
   const items = events.slice(0, limit).map((event) => {
     const label = event.context?.split(": ").pop() || resultLabel(event.result);
-    return label.replace("strikeout", "K");
+    return `${eventInningText(event)} ${label.replace("strikeout", "K")}`;
   });
   return items.length ? items.join(" / ") : "No PA yet";
 }
@@ -2854,8 +3253,9 @@ function cellRecordsOut(cell) {
 
 function currentGameBatterSpecialPills(playerId) {
   const chart = activeChart();
+  const eventsById = new Map(activeGameEvents().map((event) => [event.id, event]));
   const eventCells = Object.entries(chart.scorecard || {})
-    .map(([key, cell]) => ({ key, cell, event: state.events.find((item) => item.id === cell.eventId) }))
+    .map(([key, cell]) => ({ key, cell, event: eventsById.get(cell.eventId) }))
     .filter((item) => item.event)
     .sort(scoreCellSortChronological);
   const outsByInning = {};
@@ -3043,7 +3443,7 @@ function teamCoachesHtml(side) {
           <div>
             <strong>${escapeHtml(coach.name || "Coach")}</strong>
             <span>${escapeHtml(coach.title || "")}</span>
-            ${coach.bio ? `<details class="coach-bio-details"><summary>Bio</summary><p>${escapeHtml(coach.bio)}</p></details>` : ""}
+            ${coach.bio ? `<details class="coach-bio-details"><summary>Bio</summary><div class="coach-bio-copy">${paragraphTextHtml(coach.bio)}</div></details>` : ""}
           </div>
         </article>
       `).join("")}
@@ -3055,6 +3455,7 @@ function teamSnapshotHeaderHtml(side) {
   const meta = teamMetaForSide(side);
   const name = sideLabel(side);
   const title = [name, meta.mascot].filter(Boolean).join(" ");
+  const affiliations = [meta.conferenceName, meta.leagueName].filter(Boolean).join(" | ");
   return `
     <div class="team-snapshot-identity" style="${teamColorStyle(side)}">
       <div class="team-logo-box display-only">
@@ -3065,6 +3466,7 @@ function teamSnapshotHeaderHtml(side) {
       <div class="team-snapshot-copy">
         <strong>${escapeHtml(title || name)}</strong>
         <span>${escapeHtml([meta.location, meta.abbreviation].filter(Boolean).join(" | "))}</span>
+        ${affiliations ? `<span>${escapeHtml(affiliations)}</span>` : ""}
         <em>${escapeHtml([meta.overallRecord, meta.conferenceRecord ? `(${meta.conferenceRecord})` : ""].filter(Boolean).join(" ") || "Record not set")}</em>
         ${meta.institutionInfo ? `<p>${escapeHtml(meta.institutionInfo)}</p>` : ""}
       </div>
@@ -3685,13 +4087,21 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
       ${Array.from({ length: abCount }, (_, index) => `<option value="${index}" ${index === abIndex ? "selected" : ""}>AB ${index + 1}</option>`).join("")}
     </select>
   ` : "";
+  const runnerEventSelect = `
+    <select class="runner-event-select" data-runner-event="${cellKey}" aria-label="Runner play for this diamond">
+      ${runnerEventOptionsHtml()}
+    </select>
+  `;
 
   return `
     <div class="${cellClasses.join(" ")}" data-score-cell="${cellKey}">
       ${displacedBadge}
       <div class="score-ab-controls">
-        <button type="button" class="muted add-ab-button" data-add-ab-for="${baseCellKey}" title="Add extra at-bat for this inning">+ AB</button>
-        ${abSelector}
+        ${runnerEventSelect}
+        <div class="ab-control-row">
+          <button type="button" class="muted add-ab-button" data-add-ab-for="${baseCellKey}" title="Add extra at-bat for this inning">+ AB</button>
+          ${abSelector}
+        </div>
       </div>
       ${entrySurface}
       <div class="score-cell-body">
@@ -3706,7 +4116,6 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
               type="text"
               inputmode="text"
               autocomplete="off"
-              list="notation-suggestions"
               value="${escapeHtml(notationValue)}"
               placeholder="-"
               aria-label="Play notation"
@@ -3963,6 +4372,7 @@ function renderInningCompletion() {
     delete chart.editingCompletedInnings[inning];
     return;
   }
+  syncInningBaseTotals(chart, inning);
 
   if (chart.editingCompletedInnings[inning]) {
     els.inningCompleteOverlay.hidden = true;
@@ -3976,12 +4386,16 @@ function renderInningCompletion() {
   }
 
   if (chart.completedInnings[inning]) {
-    els.inningCompleteOverlay.hidden = true;
-    els.inningEditBanner.hidden = false;
-    els.inningEditBanner.innerHTML = `
-      <strong>Inning ${inning} completed</strong>
-      <span>${Math.min(3, outs)} outs logged</span>
-      <button type="button" class="muted" data-edit-completed-inning="${inning}">Edit inning</button>
+    els.inningEditBanner.hidden = true;
+    els.inningCompleteOverlay.hidden = false;
+    els.inningCompleteOverlay.innerHTML = `
+      <div class="inning-complete-card">
+        <strong>Inning ${inning} locked.</strong>
+        <span>${Math.min(3, outs)} outs logged. Edit only when you need to correct this inning.</span>
+        <div class="inning-complete-actions">
+          <button type="button" class="muted" data-edit-completed-inning="${inning}">Edit inning</button>
+        </div>
+      </div>
     `;
     return;
   }
@@ -4204,12 +4618,13 @@ function renderRosterCards() {
 }
 
 function renderEvents() {
-  els.eventList.innerHTML = state.events.length
-    ? state.events.map((event, index) => {
+  const events = activeGameEvents();
+  els.eventList.innerHTML = events.length
+    ? events.map((event, index) => {
       const player = state.players.find((item) => item.id === event.playerId);
       return `
         <article class="event-card">
-          <h3>${state.events.length - index}. ${escapeHtml(player ? fullName(player) : "Deleted player")} - ${escapeHtml(resultLabel(event.result))}</h3>
+          <h3>${events.length - index}. ${escapeHtml(player ? fullName(player) : "Deleted player")} - ${escapeHtml(resultLabel(event.result))}</h3>
           <p>RBI ${event.rbi || 0}, SB ${event.sb || 0}, CS ${event.cs || 0}</p>
           <p>${escapeHtml(event.context || "")}</p>
           <button type="button" class="danger" data-delete-event="${event.id}">Remove</button>
@@ -4309,6 +4724,7 @@ function addGame() {
   entry.game.teamName = current.game.teamName;
   entry.game.opponentName = current.game.opponentName;
   entry.game.gameDate = current.game.gameDate;
+  entry.game.gameType = normalizeGameType(current.game.gameType);
   entry.inningCount = current.inningCount;
   entry.teamMeta = JSON.parse(JSON.stringify(current.teamMeta));
   ["home", "away"].forEach((side) => {
@@ -4342,8 +4758,8 @@ function render() {
   renderChartHud();
   renderUpNextStrip();
   renderInningTotals();
-  renderDiamondLineScore();
   renderScorecard();
+  renderDiamondLineScore();
   renderDataView();
   renderLineup();
   renderPlayerSelects();
@@ -4411,6 +4827,15 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function paragraphTextHtml(value) {
+  const paragraphs = String(value || "")
+    .replace(/\r\n/g, "\n")
+    .split(/\n\s*\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("");
 }
 
 function showAppPrompt({ title, message = "", defaultValue = "", choices = [], inputLabel = "" } = {}) {
@@ -4518,7 +4943,7 @@ function savePlayerFromForm(event) {
   render();
 }
 
-async function strikeThreeChoice(cellKey) {
+async function strikeThreeChoice(cellKey, options = {}) {
   const choice = await showAppPrompt({
     title: "Strike three",
     message: "How should the strikeout be recorded?",
@@ -4530,13 +4955,13 @@ async function strikeThreeChoice(cellKey) {
   }) || "K";
 
   if (choice === "KC") {
-    applyChartAction(cellKey, "KC");
+    applyChartAction(cellKey, "KC", options);
     const cell = getScoreCellFromKey(cellKey);
     cell.outOverlay = true;
     return;
   }
 
-  applyChartAction(cellKey, "K");
+  applyChartAction(cellKey, "K", options);
   const cell = getScoreCellFromKey(cellKey);
   if (choice === "KD") {
     const putoutRaw = await showAppPrompt({
@@ -4555,6 +4980,7 @@ async function strikeThreeChoice(cellKey) {
 async function addPitchToCell(cellKey, type) {
   const chart = activeChart();
   const cell = getScoreCellFromKey(cellKey);
+  const gameType = cell.gameType || activeGameType();
   const [ballsRaw, strikesRaw] = String(cell.count || "0-0").split("-").map(toNumber);
   let balls = ballsRaw;
   let strikes = strikesRaw;
@@ -4577,9 +5003,9 @@ async function addPitchToCell(cellKey, type) {
       if (type === "strike" || type === "foul") updates.strikes = 1;
       if (strikesRaw >= 2) updates.twoStrikePitches = 1;
     }
-    addToPitchingLine(chart.activePitcherId, updates);
+    addToPitchingLine(chart.activePitcherId, updates, gameType);
     cell.pitchDeltas = cell.pitchDeltas || [];
-    pitchDelta = { pitcherId: chart.activePitcherId, type, updates };
+    pitchDelta = { pitcherId: chart.activePitcherId, type, updates, gameType };
     cell.pitchDeltas.push(pitchDelta);
   }
 
@@ -4589,27 +5015,56 @@ async function addPitchToCell(cellKey, type) {
     type,
     cellKey,
     count: cell.count || "0-0",
+    gameId: activeGame().id,
+    gameType,
     createdAt: new Date().toISOString()
   };
   chart.pitchLog.unshift(pitchEvent);
   cell.pitchDeltas = cell.pitchDeltas || [];
   if (pitchDelta) pitchDelta.id = pitchEvent.id;
-  else cell.pitchDeltas.push({ id: pitchEvent.id, pitcherId: chart.activePitcherId, type });
+  else cell.pitchDeltas.push({ id: pitchEvent.id, pitcherId: chart.activePitcherId, type, gameType });
 
   if (type === "balk") return;
 
   const canAutoLogResult = !cell.actionKey && !cell.eventId && !cell.notation && !cell.result;
   if (canAutoLogResult && type === "ball" && ballsRaw >= 3) {
     cell.count = `3-${strikes}`;
-    applyChartAction(cellKey, "BB");
+    applyChartAction(cellKey, "BB", { skipResultPitch: true });
   }
   if (canAutoLogResult && type === "strike" && strikesRaw >= 2) {
     cell.count = `${balls}-2`;
-    await strikeThreeChoice(cellKey);
+    await strikeThreeChoice(cellKey, { skipResultPitch: true });
   }
 }
 
-function applyChartAction(cellKey, actionKey) {
+function addResultPitchToCell(cellKey, cell, actionKey, gameType) {
+  if ((cell.pitchDeltas || []).some((pitch) => pitch.autoResult)) return;
+  const chart = activeChart();
+  const pitcherId = chart.activePitcherId;
+  const updates = {};
+  if (pitcherId) {
+    chart.pitchCounts[pitcherId] = toNumber(chart.pitchCounts[pitcherId]) + 1;
+    updates.pitches = 1;
+    addToPitchingLine(pitcherId, updates, gameType);
+  }
+  const pitchEvent = {
+    id: uid("pitch"),
+    pitcherId,
+    type: "result",
+    actionKey,
+    cellKey,
+    count: cell.count || "0-0",
+    gameId: activeGame().id,
+    gameType,
+    autoResult: true,
+    createdAt: new Date().toISOString()
+  };
+  chart.pitchLog.unshift(pitchEvent);
+  cell.pitchDeltas = cell.pitchDeltas || [];
+  cell.pitchDeltas.push({ id: pitchEvent.id, pitcherId, type: "result", actionKey, updates, gameType, autoResult: true });
+}
+
+function applyChartAction(cellKey, actionKey, options = {}) {
   const chart = activeChart();
   const [slot, inning, abNumber] = cellKey.split("-").map(Number);
   const batterId = batterIdAtSlot(slot);
@@ -4620,10 +5075,13 @@ function applyChartAction(cellKey, actionKey) {
   reverseChartCell(cellKey, { preservePitches: true });
 
   const effectiveInning = cellActualInning(cell, inning);
+  const gameType = activeGameType();
   const baseStateBefore = { ...chart.baseState };
+  if (actionKey === "HR" && !toNumber(cell.rbi)) cell.rbi = 1;
   cell.result = action.notation;
   cell.notation = action.notation;
   cell.actionKey = actionKey;
+  cell.gameType = gameType;
   cell.outOverlay = ["OUT", "K", "KC", "SF", "BI"].includes(actionKey);
   cell.baseStateBefore = baseStateBefore;
   cell.bases = emptyDiamondPath();
@@ -4634,6 +5092,11 @@ function applyChartAction(cellKey, actionKey) {
   if (!cell.scoredOverlay) delete cell.scoredOverlay;
 
   const inningUpdates = { ...(action.inning || {}) };
+  const defensiveInningUpdates = {};
+  if (inningUpdates.E) {
+    defensiveInningUpdates.E = inningUpdates.E;
+    delete inningUpdates.E;
+  }
   if (["1B", "2B", "3B", "HR"].includes(actionKey)) inningUpdates.H = (inningUpdates.H || 0) + 1;
   if (actionKey === "HR") inningUpdates.R = (inningUpdates.R || 0) + 1;
   if (["2B", "3B"].includes(actionKey)) inningUpdates.RISP = (inningUpdates.RISP || 0) + 1;
@@ -4645,6 +5108,15 @@ function applyChartAction(cellKey, actionKey) {
   setBatterBaseState(chart, liveRunnerId, batterTerminal === "toHome" ? "" : batterTerminal);
 
   addToInningTotals(effectiveInning, inningUpdates, 1);
+  if (Object.keys(defensiveInningUpdates).length) {
+    const defensiveSide = oppositeSide();
+    addToChartInningTotals(activeGame().charts[defensiveSide], effectiveInning, defensiveInningUpdates, 1);
+    cell.defensiveInningSide = defensiveSide;
+    cell.defensiveInningUpdates = defensiveInningUpdates;
+  }
+  if (!options.skipResultPitch && !action.noPlateAppearance) {
+    addResultPitchToCell(cellKey, cell, actionKey, gameType);
+  }
 
   let event = null;
   if (!action.noPlateAppearance) {
@@ -4652,6 +5124,8 @@ function applyChartAction(cellKey, actionKey) {
       id: uid("chart-event"),
       playerId: batterId,
       pitcherId: chart.activePitcherId,
+      gameId: activeGame().id,
+      gameType,
       result: action.result,
       rbi: toNumber(cell.rbi),
       sb: 0,
@@ -4671,7 +5145,7 @@ function applyChartAction(cellKey, actionKey) {
     if (chargedRuns) pitcherUpdates.R = chargedRuns;
     if (earnedRuns) pitcherUpdates.ER = earnedRuns;
   }
-  addToPitchingLine(chart.activePitcherId, pitcherUpdates);
+  addToPitchingLine(chart.activePitcherId, pitcherUpdates, gameType);
   if (event) cell.eventId = event.id;
   cell.pitcherId = chart.activePitcherId;
   cell.pitcherUpdates = pitcherUpdates;
@@ -4681,6 +5155,176 @@ function applyChartAction(cellKey, actionKey) {
   if (action.advanceBatter !== false && slot === getCurrentSlot() && effectiveInning === Number(chart.currentInning || 1)) {
     advanceBatter();
   }
+}
+
+function fielderChoiceSequenceFromNotation(notation) {
+  return String(notation || "").replace(/^FC\b[\s:,-]*/i, "").trim();
+}
+
+function fielderChoiceDefaultSequence(base) {
+  return {
+    first: "6-4",
+    second: "5-4",
+    third: "5-2"
+  }[base] || "6-4";
+}
+
+function updateCellEventContext(cell, notation) {
+  if (!cell.eventId) return;
+  const event = state.events.find((item) => item.id === cell.eventId);
+  if (!event) return;
+  event.context = `Inning ${cell.inning || activeChart().currentInning}: ${notation}`;
+}
+
+function rememberRunnerCellState(sourceCell, targetKey) {
+  const targetCell = activeChart().scorecard[targetKey];
+  if (!targetCell) return;
+  sourceCell.runnerDiamondBefore = sourceCell.runnerDiamondBefore || [];
+  if (sourceCell.runnerDiamondBefore.some((item) => item.key === targetKey)) return;
+  sourceCell.runnerDiamondBefore.push({
+    key: targetKey,
+    bases: { ...(targetCell.bases || emptyDiamondPath()) },
+    outOverlay: Boolean(targetCell.outOverlay),
+    scoredOverlay: Boolean(targetCell.scoredOverlay),
+    runnerNote: targetCell.runnerNote || ""
+  });
+}
+
+function markRunnerOutFromLinkedPlay(sourceCell, sourceCellKey, runnerId, note) {
+  const chart = activeChart();
+  const runnerCellKey = findLatestScoreCellKeyForRunner(runnerId, sourceCellKey);
+  if (!runnerCellKey || !chart.scorecard[runnerCellKey]) return;
+  rememberRunnerCellState(sourceCell, runnerCellKey);
+  const runnerCell = chart.scorecard[runnerCellKey];
+  const oldBases = { ...(runnerCell.bases || emptyDiamondPath()) };
+  if (scoringPathActive(oldBases)) {
+    const inning = sourceCell.inning || Number(chart.currentInning || 1);
+    const update = { RISP: -1 };
+    addToInningTotals(inning, update, 1);
+    sourceCell.inningUpdates = sourceCell.inningUpdates || {};
+    sourceCell.inningUpdates.RISP = toNumber(sourceCell.inningUpdates.RISP) - 1;
+  }
+  runnerCell.bases = emptyDiamondPath();
+  runnerCell.outOverlay = true;
+  runnerCell.runnerNote = note;
+  delete runnerCell.scoredOverlay;
+  setBatterBaseState(chart, runnerId, "");
+  addRunnerPitcherOut(sourceCell);
+}
+
+async function applyFielderChoice(cellKey, typedNotation = "") {
+  const defaultSequence = fielderChoiceSequenceFromNotation(typedNotation) || "6-4";
+  const sequenceRaw = await showAppPrompt({
+    title: "Fielder's choice play",
+    message: "Enter the play or throw sequence.",
+    defaultValue: defaultSequence,
+    inputLabel: defaultSequence
+  });
+  const sequence = (sequenceRaw || defaultSequence).trim();
+  const notation = sequence ? `FC ${sequence}` : "FC";
+  applyChartAction(cellKey, "FC");
+  const cell = getScoreCellFromKey(cellKey);
+  cell.notation = notation;
+  cell.result = notation;
+  updateCellEventContext(cell, notation);
+}
+
+function runnerMovementUpdates(oldBases, newBases) {
+  const updates = {};
+  const oldTerminal = activeDiamondTerminal(oldBases);
+  const newTerminal = activeDiamondTerminal(newBases);
+  if (scoringPathActive(oldBases) !== scoringPathActive(newBases)) {
+    updates.RISP = scoringPathActive(newBases) ? 1 : -1;
+  }
+  if (oldTerminal !== "toHome" && newTerminal === "toHome") updates.R = 1;
+  if (oldTerminal === "toHome" && newTerminal !== "toHome") updates.R = -1;
+  return updates;
+}
+
+function applyRunnerSafeEvent(cellKey, cell, runnerId, targetTerminal, oldBases) {
+  const chart = activeChart();
+  const { inning } = parseScoreCellKey(cellKey);
+  const effectiveInning = cellActualInning(cell, inning);
+  const newBases = targetTerminal ? diamondPathThrough(targetTerminal) : emptyDiamondPath();
+
+  if (!cell.baseStateBefore) cell.baseStateBefore = { ...chart.baseState };
+  cell.bases = newBases;
+  cell.inning = effectiveInning;
+  cell.scoredOverlay = targetTerminal === "toHome";
+  if (!cell.scoredOverlay) delete cell.scoredOverlay;
+  addRunnerInningDelta(cell, effectiveInning, runnerMovementUpdates(oldBases, newBases));
+
+  if (runnerId) {
+    cell.runnerId = runnerId;
+    setBatterBaseState(chart, runnerId, targetTerminal === "toHome" ? "" : targetTerminal);
+  }
+}
+
+function applyRunnerOutEvent(cellKey, cell, runnerId, targetTerminal, oldBases) {
+  const chart = activeChart();
+  const { inning } = parseScoreCellKey(cellKey);
+  const effectiveInning = cellActualInning(cell, inning);
+  const updates = {};
+
+  if (!cell.baseStateBefore) cell.baseStateBefore = { ...chart.baseState };
+  if (scoringPathActive(oldBases)) updates.RISP = -1;
+  if (activeDiamondTerminal(oldBases) === "toHome") updates.R = -1;
+  addRunnerInningDelta(cell, effectiveInning, updates);
+
+  cell.bases = targetTerminal ? diamondPathThrough(targetTerminal) : emptyDiamondPath();
+  cell.inning = effectiveInning;
+  cell.outOverlay = true;
+  delete cell.scoredOverlay;
+  if (runnerId) {
+    cell.runnerId = runnerId;
+    setBatterBaseState(chart, runnerId, "");
+  }
+  addRunnerPitcherOut(cell);
+}
+
+async function applyRunnerEvent(cellKey, eventValue) {
+  const option = runnerEventByValue(eventValue);
+  if (!option) return false;
+
+  const cell = getScoreCellFromKey(cellKey);
+  const runnerId = runnerIdForCell(cellKey, cell);
+  const currentTerminal = terminalForRunnerCell(cellKey, cell);
+  const targetTerminal = targetTerminalForRunnerEvent(option, currentTerminal);
+  const defaultInput = defaultRunnerEventInput(option, targetTerminal);
+  const rawNote = await showAppPrompt({
+    title: `${option.label} play`,
+    message: option.mode === "out"
+      ? "Enter the putout, relay, or play sequence."
+      : "Enter the runner notation for this play.",
+    defaultValue: defaultInput,
+    inputLabel: defaultInput
+  });
+  if (rawNote === null) return false;
+
+  const oldBases = { ...(cell.bases || emptyDiamondPath()) };
+  const notation = formatRunnerEventNotation(option, rawNote || defaultInput, targetTerminal);
+  clearRunnerOutcome(cell);
+
+  if (option.mode === "out") {
+    applyRunnerOutEvent(cellKey, cell, runnerId, targetTerminal, oldBases);
+  } else {
+    applyRunnerSafeEvent(cellKey, cell, runnerId, targetTerminal, oldBases);
+  }
+
+  if (runnerId && option.runnerStat) {
+    addRunnerStatDelta(cell, runnerId, option.runnerStat, 1);
+  }
+  if (option.pitcher) {
+    addRunnerPitcherDelta(cell, option.pitcher);
+  }
+  if (option.defensive) {
+    const { inning } = parseScoreCellKey(cellKey);
+    addRunnerDefensiveInningDelta(cell, cellActualInning(cell, inning), option.defensive);
+  }
+
+  cell.runnerNote = notation;
+  if (!cell.notation && !cell.result) cell.notation = notation;
+  return true;
 }
 
 function removeExtraAtBat(cellKey) {
@@ -4710,11 +5354,16 @@ function removeExtraAtBat(cellKey) {
 
 function clearActiveChartData() {
   const chart = activeChart();
+  const gameId = activeGame().id;
   Object.keys(chart.scorecard || {}).forEach((cellKey) => {
     reverseChartCell(cellKey);
   });
-  state.events.forEach((event) => applyEvent(event, -1));
-  state.events = [];
+  const remainingEvents = [];
+  state.events.forEach((event) => {
+    if (eventBelongsToGame(event, gameId)) applyEvent(event, -1);
+    else remainingEvents.push(event);
+  });
+  state.events = remainingEvents;
   chart.scorecard = {};
   chart.extraAbs = {};
   chart.selectedAbs = {};
@@ -4739,6 +5388,24 @@ function currentBoxScoreMeta() {
 function clearBoxScoreTextFields() {
   if (els.boxScoreOpponent) els.boxScoreOpponent.value = "";
   if (els.boxScoreResultNote) els.boxScoreResultNote.value = "";
+}
+
+function importWorkspaceJson(text, filename = "workspace JSON") {
+  let nextState;
+  try {
+    nextState = JSON.parse(text);
+  } catch {
+    throw new Error("That JSON file could not be parsed.");
+  }
+  if (!nextState || typeof nextState !== "object" || (!Array.isArray(nextState.games) && !Array.isArray(nextState.players))) {
+    throw new Error("That JSON file does not look like a PxP Baseball workspace export.");
+  }
+  Object.keys(state).forEach((key) => delete state[key]);
+  Object.assign(state, nextState);
+  normalizeState();
+  saveState();
+  render();
+  alert(`Imported ${filename}.`);
 }
 
 function setupEvents() {
@@ -4774,6 +5441,14 @@ function setupEvents() {
       saveState();
     });
   });
+
+  if (els.gameType) {
+    els.gameType.addEventListener("change", () => {
+      setActiveGameType(els.gameType.value);
+      saveState();
+      render();
+    });
+  }
 
   ["showAtBatControls", "showFocusControls"].forEach((key) => {
     if (!els[key]) return;
@@ -5015,6 +5690,21 @@ function setupEvents() {
     anchor.click();
     URL.revokeObjectURL(url);
   });
+
+  if (els.importJsonInput) {
+    els.importJsonInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        if (!confirm("Import this workspace JSON and replace the current local workspace?")) return;
+        importWorkspaceJson(await file.text(), file.name);
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        event.target.value = "";
+      }
+    });
+  }
 
   if (els.clearImportsButton) {
     els.clearImportsButton.addEventListener("click", () => {
@@ -5326,10 +6016,12 @@ function setupEvents() {
       const continueEdit = event.target.closest("[data-continue-inning-edit]")?.dataset.continueInningEdit;
       const editCompleted = event.target.closest("[data-edit-completed-inning]")?.dataset.editCompletedInning;
       if (confirmInning) {
+        syncInningBaseTotals(chart, confirmInning);
         chart.completedInnings[confirmInning] = true;
         delete chart.editingCompletedInnings[confirmInning];
       }
       if (moveNextInning) {
+        syncInningBaseTotals(chart, moveNextInning);
         chart.completedInnings[moveNextInning] = true;
         delete chart.editingCompletedInnings[moveNextInning];
         if (Number(moveNextInning) < Number(activeGame().inningCount || 9)) {
@@ -5407,6 +6099,13 @@ function setupEvents() {
       renderScorecard();
       return;
     }
+    const runnerEvent = event.target.dataset.runnerEvent;
+    if (runnerEvent !== undefined) {
+      const applied = await applyRunnerEvent(runnerEvent, event.target.value);
+      if (applied) saveState();
+      render();
+      return;
+    }
     const batterSubPlayer = event.target.dataset.subBatterPlayer;
     const batterSubText = event.target.dataset.subBatterText;
     const runnerSubPlayer = event.target.dataset.subRunnerPlayer;
@@ -5440,6 +6139,12 @@ function setupEvents() {
       if (actionKey === "BALK") {
         await addPitchToCell(cellEl.dataset.scoreCell, "balk");
         getScoreCellFromKey(cellEl.dataset.scoreCell).notation = typedNotation;
+        saveState();
+        render();
+        return;
+      }
+      if (actionKey === "FC") {
+        await applyFielderChoice(cellEl.dataset.scoreCell, typedNotation);
         saveState();
         render();
         return;
@@ -5619,7 +6324,8 @@ function setupEvents() {
     }
     if (chartAction) {
       const cellEl = event.target.closest("[data-score-cell]");
-      applyChartAction(cellEl.dataset.scoreCell, chartAction);
+      if (chartAction === "FC") await applyFielderChoice(cellEl.dataset.scoreCell);
+      else applyChartAction(cellEl.dataset.scoreCell, chartAction);
       saveState();
       render();
     }
@@ -5699,10 +6405,13 @@ function setupEvents() {
   els.eventForm.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!els.eventPlayer.value) return;
-  const gameEvent = {
+    const gameType = activeGameType();
+    const gameEvent = {
       id: uid("event"),
       playerId: els.eventPlayer.value,
       pitcherId: activeChart().activePitcherId,
+      gameId: activeGame().id,
+      gameType,
       result: document.querySelector("#eventResult").value,
       rbi: toNumber(document.querySelector("#eventRbi").value),
       sb: toNumber(document.querySelector("#eventSb").value),
@@ -5722,8 +6431,11 @@ function setupEvents() {
 
   els.clearEventsButton.addEventListener("click", () => {
     if (!confirm("Clear this game's events and reverse their stat changes?")) return;
-    state.events.forEach((event) => applyEvent(event, -1));
-    state.events = [];
+    const gameId = activeGame().id;
+    state.events.forEach((event) => {
+      if (eventBelongsToGame(event, gameId)) applyEvent(event, -1);
+    });
+    state.events = state.events.filter((event) => !eventBelongsToGame(event, gameId));
     saveState();
     render();
   });
@@ -5765,6 +6477,9 @@ const authEls = {
   cloudStatus: document.querySelector("#cloudSyncStatus"),
   cloudEmail: document.querySelector("#cloudSyncEmail"),
   signOut: document.querySelector("#cloudSignOutButton"),
+  syncActions: document.querySelector("#cloudSyncActions"),
+  push: document.querySelector("#cloudPushButton"),
+  pull: document.querySelector("#cloudPullButton"),
 };
 
 function setAuthMessage(text, kind = "info") {
@@ -5773,14 +6488,14 @@ function setAuthMessage(text, kind = "info") {
   authEls.message.dataset.kind = kind;
 }
 
-function showAuthOverlay() {
+function showAuthOverlayLegacy() {
   if (!authEls.overlay) return;
   authEls.overlay.removeAttribute("aria-hidden");
   authEls.overlay.classList.add("is-shown");
   document.body.classList.add("auth-locked");
 }
 
-function hideAuthOverlay() {
+function hideAuthOverlayLegacy() {
   if (!authEls.overlay) return;
   authEls.overlay.setAttribute("aria-hidden", "true");
   authEls.overlay.classList.remove("is-shown");
@@ -5791,8 +6506,24 @@ function setCloudSyncStatus(text) {
   if (authEls.cloudStatus) authEls.cloudStatus.textContent = text;
 }
 
-function setCloudSyncEmail(email) {
+function setCloudSyncEmailLegacy(email) {
   if (authEls.cloudEmail) authEls.cloudEmail.innerHTML = `Signed in as <strong>${escapeHtml(email || "—")}</strong>`;
+}
+
+function setCloudSyncEmail(email) {
+  if (authEls.cloudEmail) {
+    authEls.cloudEmail.innerHTML = email
+      ? `Signed in as <strong>${escapeHtml(email)}</strong>`
+      : "Not signed in";
+  }
+}
+
+function renderCloudSyncUi() {
+  const signedIn = Boolean(supabaseSession?.user);
+  if (authEls.emailForm) authEls.emailForm.hidden = signedIn;
+  if (authEls.codeForm) authEls.codeForm.hidden = true;
+  if (authEls.syncActions) authEls.syncActions.hidden = !signedIn;
+  if (!signedIn) setCloudSyncEmail("");
 }
 
 function wireAuthForms() {
@@ -5842,13 +6573,23 @@ function wireAuthForms() {
       return;
     }
     setAuthMessage("Signed in!");
+    onSignedIn(data.session);
   });
 
   if (authEls.signOut) {
     authEls.signOut.addEventListener("click", async () => {
       if (!supabaseClient) return;
       await supabaseClient.auth.signOut();
-      window.location.reload();
+    });
+  }
+  if (authEls.push) {
+    authEls.push.addEventListener("click", async () => {
+      await pushStateNow({ force: true, userInitiated: true });
+    });
+  }
+  if (authEls.pull) {
+    authEls.pull.addEventListener("click", async () => {
+      await pullCloudState({ confirmReplace: true });
     });
   }
 }
@@ -5856,13 +6597,14 @@ function wireAuthForms() {
 let signedInUserId = "";
 let signedInLoadStarted = false;
 
-async function onSignedIn(session) {
+async function onSignedInLegacy(session) {
   const userId = session?.user?.id;
   if (!userId) return;
   if (signedInLoadStarted && signedInUserId === userId) return;
   signedInUserId = userId;
   signedInLoadStarted = true;
   supabaseSession = session;
+  lastPushedSerialized = JSON.stringify(state);
   setCloudSyncEmail(session.user.email || session.user.id);
   setCloudSyncStatus("Loading…");
 
@@ -5894,6 +6636,46 @@ async function onSignedIn(session) {
   hideAuthOverlay();
 }
 
+function formatCloudTime(value) {
+  if (!value) return "available";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "available";
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+async function onSignedIn(session) {
+  const userId = session?.user?.id;
+  if (!userId) return;
+  if (signedInLoadStarted && signedInUserId === userId) return;
+  signedInUserId = userId;
+  signedInLoadStarted = true;
+  supabaseSession = session;
+  setCloudSyncEmail(session.user.email || session.user.id);
+  renderCloudSyncUi();
+  setCloudSyncStatus("Checking cloud");
+
+  const { data: row, error } = await supabaseClient
+    .from("app_state")
+    .select("state, last_client_id, updated_at")
+    .eq("user_id", session.user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("Could not load remote state:", error.message);
+    setCloudSyncStatus("Offline (local only)");
+    return;
+  }
+
+  if (row && row.state && Object.keys(row.state).length > 0) {
+    lastSyncedAt = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
+    setCloudSyncStatus(`Connected; cloud save ${formatCloudTime(row.updated_at)}`);
+  } else {
+    setCloudSyncStatus("Connected; no cloud save yet");
+  }
+
+  subscribeRealtime();
+}
+
 function applyRemoteState(remote, updatedAt) {
   Object.keys(state).forEach((k) => delete state[k]);
   Object.assign(state, remote);
@@ -5903,13 +6685,46 @@ function applyRemoteState(remote, updatedAt) {
   bootApp();
 }
 
+async function fetchCloudState() {
+  if (!supabaseClient || !supabaseSession) return { row: null, error: null };
+  const { data: row, error } = await supabaseClient
+    .from("app_state")
+    .select("state, last_client_id, updated_at")
+    .eq("user_id", supabaseSession.user.id)
+    .maybeSingle();
+  return { row, error };
+}
+
+async function pullCloudState({ confirmReplace = false } = {}) {
+  if (!supabaseClient || !supabaseSession) {
+    setCloudSyncStatus("Sign in to pull cloud");
+    return false;
+  }
+  const ok = !confirmReplace || confirm("Pull cloud state and replace this device's local workspace?");
+  if (!ok) return false;
+  setCloudSyncStatus("Pulling cloud");
+  const { row, error } = await fetchCloudState();
+  if (error) {
+    console.warn("Pull failed:", error.message);
+    setCloudSyncStatus("Pull failed");
+    return false;
+  }
+  if (!row?.state || !Object.keys(row.state).length) {
+    setCloudSyncStatus("No cloud save found");
+    return false;
+  }
+  applyRemoteState(row.state, row.updated_at);
+  setCloudSyncStatus(`Pulled cloud ${formatCloudTime(row.updated_at)}`);
+  return true;
+}
+
 function schedulePushState() {
   if (!supabaseClient || !supabaseSession) return;
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(() => { pushStateNow(); }, 1500);
 }
 
-async function pushStateNow() {
+async function pushStateNowLegacy() {
   if (!supabaseClient || !supabaseSession) return;
   if (pushTimer) {
     clearTimeout(pushTimer);
@@ -5934,6 +6749,40 @@ async function pushStateNow() {
   lastPushedSerialized = serialized;
   lastSyncedAt = Date.now();
   setCloudSyncStatus(`Synced ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
+}
+
+async function pushStateNow({ force = false, userInitiated = false } = {}) {
+  if (!supabaseClient || !supabaseSession) {
+    if (userInitiated) setCloudSyncStatus("Sign in to push cloud");
+    return false;
+  }
+  if (pushTimer) {
+    clearTimeout(pushTimer);
+    pushTimer = null;
+  }
+  const serialized = JSON.stringify(state);
+  if (!force && serialized === lastPushedSerialized) {
+    if (userInitiated) setCloudSyncStatus("Cloud already current");
+    return true;
+  }
+  setCloudSyncStatus("Saving");
+  const { error } = await supabaseClient
+    .from("app_state")
+    .upsert({
+      user_id: supabaseSession.user.id,
+      state,
+      last_client_id: CLIENT_ID,
+      updated_at: new Date().toISOString(),
+    });
+  if (error) {
+    console.warn("Push failed:", error.message);
+    setCloudSyncStatus("Push failed");
+    return false;
+  }
+  lastPushedSerialized = serialized;
+  lastSyncedAt = Date.now();
+  setCloudSyncStatus(`Pushed ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`);
+  return true;
 }
 
 function flushPendingStatePush() {
@@ -5965,8 +6814,8 @@ function subscribeRealtime() {
         if (!next) return;
         if (next.last_client_id === CLIENT_ID) return;
         if (next.updated_at && new Date(next.updated_at).getTime() <= lastSyncedAt) return;
-        applyRemoteState(next.state, next.updated_at);
-        setCloudSyncStatus("Synced (remote update)");
+        lastSyncedAt = next.updated_at ? new Date(next.updated_at).getTime() : Date.now();
+        setCloudSyncStatus(`Cloud update available ${formatCloudTime(next.updated_at)}`);
       }
     )
     .subscribe();
@@ -6018,6 +6867,18 @@ if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
 }
 
 // ---------------- Boot gate ----------------
+
+function showAuthOverlay() {}
+function hideAuthOverlay() {}
+
+renderCloudSyncUi();
+setCloudSyncStatus(supabaseClient ? "Local first" : "Local only");
+bootApp();
+if (supabaseClient) {
+  supabaseClient.auth.getSession().then(({ data }) => {
+    if (!data?.session && !supabaseSession) setCloudSyncStatus("Local only");
+  });
+}
 
 if (!supabaseClient) {
   console.warn("Supabase SDK or config missing — running in local-only mode.");

@@ -63,6 +63,13 @@
             <input id="gameDate" type="date" />
           </label>
           <label>
+            Game type
+            <select id="gameType">
+              <option value="nonconference">Non-conference</option>
+              <option value="conference">Conference</option>
+            </select>
+          </label>
+          <label>
             Chart notes
             <textarea id="gameNotes" rows="5" placeholder="Weather, umpire tendencies, broadcast angles, coach notes..."></textarea>
           </label>
@@ -83,8 +90,30 @@
             <h2>Cloud Sync</h2>
             <span id="cloudSyncStatus">Idle</span>
           </div>
-          <p id="cloudSyncEmail" class="meta">Signed in as &mdash;</p>
-          <div class="inline-actions">
+          <p class="meta sync-help">The chart opens locally first. Use these controls when you want to move this device's current workspace to or from cloud sync.</p>
+          <p id="cloudSyncEmail" class="meta">Not signed in</p>
+          <form id="authEmailForm" class="auth-form sync-auth-form">
+            <label>
+              Email
+              <input id="authEmail" type="email" autocomplete="email" required placeholder="you@example.com" />
+            </label>
+            <button id="authEmailSubmit" type="submit">Send code</button>
+          </form>
+          <form id="authCodeForm" class="auth-form sync-auth-form" hidden>
+            <p class="meta auth-code-help">An 8-digit code was sent to <strong id="authCodeEmailEcho"></strong>. Check your inbox / spam.</p>
+            <label>
+              Code
+              <input id="authCode" type="text" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" autocomplete="one-time-code" required placeholder="12345678" />
+            </label>
+            <div class="auth-form-actions">
+              <button id="authCodeBack" type="button" class="muted">Use a different email</button>
+              <button id="authCodeSubmit" type="submit">Sign in</button>
+            </div>
+          </form>
+          <p id="authMessage" class="auth-message" role="status" aria-live="polite"></p>
+          <div id="cloudSyncActions" class="inline-actions cloud-sync-actions" hidden>
+            <button id="cloudPushButton" type="button">Push This Device</button>
+            <button id="cloudPullButton" type="button" class="muted">Pull Cloud</button>
             <button id="cloudSignOutButton" type="button" class="muted">Sign out</button>
           </div>
             </section>
@@ -349,6 +378,7 @@
             <button class="data-tab" type="button" data-data-section="prestoSection">PrestoSports</button>
             <button class="data-tab" type="button" data-data-section="boxScoreSection">Box Scores</button>
             <button class="data-tab" type="button" data-data-section="exportSection">Export</button>
+            <button class="data-tab" type="button" data-data-section="maintenanceSection">Maintenance</button>
             <button class="data-tab" type="button" data-data-section="helpSection">Settings &amp; Help</button>
           </nav>
 
@@ -476,8 +506,15 @@
               <p class="meta">JSON export contains every team, player, lineup, scorecard cell, pitching line, and box score. Save it as a backup or for moving between devices.</p>
               <div class="data-actions">
                 <button id="exportButton" type="button">Export Workspace JSON</button>
+                <label class="file-button">
+                  Import Workspace JSON
+                  <input id="importJsonInput" type="file" accept=".json,application/json" />
+                </label>
               </div>
             </div>
+          </section>
+
+          <section id="maintenanceSection" class="data-section">
             <div class="panel">
               <div class="panel-heading">
                 <h2>Clear cached imports</h2>
@@ -503,7 +540,7 @@
               <div class="panel-heading">
                 <h2>Storage</h2>
               </div>
-              <p class="meta">Everything saves to your browser&apos;s localStorage under <code>pxp-baseball-chart-v1</code>. Use Reset (top right) to wipe and start over. The Export JSON option above gets you a portable backup.</p>
+              <p class="meta">Everything saves to your browser&apos;s localStorage under <code>pxp-baseball-chart-v1</code>. Use Reset (top right) to wipe and start over. Export and import workspace JSON from the Export tab when moving a full chart between devices.</p>
             </div>
           </section>
         </section>
@@ -559,33 +596,6 @@
       </section>
     </main>
 
-    <div id="authOverlay" class="auth-overlay" aria-hidden="true">
-      <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
-        <h2 id="authTitle">PxP Baseball Chart</h2>
-        <p id="authSubtitle" class="auth-subtitle">Sign in to sync your charts across every device.</p>
-        <form id="authEmailForm" class="auth-form">
-          <label>
-            Email
-            <input id="authEmail" type="email" autocomplete="email" required placeholder="you@example.com" />
-          </label>
-          <button id="authEmailSubmit" type="submit">Send code</button>
-        </form>
-        <form id="authCodeForm" class="auth-form" hidden>
-          <p class="meta auth-code-help">An 8-digit code was sent to <strong id="authCodeEmailEcho"></strong>. Check your inbox / spam.</p>
-          <label>
-            Code
-            <input id="authCode" type="text" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" autocomplete="one-time-code" required placeholder="12345678" />
-          </label>
-          <div class="auth-form-actions">
-            <button id="authCodeBack" type="button" class="muted">Use a different email</button>
-            <button id="authCodeSubmit" type="submit">Sign in</button>
-          </div>
-        </form>
-        <p id="authMessage" class="auth-message" role="status" aria-live="polite"></p>
-      </div>
-    </div>
-
-    <datalist id="notation-suggestions"></datalist>
     <div id="appPromptOverlay" class="app-prompt-overlay" hidden>
       <div class="app-prompt-dialog" role="dialog" aria-modal="true" aria-labelledby="appPromptTitle">
         <h2 id="appPromptTitle"></h2>

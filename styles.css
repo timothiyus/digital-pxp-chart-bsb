@@ -210,6 +210,20 @@ p {
   font-size: 0.86rem;
 }
 
+.supabase-panel .sync-help {
+  margin-bottom: 12px;
+  line-height: 1.45;
+}
+
+.sync-auth-form {
+  margin-top: 10px;
+}
+
+.cloud-sync-actions {
+  justify-content: flex-start;
+  margin-top: 10px;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -671,6 +685,15 @@ textarea {
 .coach-bio-details p {
   margin-top: 6px;
   line-height: 1.35;
+}
+
+.coach-bio-copy p {
+  margin: 6px 0 0;
+  line-height: 1.38;
+}
+
+.coach-bio-copy p + p {
+  margin-top: 10px;
 }
 
 .team-setup-grid {
@@ -2288,6 +2311,13 @@ textarea {
   left: 6px;
   bottom: 6px;
   z-index: 9;
+  display: grid;
+  align-items: start;
+  justify-items: start;
+  gap: 3px;
+}
+
+.ab-control-row {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -2308,6 +2338,14 @@ textarea {
   background: #eef4f1;
   color: var(--active-team-primary, var(--accent-strong));
   border-color: color-mix(in srgb, var(--active-team-primary, var(--accent)) 42%, var(--line));
+}
+
+.runner-event-select {
+  width: 108px;
+  max-width: 108px;
+  background: #fffefa;
+  color: var(--active-team-primary, var(--accent-strong));
+  border-color: color-mix(in srgb, var(--active-team-secondary, var(--gold)) 64%, var(--line));
 }
 
 .score-cell.is-out {
@@ -3792,6 +3830,13 @@ tr:hover td {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+#exportSection .data-actions > button,
+#exportSection .data-actions > .file-button {
+  min-width: 220px;
+  min-height: 44px;
+  padding: 0 16px;
 }
 
 .presto-roster-row {
