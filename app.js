@@ -2734,7 +2734,8 @@ function renderSetup() {
   document.querySelectorAll(".side-tab").forEach((tab) => {
     applySideTabColors(tab);
     tab.classList.toggle("active", tab.dataset.side === state.activeSide);
-    tab.textContent = tab.dataset.side === "home" ? (activeGame().game.teamName || "My Team") : (activeGame().game.opponentName || "Opponent");
+    const role = tab.dataset.side === "home" ? "Home" : "Away";
+    tab.textContent = `${role}: ${sideLabel(tab.dataset.side)}`;
   });
   els.teamName.value = activeGame().game.teamName;
   els.opponentName.value = activeGame().game.opponentName;
@@ -3827,8 +3828,10 @@ function renderInningTotals() {
 }
 
 function sideLabel(side) {
-  return side === "home" ? (activeGame().game.teamName || "My Team") : (activeGame().game.opponentName || "Opponent");
+  return side === "home" ? (activeGame().game.teamName || "Home Team") : (activeGame().game.opponentName || "Away Team");
 }
+
+const lineScoreSideOrder = ["away", "home"];
 
 function lineScoreHtml({ inning = Number(activeChart().currentInning || 1), highlightedSide = state.activeSide } = {}) {
   const innings = Number(activeGame().inningCount || 9);
@@ -3852,7 +3855,7 @@ function lineScoreHtml({ inning = Number(activeChart().currentInning || 1), high
           </tr>
         </thead>
         <tbody>
-          ${["home", "away"].map((side) => {
+          ${lineScoreSideOrder.map((side) => {
             const chart = activeGame().charts[side];
             const lineTotals = sideLineTotals(chart);
             return `
