@@ -5603,6 +5603,488 @@ tr:hover td {
   }
 }
 
+@media (min-width: 960px) and (max-width: 1180px) and (orientation: portrait) {
+  :root {
+    --ipad-player-col: clamp(260px, 27vw, 300px);
+    --ipad-ab-col: clamp(600px, 62vw, 660px);
+  }
+
+  body {
+    font-size: 14px;
+  }
+
+  button,
+  .file-button {
+    min-height: 36px;
+    padding: 0 10px;
+  }
+
+  input,
+  select,
+  textarea {
+    padding: 6px 8px;
+  }
+
+  .topbar {
+    min-height: 72px;
+    padding: 14px 18px;
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .top-actions {
+    justify-content: flex-end;
+  }
+
+  .app-shell {
+    padding: 12px;
+  }
+
+  .tabs {
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .tab {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 0.74rem;
+  }
+
+  .panel,
+  .lineup-board,
+  .spotlight,
+  .hud-panel {
+    padding: 12px;
+  }
+
+  .setup-page {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .chart-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+    gap: 12px;
+  }
+
+  .chart-hud {
+    grid-template-columns: minmax(340px, 0.85fr) minmax(0, 1.15fr);
+    gap: 12px;
+  }
+
+  .editor-layout,
+  .game-log-layout {
+    grid-template-columns: minmax(330px, 0.85fr) minmax(0, 1.15fr);
+    gap: 12px;
+  }
+
+  .pitching-layout {
+    grid-template-columns: minmax(340px, 0.9fr) minmax(0, 1.1fr);
+    gap: 12px;
+  }
+
+  .hud-panel,
+  .team-snapshot-hud,
+  .team-stats-hud,
+  .scorecard-board,
+  .scorecard-grid,
+  .score-cell,
+  .score-player,
+  .score-action-panel,
+  .stat-hud[data-hud-mode="compact"] .batter-detail-card,
+  .stat-hud[data-hud-mode="compact"] .base-state-card,
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card {
+    min-width: 0;
+  }
+
+  .hud-stats {
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    gap: 5px;
+  }
+
+  .hud-stats span,
+  .live-line span {
+    font-size: 0.68rem;
+    padding: 4px 5px;
+  }
+
+  .live-line {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 5px;
+    padding: 7px;
+  }
+
+  .team-snapshot-copy strong,
+  .team-snapshot-copy span,
+  .team-snapshot-copy em,
+  .team-snapshot-copy p,
+  .score-player-headline strong,
+  .score-player .score-player-meta,
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity strong,
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity span,
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card strong,
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card .pitcher-meta {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .score-player-headline strong,
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity strong {
+    white-space: normal;
+    line-height: 1.06;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-strip {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 6px 10px;
+    gap: 8px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-meta {
+    min-width: 76px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-row {
+    grid-column: auto;
+    grid-row: auto;
+    grid-template-columns: repeat(3, minmax(140px, 1fr));
+    gap: 6px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-actions {
+    grid-column: auto;
+    grid-row: auto;
+    justify-self: auto;
+    margin-left: auto;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-entry {
+    grid-template-columns: 24px minmax(0, 1fr);
+    min-height: 42px;
+    padding: 5px 8px 5px 5px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-tag {
+    font-size: 0.5rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-name {
+    font-size: 0.84rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-now .up-next-name {
+    font-size: 1rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-rates {
+    gap: 3px;
+    font-size: 0.62rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .up-next-actions > button,
+  .stat-hud[data-hud-mode="compact"] .segmented-toggle button {
+    min-height: 30px;
+    padding: 0 8px;
+    font-size: 0.68rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .inning-totals {
+    grid-template-columns: minmax(420px, 1.2fr) minmax(260px, 0.6fr);
+    gap: 8px;
+    padding: 6px 10px 0;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .batter-detail-card {
+    grid-column: 1 / 2;
+    grid-template-columns: minmax(230px, max-content) minmax(0, 1fr);
+    min-height: 142px;
+    padding: 8px 10px;
+    gap: 4px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity {
+    padding: 8px 10px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity strong {
+    font-size: 0.96rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-player-identity span {
+    font-size: 0.68rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-batter-line {
+    gap: 4px;
+    font-size: 0.7rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-analytics-line {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 4px;
+    font-size: 0.64rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-storyline-line {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    font-size: 0.62rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-batter-line span,
+  .stat-hud[data-hud-mode="compact"] .compact-analytics-line span,
+  .stat-hud[data-hud-mode="compact"] .compact-storyline-line span {
+    padding: 3px 5px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .base-state-card {
+    grid-column: 2 / 3;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-run-state {
+    grid-template-columns: minmax(0, 1fr) minmax(120px, 0.72fr);
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-bases-line,
+  .stat-hud[data-hud-mode="compact"] .compact-count-line,
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card {
+    gap: 5px;
+    padding: 6px;
+    font-size: 0.68rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card {
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    padding: 8px 10px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card strong {
+    font-size: 0.78rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card .pitcher-meta {
+    font-size: 0.62rem;
+  }
+
+  .diamond-scorebox {
+    margin: 8px 12px;
+    padding: 10px;
+    overflow: visible;
+  }
+
+  .traditional-line-score table {
+    min-width: 820px;
+    font-size: 0.72rem;
+  }
+
+  .scorecard-board .section-title,
+  .compact-title {
+    padding: 10px 16px;
+  }
+
+  .scorecard-grid {
+    grid-template-columns: var(--ipad-player-col) repeat(var(--columns, 1), var(--ipad-ab-col));
+    justify-content: start;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: visible;
+  }
+
+  .full-scorecard-grid {
+    grid-template-columns: 168px repeat(var(--innings, 9), minmax(92px, 1fr));
+  }
+
+  .score-head {
+    min-height: 36px;
+    font-size: 0.7rem;
+  }
+
+  .ab-cell-row {
+    grid-auto-columns: var(--ipad-ab-col);
+    gap: 5px;
+    padding: 0 5px 5px;
+  }
+
+  .score-player {
+    padding: 7px 8px 7px 30px;
+    gap: 5px;
+  }
+
+  .score-player-head {
+    gap: 8px;
+  }
+
+  .score-player-headline strong {
+    font-size: 0.98rem;
+  }
+
+  .score-player .score-player-meta {
+    font-size: 0.68rem;
+    line-height: 1.16;
+  }
+
+  .batting-order-badge {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    min-height: 30px;
+    font-size: 0.76rem;
+  }
+
+  .player-pill-row {
+    width: 22px;
+  }
+
+  .score-player .slot-pill {
+    font-size: 0.5rem;
+  }
+
+  .sub-grid {
+    gap: 5px;
+    margin-top: 3px;
+  }
+
+  .sub-block span,
+  .batter-note-box span {
+    font-size: 0.56rem;
+    line-height: 1.08;
+  }
+
+  .sub-grid select,
+  .sub-grid input {
+    min-height: 24px;
+    height: 24px;
+    padding: 2px 5px;
+    font-size: 0.62rem;
+  }
+
+  .batter-note-box textarea {
+    min-height: 32px;
+    height: 32px;
+    padding: 4px 6px;
+    font-size: 0.62rem;
+    line-height: 1.1;
+  }
+
+  .score-cell {
+    min-height: 0;
+    padding: 6px;
+    gap: 4px;
+    overflow: visible;
+  }
+
+  .score-count-row {
+    grid-template-columns: minmax(230px, 0.9fr) minmax(260px, 1fr);
+    gap: 4px;
+  }
+
+  .count-card,
+  .rbi-buttons button {
+    min-height: 28px;
+  }
+
+  .count-card span {
+    font-size: 0.66rem;
+  }
+
+  .rbi-buttons button {
+    font-size: 0.56rem;
+  }
+
+  .score-cell-body {
+    grid-template-columns: minmax(252px, 0.9fr) minmax(260px, 1fr);
+    gap: 5px;
+    align-items: start;
+  }
+
+  .diamond {
+    width: 110px;
+    margin-block: 8px;
+  }
+
+  .base-toggle {
+    width: 30px;
+    height: 30px;
+  }
+
+  .base-marker {
+    width: 13px;
+    height: 13px;
+  }
+
+  .base-toggle.toFirst { right: -10px; top: 37px; }
+  .base-toggle.toSecond { right: 37px; top: -10px; }
+  .base-toggle.toThird { left: -10px; bottom: 37px; }
+  .base-toggle.toHome { left: 37px; bottom: -10px; }
+
+  .diamond-result-input {
+    width: 44px;
+    height: 28px;
+    font-size: 0.66rem;
+  }
+
+  .diamond-result-input:focus {
+    width: 52px;
+    height: 30px;
+    font-size: 0.72rem;
+  }
+
+  .pitch-buttons,
+  .result-buttons,
+  .result-button-row,
+  .score-action-panel {
+    gap: 3px;
+  }
+
+  .score-action-panel {
+    align-content: start;
+  }
+
+  .pitch-buttons button {
+    min-height: 26px;
+    font-size: 0.68rem;
+  }
+
+  .result-buttons button,
+  .clear-action-button {
+    min-height: 26px;
+    font-size: 0.62rem;
+  }
+
+  .pitcher-adjuster summary {
+    padding: 3px 5px;
+    font-size: 0.56rem;
+  }
+
+  .pitcher-adjust-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 3px;
+    padding: 0 5px 5px;
+  }
+
+  .pitcher-adjust-grid span {
+    font-size: 0.48rem;
+  }
+
+  .pitcher-adjust-grid input {
+    min-height: 21px;
+    height: 21px;
+    padding: 1px 3px;
+    font-size: 0.56rem;
+  }
+
+  .runner-controls {
+    gap: 3px;
+  }
+
+  .runner-btn {
+    min-height: 30px;
+    font-size: 0.6rem;
+  }
+}
+
 /* Team-color button overrides (do not touch diamond buttons) */
 #autoLineupButton {
   background: var(--active-team-primary, var(--accent));
