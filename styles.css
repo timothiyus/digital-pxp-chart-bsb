@@ -46,9 +46,16 @@ button,
   font-weight: 700;
 }
 
-button:hover,
-.file-button:hover {
-  background: var(--accent-strong);
+button:not(.danger):hover,
+.file-button:not(.danger):hover {
+  background: #fff;
+  color: var(--team-primary, var(--active-team-primary, var(--accent)));
+  border-color: var(--team-primary, var(--active-team-primary, var(--accent)));
+}
+
+button.danger:hover {
+  background: var(--danger);
+  color: #fff;
 }
 
 button.muted,
@@ -1444,6 +1451,10 @@ textarea {
   color: var(--team-primary, var(--active-team-primary, var(--accent-strong)));
 }
 
+.stat-hud[data-hud-mode="compact"] .compact-pitcher-card {
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+}
+
 .stat-hud[data-hud-mode="compact"] .compact-pitcher-title {
   grid-column: 1 / -1;
   display: flex;
@@ -1616,8 +1627,9 @@ textarea {
 
 .line-score-team-toggle {
   min-height: 0;
-  padding: 0;
-  border: 0;
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: transparent;
   color: inherit;
   font: inherit;
@@ -1625,8 +1637,12 @@ textarea {
   cursor: pointer;
 }
 
-.line-score-team-toggle:hover {
-  text-decoration: underline;
+.line-score-team-toggle:hover,
+.line-score-team-toggle.is-expanded {
+  background: var(--team-primary, var(--active-team-primary, var(--accent)));
+  border-color: var(--team-primary, var(--active-team-primary, var(--accent)));
+  color: #fff;
+  text-decoration: none;
 }
 
 .traditional-line-score.is-expanded .line-score-detail-row th {
@@ -1642,13 +1658,10 @@ textarea {
   font-size: 0.68rem;
 }
 
-.traditional-line-score .metric-total.detail-muted {
-  background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 22%, #fff);
+.traditional-line-score .metric-total.detail-empty {
+  background: #fbfcfa;
+  border-color: var(--line);
   color: transparent;
-}
-
-.traditional-line-score .metric-total.detail-match {
-  border-color: rgba(255, 255, 255, 0.9);
 }
 
 .diamond-inning-editor {
@@ -3362,8 +3375,20 @@ textarea {
 
 .pitch-buttons {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
+}
+
+.pitch-button-row {
+  display: grid;
+  gap: 4px;
+}
+
+.pitch-button-row-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pitch-button-row-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .pitch-buttons button {
@@ -3393,7 +3418,7 @@ textarea {
 }
 
 .result-button-row-3 {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .result-button-row-2 {
@@ -5545,6 +5570,20 @@ tr:hover td {
   background: color-mix(in srgb, var(--active-team-primary, var(--accent)) 88%, #fff);
   border-color: var(--active-team-primary, var(--accent));
   color: #fff;
+}
+
+button:not(.danger):not(.base-toggle):not(.line-score-team-toggle):hover,
+.file-button:not(.danger):hover {
+  background: #fff !important;
+  border-color: var(--team-primary, var(--active-team-primary, var(--accent))) !important;
+  color: var(--team-primary, var(--active-team-primary, var(--accent-strong))) !important;
+}
+
+.line-score-team-toggle:hover,
+.line-score-team-toggle.is-expanded {
+  background: var(--team-primary, var(--active-team-primary, var(--accent))) !important;
+  border-color: var(--team-primary, var(--active-team-primary, var(--accent))) !important;
+  color: #fff !important;
 }
 
 /* ---------------- Auth overlay ---------------- */

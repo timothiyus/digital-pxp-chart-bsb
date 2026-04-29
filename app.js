@@ -401,7 +401,7 @@ function normalizeState() {
   state.settings = {
     showAtBatControls: false,
     showFocusControls: false,
-    lineScoreExpanded: false,
+    lineScoreExpandedTeam: "",
     ...(state.settings || {})
   };
   state.hudStatScopes = {
@@ -2388,6 +2388,71 @@ function setBatterBaseState(chart, batterId, terminalBase) {
   syncCurrentBaseState(chart);
 }
 
+const baseToTerminal = {
+  first: "toFirst",
+  second: "toSecond",
+  third: "toThird"
+};
+
+function terminalAfterAdvancement(base, basesToAdvance) {
+  const baseOrder = ["first", "second", "third"];
+  const nextIndex = baseOrder.indexOf(base) + basesToAdvance;
+  return nextIndex >= baseOrder.length ? "toHome" : baseToTerminal[baseOrder[nextIndex]];
+}
+
+function runnerAutoAdvancementForAction(actionKey, baseStateBefore) {
+  const runners = ["third", "second", "first"]
+    .map((base) => ({ base, runnerId: baseStateBefore[base] }))
+    .filter((item) => item.runnerId);
+
+  if (actionKey === "1B") {
+    return runners.map((runner) => ({ ...runner, target: terminalAfterAdvancement(runner.base, 1) }));
+  }
+  if (actionKey === "2B") {
+    return runners.map((runner) => ({ ...runner, target: terminalAfterAdvancement(runner.base, 2) }));
+  }
+  if (["3B", "HR"].includes(actionKey)) {
+    return runners.map((runner) => ({ ...runner, target: "toHome" }));
+  }
+  if (["BB", "HBP", "CI", "KPB", "KWP", "ROE"].includes(actionKey)) {
+    const moves = [];
+    if (baseStateBefore.first && baseStateBefore.second && baseStateBefore.third) {
+      moves.push({ base: "third", runnerId: baseStateBefore.third, target: "toHome" });
+    }
+    if (baseStateBefore.first && baseStateBefore.second) {
+      moves.push({ base: "second", runnerId: baseStateBefore.second, target: "toThird" });
+    }
+    if (baseStateBefore.first) {
+      moves.push({ base: "first", runnerId: baseStateBefore.first, target: "toSecond" });
+    }
+    return moves.filter((item) => item.runnerId);
+  }
+  return [];
+}
+
+function applyAutomaticRunnerAdvancements(sourceCell, sourceCellKey, actionKey, baseStateBefore, effectiveInning) {
+  const chart = activeChart();
+  runnerAutoAdvancementForAction(actionKey, baseStateBefore).forEach(({ runnerId, target }) => {
+    const runnerCellKey = findLatestScoreCellKeyForRunner(runnerId, sourceCellKey);
+    if (!runnerCellKey || !chart.scorecard[runnerCellKey]) return;
+    const runnerCell = chart.scorecard[runnerCellKey];
+    const oldBases = { ...(runnerCell.bases || emptyDiamondPath()) };
+    const currentBase = Object.keys(baseToTerminal).find((base) => baseStateBefore[base] === runnerId);
+    const oldTerminal = activeDiamondTerminal(oldBases) || baseToTerminal[currentBase] || "";
+    const oldPath = oldTerminal ? diamondPathThrough(oldTerminal) : oldBases;
+    const nextBases = target ? diamondPathThrough(target) : emptyDiamondPath();
+    if (oldTerminal === target) return;
+
+    rememberRunnerCellState(sourceCell, runnerCellKey);
+    runnerCell.bases = nextBases;
+    runnerCell.runnerId = runnerId;
+    runnerCell.scoredOverlay = target === "toHome";
+    if (!runnerCell.scoredOverlay) delete runnerCell.scoredOverlay;
+    addRunnerInningDelta(sourceCell, effectiveInning, runnerMovementUpdates(oldPath, nextBases));
+    setBatterBaseState(chart, runnerId, target === "toHome" ? "" : target);
+  });
+}
+
 function blankPitchingLine() {
   return { outs: 0, H: 0, R: 0, ER: 0, BB: 0, K: 0, KC: 0, HR: 0, "2B": 0, "3B": 0, HBP: 0, WP: 0, BF: 0, pitches: 0, strikes: 0, balls: 0, fouls: 0, twoStrikePitches: 0, BK: 0 };
 }
@@ -2597,6 +2662,10 @@ function reverseChartCell(cellKey, options = {}) {
       if ("scoredOverlay" in item) {
         if (item.scoredOverlay) targetCell.scoredOverlay = true;
         else delete targetCell.scoredOverlay;
+      }
+      if ("runnerId" in item) {
+        if (item.runnerId) targetCell.runnerId = item.runnerId;
+        else delete targetCell.runnerId;
       }
       if ("runnerNote" in item) {
         if (item.runnerNote) targetCell.runnerNote = item.runnerNote;
@@ -3375,7 +3444,6 @@ function currentPitcherPills(line) {
     { label: "R", value: line.R },
     { label: "ER", value: line.ER },
     { label: "K", value: line.K, type: "count" },
-    { label: "Kc", value: line.KC, type: "count" },
     { label: "2B", value: line["2B"] },
     { label: "3B", value: line["3B"] },
     { label: "HR", value: line.HR },
@@ -3899,7 +3967,9 @@ const lineScoreSideOrder = ["away", "home"];
 function lineScoreHtml({ inning = Number(activeChart().currentInning || 1), highlightedSide = state.activeSide } = {}) {
   const innings = Number(activeGame().inningCount || 9);
   const totalKeys = ["R", "H", "E", "LOB", "RISP"];
-  const expanded = Boolean(state.settings?.lineScoreExpanded);
+  const expandedTeam = ["home", "away"].includes(state.settings?.lineScoreExpandedTeam)
+    ? state.settings.lineScoreExpandedTeam
+    : "";
   const sideLineTotals = (chart) => Array.from({ length: innings }, (_, index) => getChartInningTotals(chart, index + 1))
     .reduce((acc, item) => {
       totalKeys.forEach((key) => {
@@ -3907,19 +3977,19 @@ function lineScoreHtml({ inning = Number(activeChart().currentInning || 1), high
       });
       return acc;
     }, blankInningTotals());
-  const detailRows = (chart, side, lineTotals) => expanded ? totalKeys.map((key) => `
+  const detailRows = (chart, side) => side === expandedTeam ? totalKeys.map((key) => `
     <tr class="line-score-detail-row ${side === highlightedSide ? "active-side" : ""}">
       <th>${escapeHtml(key)}</th>
       ${Array.from({ length: innings }, (_, index) => {
         const item = getChartInningTotals(chart, index + 1);
         return `<td class="${index + 1 === inning ? "active" : ""}">${item[key] || 0}</td>`;
       }).join("")}
-      ${totalKeys.map((totalKey) => `<td class="metric-total ${totalKey === key ? "detail-match" : "detail-muted"}">${totalKey === key ? (lineTotals[key] || 0) : ""}</td>`).join("")}
+      <td class="metric-total detail-empty" colspan="${totalKeys.length}"></td>
     </tr>
   `).join("") : "";
 
   return `
-    <div class="traditional-line-score ${expanded ? "is-expanded" : ""}">
+    <div class="traditional-line-score ${expandedTeam ? "is-expanded" : ""}">
       <table>
         <thead>
           <tr>
@@ -3934,14 +4004,14 @@ function lineScoreHtml({ inning = Number(activeChart().currentInning || 1), high
             const lineTotals = sideLineTotals(chart);
             return `
               <tr class="${side === highlightedSide ? "active-side" : ""}">
-                <th><button type="button" class="line-score-team-toggle" data-line-score-toggle title="Show inning detail">${escapeHtml(sideLabel(side))}</button></th>
+                <th><button type="button" class="line-score-team-toggle ${expandedTeam === side ? "is-expanded" : ""}" style="${teamColorStyle(side)}" data-line-score-toggle="${side}" title="Show inning detail">${escapeHtml(sideLabel(side))}</button></th>
                 ${Array.from({ length: innings }, (_, index) => {
                   const item = getChartInningTotals(chart, index + 1);
                   return `<td class="${index + 1 === inning ? "active" : ""}">${item.R || 0}</td>`;
                 }).join("")}
                 ${totalKeys.map((key) => `<td class="metric-total">${lineTotals[key] || 0}</td>`).join("")}
               </tr>
-              ${detailRows(chart, side, lineTotals)}
+              ${detailRows(chart, side)}
             `;
           }).join("")}
         </tbody>
@@ -3970,9 +4040,9 @@ function renderDiamondLineScore() {
   `;
 }
 
-function toggleLineScoreExpanded() {
+function toggleLineScoreExpanded(side) {
   state.settings = state.settings || {};
-  state.settings.lineScoreExpanded = !state.settings.lineScoreExpanded;
+  state.settings.lineScoreExpandedTeam = state.settings.lineScoreExpandedTeam === side ? "" : side;
   saveState();
   renderDiamondLineScore();
   renderFullScorecard();
@@ -4048,58 +4118,8 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
   if (cell.outOverlay) cellClasses.push("is-out");
   if (cell.scoredOverlay) cellClasses.push("is-scored-status");
 
-  const runnerControls = isOnBase ? `
-    <div class="runner-controls" role="group" aria-label="Advance runner">
-      <button type="button" class="runner-btn runner-advance" data-runner-advance="${cellKey}" title="Advance runner one base">&rarr; ADV</button>
-      <button type="button" class="runner-btn runner-score" data-runner-score="${cellKey}" title="Score runner">SCORED</button>
-      <button type="button" class="runner-btn runner-out" data-runner-out="${cellKey}" title="Runner out">OUT</button>
-    </div>
-  ` : "";
-  const stealControls = `
-    <div class="steal-controls" role="group" aria-label="Steal base">
-      <div class="steal-control-pair steal-toFirst">
-        <div class="steal-main-stack">
-          <button type="button" data-steal-cell="${cellKey}" data-steal-terminal="toFirst">Steal 1B</button>
-          <button type="button" class="cs-control" data-cs-cell="${cellKey}" data-cs-terminal="toFirst">CS 1B</button>
-        </div>
-        <div class="runner-extra-stack">
-          <button type="button" class="pick-control" data-pick-cell="${cellKey}" data-pick-terminal="toFirst">Pick</button>
-          <button type="button" class="ri-control" data-ri-cell="${cellKey}" data-ri-terminal="toFirst">RI</button>
-        </div>
-      </div>
-      <div class="steal-control-pair steal-toSecond">
-        <div class="steal-main-stack">
-          <button type="button" data-steal-cell="${cellKey}" data-steal-terminal="toSecond">Steal 2B</button>
-          <button type="button" class="cs-control" data-cs-cell="${cellKey}" data-cs-terminal="toSecond">CS 2B</button>
-        </div>
-        <div class="runner-extra-stack">
-          <button type="button" class="pick-control" data-pick-cell="${cellKey}" data-pick-terminal="toSecond">Pick</button>
-          <button type="button" class="ri-control" data-ri-cell="${cellKey}" data-ri-terminal="toSecond">RI</button>
-        </div>
-      </div>
-      <div class="steal-control-pair steal-toThird">
-        <div class="runner-extra-stack">
-          <button type="button" class="pick-control" data-pick-cell="${cellKey}" data-pick-terminal="toThird">Pick</button>
-          <button type="button" class="ri-control" data-ri-cell="${cellKey}" data-ri-terminal="toThird">RI</button>
-        </div>
-        <div class="steal-main-stack">
-          <button type="button" data-steal-cell="${cellKey}" data-steal-terminal="toThird">Steal 3B</button>
-          <button type="button" class="cs-control" data-cs-cell="${cellKey}" data-cs-terminal="toThird">CS 3B</button>
-        </div>
-      </div>
-      <div class="steal-control-pair steal-toHome">
-        <div class="runner-extra-stack">
-          <button type="button" class="pick-control" data-pick-cell="${cellKey}" data-pick-terminal="toHome">Pick</button>
-          <button type="button" class="ri-control" data-ri-cell="${cellKey}" data-ri-terminal="toHome">RI</button>
-        </div>
-        <div class="steal-main-stack">
-          <button type="button" data-steal-cell="${cellKey}" data-steal-terminal="toHome">Steal HP</button>
-          <button type="button" class="cs-control" data-cs-cell="${cellKey}" data-cs-terminal="toHome">CS HP</button>
-          <button type="button" class="wp-control" data-wp-cell="${cellKey}">WP</button>
-        </div>
-      </div>
-    </div>
-  `;
+  const runnerControls = "";
+  const stealControls = "";
 
   const actionButtonHtml = (key) => {
     const action = chartActions[key];
@@ -4133,17 +4153,24 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
 
   const fullEntry = (opts.isActive || !opts.isCompact) ? `
     <div class="pitch-buttons">
-      <button type="button" data-pitch="ball">Ball</button>
-      <button type="button" data-pitch="strike">Strike</button>
-      <button type="button" data-pitch="foul">Foul</button>
-      <button type="button" data-pitch="balk">Balk</button>
+      <div class="pitch-button-row pitch-button-row-3">
+        <button type="button" data-pitch="ball">Ball</button>
+        <button type="button" data-pitch="ball-wp">Ball WP</button>
+        <button type="button" data-pitch="ball-pb">Ball PB</button>
+      </div>
+      <div class="pitch-button-row pitch-button-row-4">
+        <button type="button" data-pitch="strike">Strike</button>
+        <button type="button" data-pitch="strike-swinging">Swing</button>
+        <button type="button" data-pitch="strike-looking">Look</button>
+        <button type="button" data-pitch="foul">Foul</button>
+      </div>
     </div>
     <div class="result-buttons">
       <div class="result-button-row result-button-row-4">
         ${["HBP", "KWP", "KPB", "CI"].map(actionButtonHtml).join("")}
       </div>
-      <div class="result-button-row result-button-row-2">
-        ${["BI", "OUT"].map(actionButtonHtml).join("")}
+      <div class="result-button-row result-button-row-3">
+        ${["BI", "BALK", "OUT"].map(actionButtonHtml).join("")}
       </div>
     </div>
     <details class="pitcher-adjuster">
@@ -5071,12 +5098,13 @@ async function addPitchToCell(cellKey, type) {
   const cell = getScoreCellFromKey(cellKey);
   const gameType = cell.gameType || activeGameType();
   const [ballsRaw, strikesRaw] = String(cell.count || "0-0").split("-").map(toNumber);
+  const pitchKind = type.startsWith("ball") ? "ball" : type.startsWith("strike") ? "strike" : type;
   let balls = ballsRaw;
   let strikes = strikesRaw;
 
-  if (type === "ball") balls = Math.min(3, balls + 1);
-  if (type === "strike") strikes = Math.min(2, strikes + 1);
-  if (type === "foul") strikes = strikes < 2 ? strikes + 1 : strikes;
+  if (pitchKind === "ball") balls = Math.min(3, balls + 1);
+  if (pitchKind === "strike") strikes = Math.min(2, strikes + 1);
+  if (pitchKind === "foul") strikes = strikes < 2 ? strikes + 1 : strikes;
   if (type !== "balk") cell.count = `${balls}-${strikes}`;
 
   let pitchDelta = null;
@@ -5087,9 +5115,10 @@ async function addPitchToCell(cellKey, type) {
     } else {
       chart.pitchCounts[chart.activePitcherId] = (chart.pitchCounts[chart.activePitcherId] || 0) + 1;
       updates.pitches = 1;
-      if (type === "ball") updates.balls = 1;
-      if (type === "foul") updates.fouls = 1;
-      if (type === "strike" || type === "foul") updates.strikes = 1;
+      if (pitchKind === "ball") updates.balls = 1;
+      if (type === "ball-wp") updates.WP = 1;
+      if (pitchKind === "foul") updates.fouls = 1;
+      if (pitchKind === "strike" || pitchKind === "foul") updates.strikes = 1;
       if (strikesRaw >= 2) updates.twoStrikePitches = 1;
     }
     addToPitchingLine(chart.activePitcherId, updates, gameType);
@@ -5116,13 +5145,15 @@ async function addPitchToCell(cellKey, type) {
   if (type === "balk") return;
 
   const canAutoLogResult = !cell.actionKey && !cell.eventId && !cell.notation && !cell.result;
-  if (canAutoLogResult && type === "ball" && ballsRaw >= 3) {
+  if (canAutoLogResult && pitchKind === "ball" && ballsRaw >= 3) {
     cell.count = `3-${strikes}`;
     applyChartAction(cellKey, "BB", { skipResultPitch: true });
   }
-  if (canAutoLogResult && type === "strike" && strikesRaw >= 2) {
+  if (canAutoLogResult && pitchKind === "strike" && strikesRaw >= 2) {
     cell.count = `${balls}-2`;
-    await strikeThreeChoice(cellKey, { skipResultPitch: true });
+    if (type === "strike-looking") applyChartAction(cellKey, "KC", { skipResultPitch: true });
+    else if (type === "strike-swinging") applyChartAction(cellKey, "K", { skipResultPitch: true });
+    else await strikeThreeChoice(cellKey, { skipResultPitch: true });
   }
 }
 
@@ -5191,6 +5222,7 @@ function applyChartAction(cellKey, actionKey, options = {}) {
   if (["2B", "3B"].includes(actionKey)) inningUpdates.RISP = (inningUpdates.RISP || 0) + 1;
 
   const batterTerminal = activeDiamondTerminal(cell.bases);
+  applyAutomaticRunnerAdvancements(cell, cellKey, actionKey, baseStateBefore, effectiveInning);
   const liveRunnerId = batterTerminal && batterTerminal !== "toHome" ? (runnerIdAtSlot(slot) || batterId) : batterId;
   if (liveRunnerId) cell.runnerId = liveRunnerId;
   else delete cell.runnerId;
@@ -5275,6 +5307,7 @@ function rememberRunnerCellState(sourceCell, targetKey) {
     bases: { ...(targetCell.bases || emptyDiamondPath()) },
     outOverlay: Boolean(targetCell.outOverlay),
     scoredOverlay: Boolean(targetCell.scoredOverlay),
+    runnerId: targetCell.runnerId || "",
     runnerNote: targetCell.runnerNote || ""
   });
 }
@@ -5950,8 +5983,9 @@ function setupEvents() {
   });
 
   els.diamondLineScore.addEventListener("click", (event) => {
-    if (!event.target.closest("[data-line-score-toggle]")) return;
-    toggleLineScoreExpanded();
+    const toggleSide = event.target.closest("[data-line-score-toggle]")?.dataset.lineScoreToggle;
+    if (!toggleSide) return;
+    toggleLineScoreExpanded(toggleSide);
   });
 
   els.inningTotals.addEventListener("click", (event) => {
@@ -6078,8 +6112,9 @@ function setupEvents() {
       renderUpNextStrip();
       return;
     }
-    if (event.target.closest("[data-line-score-toggle]")) {
-      toggleLineScoreExpanded();
+    const toggleSide = event.target.closest("[data-line-score-toggle]")?.dataset.lineScoreToggle;
+    if (toggleSide) {
+      toggleLineScoreExpanded(toggleSide);
       return;
     }
     const side = event.target.closest("[data-full-chart-side]")?.dataset.fullChartSide;
