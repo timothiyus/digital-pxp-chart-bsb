@@ -1,5 +1,5 @@
 const STORAGE_KEY = "pxp-baseball-chart-v1";
-const APP_VERSION = "v8";
+const APP_VERSION = "v9";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -46,6 +46,7 @@ const emptyStats = () => ({
   GS: 0,
   BF: 0,
   BAA: 0,
+  P_GP: 0,
   Pitches: 0,
   Strikes: 0,
   BK: 0,
@@ -970,6 +971,7 @@ function gameChangerStatsFromRow(row, headers) {
     CS: toNumber(valueFrom(row, headers, "CS", 1)),
     TB: toNumber(valueFrom(row, headers, "TB")),
     IP: toNumber(valueFromFirst(row, headers, ["IP", "InningsPitched", "Innings Pitched"])),
+    P_GP: toNumber(valueFromFirst(row, headers, [["GP", 2], "App", "APP", "Apps", "Appearances"])),
     GS: toNumber(valueFrom(row, headers, "GS")),
     BF: toNumber(valueFromFirst(row, headers, ["BF", "BattersFaced", "Batters Faced"])),
     W: toNumber(valueFrom(row, headers, "W")),
@@ -1157,6 +1159,7 @@ const prestoStatMaps = {
     ERA: toNumber(valueFrom(row, headers, "era")),
     W: toNumber(valueFrom(row, headers, "w")),
     L: toNumber(valueFrom(row, headers, "l")),
+    P_GP: toNumber(valueFromFirst(row, headers, ["app", "apps", "gp", "appearances"])),
     GS: toNumber(valueFrom(row, headers, "gs")),
     IP: toNumber(valueFrom(row, headers, "ip")),
     P_H: toNumber(valueFrom(row, headers, "h")),
@@ -3398,10 +3401,10 @@ function calculatedPercentPill(label, numerator, denominator, type = "neutral", 
 }
 
 const batterStatKeys = ["GP", "PA", "AB", "H", "2B", "3B", "HR", "RBI", "R", "BB", "SO", "HBP", "SF", "SB", "CS", "TB"];
-const pitcherStatKeys = ["GP", "IP", "ERA", "WHIP", "W", "L", "GS", "BF", "BAA", "Pitches", "P_H", "P_R", "P_ER", "P_HR", "P_BB", "P_SO", "P_BK", "P_HBP", "P_WP"];
+const pitcherStatKeys = ["P_GP", "IP", "ERA", "WHIP", "W", "L", "GS", "BF", "BAA", "Pitches", "P_H", "P_R", "P_ER", "P_HR", "P_BB", "P_SO", "P_BK", "P_HBP", "P_WP"];
 const nonConferenceSubtractKeys = [
   "GP", "PA", "AB", "H", "2B", "3B", "HR", "RBI", "R", "BB", "SO", "HBP", "SF", "SB", "CS", "TB",
-  "W", "L", "GS", "BF", "Pitches", "Strikes", "BK", "P_H", "P_R", "P_ER", "P_HR", "P_2B", "P_3B", "P_BB", "P_SO", "P_BK", "P_HBP", "P_WP", "P_AB", "CG", "SHO", "SV", "SFA", "SHA",
+  "P_GP", "W", "L", "GS", "BF", "Pitches", "Strikes", "BK", "P_H", "P_R", "P_ER", "P_HR", "P_2B", "P_3B", "P_BB", "P_SO", "P_BK", "P_HBP", "P_WP", "P_AB", "CG", "SHO", "SV", "SFA", "SHA",
   "TC", "PO", "A", "E", "DP", "SBA", "RCS", "PB", "CI"
 ];
 
@@ -3461,9 +3464,20 @@ function formatPitchingStatsLineValue(key, value) {
   return value || 0;
 }
 
+function hasBattingLineStats(stats = {}) {
+  return ["PA", "AB", "H", "BB", "SO", "HBP", "SF", "RBI", "R", "SB", "CS"].some((key) => toNumber(stats[key]) > 0);
+}
+
+function pitcherAppearanceCount(stats = {}) {
+  const explicitApps = toNumber(stats.P_GP);
+  if (explicitApps > 0) return explicitApps;
+  if (hasPitchingStats(stats) && !hasBattingLineStats(stats) && toNumber(stats.GP) > 0) return toNumber(stats.GP);
+  return toNumber(stats.GS) || 0;
+}
+
 function pitchingStatsLine(stats = {}) {
   const line = { ...emptyStats(), ...(stats || {}) };
-  return `P ${line.Pitches || 0} - W-L ${line.W || 0}-${line.L || 0} - ERA ${formatPitchingStatsLineValue("ERA", line.ERA)} - G/GS ${line.GP || 0}/${line.GS || 0} - IP ${formatPitchingStatsLineValue("IP", line.IP)} - H ${line.P_H || 0} - R ${line.P_R || 0} - ER ${line.P_ER || 0} - HR ${line.P_HR || 0} - BB ${line.P_BB || 0} - K ${line.P_SO || 0} - HBP ${line.P_HBP || 0} - WP ${line.P_WP || 0} - BK ${line.P_BK || 0} - WHIP ${formatPitchingStatsLineValue("WHIP", line.WHIP)} - AVG ${formatPitchingStatsLineValue("BAA", line.BAA)}`;
+  return `P ${line.Pitches || 0} - W-L ${line.W || 0}-${line.L || 0} - ERA ${formatPitchingStatsLineValue("ERA", line.ERA)} - G/GS ${pitcherAppearanceCount(line)}/${line.GS || 0} - IP ${formatPitchingStatsLineValue("IP", line.IP)} - H ${line.P_H || 0} - R ${line.P_R || 0} - ER ${line.P_ER || 0} - HR ${line.P_HR || 0} - BB ${line.P_BB || 0} - K ${line.P_SO || 0} - HBP ${line.P_HBP || 0} - WP ${line.P_WP || 0} - BK ${line.P_BK || 0} - WHIP ${formatPitchingStatsLineValue("WHIP", line.WHIP)} - AVG ${formatPitchingStatsLineValue("BAA", line.BAA)}`;
 }
 
 function batterHudPills(stats, rates, advanced) {
@@ -3602,14 +3616,14 @@ function currentPitcherPills(line) {
 }
 
 function seasonPitcherPills(stats) {
-  const apps = stats.GP || 0;
+  const apps = pitcherAppearanceCount(stats);
   const avgDenom = toNumber(stats.P_AB) || Math.max(0, toNumber(stats.BF) - toNumber(stats.P_BB) - toNumber(stats.P_HBP));
   const hasIp = ipToOuts(stats.IP) > 0;
   return [
     { label: "IP", value: formatIpValue(stats.IP) },
     { label: "ERA", value: hasIp ? formatFixed(stats.ERA, 2) : "-", type: "era" },
     { label: "W/L", value: `${stats.W || 0}/${stats.L || 0}` },
-    { label: "GP/GS", value: `${stats.GP || 0}/${stats.GS || 0}` },
+    { label: "GP/GS", value: `${apps}/${stats.GS || 0}` },
     { label: "App/GS", value: `${apps}/${stats.GS || 0}` },
     { label: "H", value: stats.P_H || 0 },
     { label: "R", value: stats.P_R || 0 },
@@ -3627,14 +3641,17 @@ function seasonPitcherPills(stats) {
 function aggregateTeamStats(side) {
   const players = playersForSide(side);
   const stats = emptyStats();
+  let inferredPitcherApps = 0;
   players.forEach((player) => {
     const playerStats = { ...emptyStats(), ...(player.stats || {}) };
     [...new Set([...batterStatKeys, ...pitcherStatKeys, "P_2B", "P_3B", "P_AB", "CG", "SHO", "SV", "SFA", "SHA", "TC", "PO", "A", "E", "DP", "SBA", "RCS", "PB", "CI"])].forEach((key) => {
       if (key === "IP") return;
       stats[key] = toNumber(stats[key]) + toNumber(playerStats[key]);
     });
+    if (hasPitchingStats(playerStats)) inferredPitcherApps += pitcherAppearanceCount(playerStats);
     stats.IP = outsToIpValue(ipToOuts(stats.IP) + ipToOuts(playerStats.IP));
   });
+  stats.P_GP = inferredPitcherApps;
   const battingRates = calcStats(stats);
   calculatePitchingRates(stats);
   return { stats, battingRates, players };
@@ -3828,7 +3845,7 @@ function teamSnapshotGroups(side) {
         { label: "WHIP", value: hasStaffPitching && ipToOuts(stats.IP) ? formatFixed(stats.WHIP, 2) : "-", type: "whip" },
         { label: "P AVG", value: hasStaffPitching && (stats.P_AB || stats.BF) ? formatRate(toNumber(stats.BAA)) : "-", type: "baa" },
         { label: "W/L", value: `${stats.W || 0}/${stats.L || 0}` },
-        { label: "GP/GS", value: `${stats.GP || 0}/${stats.GS || 0}` },
+        { label: "GP/GS", value: `${pitcherAppearanceCount(stats)}/${stats.GS || 0}` },
         { label: "SV", value: stats.SV || 0 },
         { label: "CG", value: stats.CG || 0 },
         { label: "SHO", value: stats.SHO || 0 },

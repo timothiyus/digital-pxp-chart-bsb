@@ -910,6 +910,8 @@ textarea {
   color: var(--accent-strong);
   font-size: 0.78rem;
   font-weight: 800;
+  min-width: 0;
+  overflow: visible;
   padding: 6px;
   text-align: center;
 }
@@ -918,24 +920,38 @@ textarea {
   display: grid;
   gap: 1px;
   align-content: center;
+  min-width: 0;
   min-height: 34px;
+  overflow: visible;
   padding: 5px 4px;
   border: 1px solid var(--line);
   border-radius: 5px;
 }
 
 .hud-panel .hud-stat-chip b {
+  display: block;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
   color: var(--ink);
   font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
   line-height: 1;
 }
 
 .hud-panel .hud-stat-chip i {
+  display: block;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
   font-style: normal;
   color: var(--muted);
   font-size: 0.5rem;
   font-weight: 900;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -1401,12 +1417,21 @@ textarea {
   gap: 1px;
   align-content: center;
   min-height: 25px;
+  min-width: 0;
+  overflow: visible;
   border-radius: 5px;
 }
 
 .stat-hud[data-hud-mode="compact"] .hud-stat-chip b {
   color: var(--ink);
-  font-size: 0.7rem;
+  display: block;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
   line-height: 1;
 }
 
@@ -1424,8 +1449,15 @@ textarea {
   color: var(--muted);
   font-size: 0.46rem;
   font-weight: 900;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-batter-line .hud-stat-chip,
+.stat-hud[data-hud-mode="compact"] .compact-analytics-line .hud-stat-chip,
+.stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-stat-chip {
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .stat-hud[data-hud-mode="compact"] .hud-stat-chip.stat-good {
@@ -5703,10 +5735,27 @@ tr:hover td {
     gap: 5px;
   }
 
+  .team-snapshot-stat-batting .team-snapshot-pills,
+  .team-snapshot-stat-pitching .team-snapshot-pills {
+    grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  }
+
   .hud-stats span,
   .live-line span {
     font-size: 0.68rem;
     padding: 4px 5px;
+  }
+
+  .team-snapshot-pills .hud-stat-chip {
+    padding: 5px 3px;
+  }
+
+  .team-snapshot-pills .hud-stat-chip b {
+    font-size: 0.74rem;
+  }
+
+  .team-snapshot-pills .hud-stat-chip i {
+    font-size: 0.48rem;
   }
 
   .live-line {
@@ -5821,6 +5870,12 @@ tr:hover td {
     font-size: 0.7rem;
   }
 
+  .stat-hud[data-hud-mode="compact"] .hud-pill-group {
+    flex-basis: calc(var(--pill-count, 1) * 46px);
+    grid-template-columns: repeat(var(--pill-count, 1), minmax(42px, 1fr));
+    padding: 0 4px;
+  }
+
   .stat-hud[data-hud-mode="compact"] .compact-analytics-line {
     grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 4px;
@@ -5837,6 +5892,24 @@ tr:hover td {
   .stat-hud[data-hud-mode="compact"] .compact-analytics-line span,
   .stat-hud[data-hud-mode="compact"] .compact-storyline-line span {
     padding: 3px 5px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-batter-line .hud-stat-chip,
+  .stat-hud[data-hud-mode="compact"] .compact-analytics-line .hud-stat-chip,
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-stat-chip {
+    padding: 3px 2px;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-batter-line .hud-stat-chip b,
+  .stat-hud[data-hud-mode="compact"] .compact-analytics-line .hud-stat-chip b,
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-stat-chip b {
+    font-size: 0.64rem;
+  }
+
+  .stat-hud[data-hud-mode="compact"] .compact-batter-line .hud-stat-chip i,
+  .stat-hud[data-hud-mode="compact"] .compact-analytics-line .hud-stat-chip i,
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-stat-chip i {
+    font-size: 0.42rem;
   }
 
   .stat-hud[data-hud-mode="compact"] .base-state-card {
