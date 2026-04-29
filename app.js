@@ -1,5 +1,5 @@
 const STORAGE_KEY = "pxp-baseball-chart-v1";
-const APP_VERSION = "v6";
+const APP_VERSION = "v7";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -254,6 +254,7 @@ function emptyTeamMeta() {
     logo: "",
     abbreviation: "",
     mascot: "",
+    ranking: "",
     conferenceName: "",
     leagueName: "",
     overallRecord: "",
@@ -387,6 +388,7 @@ function mergeTeamMetaCandidate(target, candidate) {
     "logo",
     "abbreviation",
     "mascot",
+    "ranking",
     "conferenceName",
     "leagueName",
     "overallRecord",
@@ -2870,6 +2872,7 @@ function teamSetupHtml(side) {
       </label>
       <div class="team-setup-fields">
         <label>Mascot <input type="text" data-team-meta-side="${side}" data-team-meta-field="mascot" value="${escapeHtml(meta.mascot)}" placeholder="Broncbusters" /></label>
+        <label>Ranking <input type="text" data-team-meta-side="${side}" data-team-meta-field="ranking" value="${escapeHtml(meta.ranking)}" placeholder="#7 / RV / No. 12" /></label>
         <label>Abbrev <input type="text" data-team-meta-side="${side}" data-team-meta-field="abbreviation" value="${escapeHtml(meta.abbreviation)}" placeholder="GCCC" /></label>
         <label>Location <input type="text" data-team-meta-side="${side}" data-team-meta-field="location" value="${escapeHtml(meta.location)}" placeholder="Garden City, KS" /></label>
         <label>Conference <input type="text" data-team-meta-side="${side}" data-team-meta-field="conferenceName" value="${escapeHtml(meta.conferenceName)}" placeholder="KJCCC" /></label>
@@ -3734,6 +3737,7 @@ function teamSnapshotHeaderHtml(side) {
   const name = sideLabel(side);
   const title = [name, meta.mascot].filter(Boolean).join(" ");
   const affiliations = [meta.conferenceName, meta.leagueName].filter(Boolean).join(" | ");
+  const rankLine = meta.ranking ? `<span class="team-ranking">${escapeHtml(meta.ranking)}</span>` : "";
   return `
     <div class="team-snapshot-identity" style="${teamColorStyle(side)}">
       <div class="team-logo-box display-only">
@@ -3743,6 +3747,7 @@ function teamSnapshotHeaderHtml(side) {
       </div>
       <div class="team-snapshot-copy">
         <strong>${escapeHtml(title || name)}</strong>
+        ${rankLine}
         <span>${escapeHtml([meta.location, meta.abbreviation].filter(Boolean).join(" | "))}</span>
         ${affiliations ? `<span>${escapeHtml(affiliations)}</span>` : ""}
         <em>${escapeHtml([meta.overallRecord, meta.conferenceRecord ? `(${meta.conferenceRecord})` : ""].filter(Boolean).join(" ") || "Record not set")}</em>
@@ -3763,7 +3768,9 @@ function gameContextHtml() {
     umpires.second ? `2B ${umpires.second}` : "",
     umpires.third ? `3B ${umpires.third}` : ""
   ].filter(Boolean).join(" | ");
+  const gameLabel = state.games.length > 1 ? (activeGame().label || `Game ${(state.activeGameIndex ?? 0) + 1}`) : "";
   const rows = [
+    gameLabel ? ["Game", gameLabel] : null,
     game.gameDate ? ["Date", game.gameDate] : null,
     site ? ["Site", site] : null,
     firstPitch ? ["First pitch", firstPitch] : null,
@@ -3972,7 +3979,7 @@ function batterDetailHtml() {
     <div class="batter-detail-card" style="${teamColorStyle(player.side || state.activeSide)}">
       <div class="compact-player-identity">
         <strong>${escapeHtml(displayName)}</strong>
-        <span>${escapeHtml(player.pronunciation || "No pronunciation provided")}</span>
+        ${player.pronunciation ? `<span>${escapeHtml(player.pronunciation)}</span>` : ""}
         <span>${escapeHtml(playerMeta)}</span>
         <span>${escapeHtml(player.hometown || "No hometown provided")}</span>
         ${hudScopeToggleHtml("batter", player)}
@@ -4705,7 +4712,6 @@ function renderChartHud() {
     <section class="hud-panel team-snapshot-hud" style="${teamColorStyle(snapshotSide)}">
       <div class="hud-title">
         <h2>Team Snapshot</h2>
-        <span>${escapeHtml(sideLabel(snapshotSide))}</span>
       </div>
       ${teamSnapshotHeaderHtml(snapshotSide)}
       ${gameContextHtml()}
@@ -4717,7 +4723,6 @@ function renderChartHud() {
       <section class="hud-panel team-stats-hud" style="${teamColorStyle(snapshotSide)}">
         <div class="hud-title">
           <h2>Team Stats</h2>
-          <span>${escapeHtml(teamAbbreviation(snapshotSide))}</span>
         </div>
         <div class="team-snapshot-stat-groups">${teamSnapshotGroupsHtml(snapshotSide)}</div>
       </section>

@@ -567,6 +567,16 @@ textarea {
   line-height: 1.12;
 }
 
+.team-snapshot-copy .team-ranking {
+  justify-self: start;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--team-primary, var(--active-team-primary, var(--accent)));
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 950;
+}
+
 .team-snapshot-copy span,
 .team-snapshot-copy em,
 .team-snapshot-copy p {
@@ -1519,6 +1529,10 @@ textarea {
 .stat-hud[data-hud-mode="compact"] .compact-pitcher-card {
   grid-template-columns: repeat(9, minmax(0, 1fr));
   padding: 7px 8px;
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-stat-chip {
+  border: 1px solid var(--line);
 }
 
 .stat-hud[data-hud-mode="compact"] .compact-pitcher-title {
