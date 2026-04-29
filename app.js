@@ -1,5 +1,5 @@
 const STORAGE_KEY = "pxp-baseball-chart-v1";
-const APP_VERSION = "v4";
+const APP_VERSION = "v5";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -402,7 +402,13 @@ function normalizeState() {
     showAtBatControls: false,
     showFocusControls: false,
     lineScoreExpandedTeam: "",
+    expandedTeamRecords: {},
     ...(state.settings || {})
+  };
+  state.settings.expandedTeamRecords = {
+    home: false,
+    away: false,
+    ...(state.settings.expandedTeamRecords || {})
   };
   state.hudStatScopes = {
     batter: "overall",
@@ -3551,16 +3557,30 @@ function applySideTabColors(tab) {
 
 function teamRecordTableHtml(side, compact = false) {
   const rows = teamMetaForSide(side).records || [];
-  const visibleRows = rows.filter((row) => row.season || row.overall || row.conference);
+  const visibleRows = rows
+    .filter((row) => row.season || row.overall || row.conference)
+    .map((row, index) => ({ ...row, originalIndex: index }))
+    .sort((a, b) => {
+      const yearA = Number(String(a.season || "").match(/\d{4}/)?.[0] || 0);
+      const yearB = Number(String(b.season || "").match(/\d{4}/)?.[0] || 0);
+      return yearB - yearA || a.originalIndex - b.originalIndex;
+    });
   if (!visibleRows.length) return compact ? "" : `<p class="meta">Add prior records in Setup.</p>`;
+  const expanded = Boolean(state.settings.expandedTeamRecords?.[side]);
+  const displayRows = compact && !expanded ? visibleRows.slice(0, 1) : visibleRows;
   return `
-    <div class="team-record-history">
+    <div class="team-record-history ${compact ? "compact-record-history" : ""}">
       <table>
-        <thead><tr><th>Season</th><th>Overall</th><th>Conf</th></tr></thead>
+        <thead><tr><th>Season</th><th>Overall</th><th>Conference</th></tr></thead>
         <tbody>
-          ${visibleRows.map((row) => `<tr><td>${escapeHtml(row.season)}</td><td>${escapeHtml(row.overall)}</td><td>${escapeHtml(row.conference)}</td></tr>`).join("")}
+          ${displayRows.map((row) => `<tr><td>${escapeHtml(row.season)}</td><td>${escapeHtml(row.overall)}</td><td>${escapeHtml(row.conference)}</td></tr>`).join("")}
         </tbody>
       </table>
+      ${compact && visibleRows.length > 1 ? `
+        <button type="button" class="record-expand-toggle" data-toggle-records="${side}">
+          ${expanded ? "Show fewer seasons" : "Expand to see more seasons"}
+        </button>
+      ` : ""}
     </div>
   `;
 }
@@ -3573,11 +3593,11 @@ function teamCoachesHtml(side) {
       ${coaches.map((coach) => `
         <article class="team-coach-card">
           <div class="coach-photo">${coach.image ? `<img src="${escapeHtml(coach.image)}" alt="${escapeHtml(coach.name || "Coach")}" />` : `<span>${escapeHtml(teamInitials(coach.name || "Coach"))}</span>`}</div>
-          <div>
+          <div class="team-coach-main">
             <strong>${escapeHtml(coach.name || "Coach")}</strong>
             <span>${escapeHtml(coach.title || "")}</span>
-            ${coach.bio ? `<details class="coach-bio-details"><summary>Bio</summary><div class="coach-bio-copy">${paragraphTextHtml(coach.bio)}</div></details>` : ""}
           </div>
+          ${coach.bio ? `<details class="coach-bio-details"><summary>Bio</summary><div class="coach-bio-copy">${paragraphTextHtml(coach.bio)}</div></details>` : ""}
         </article>
       `).join("")}
     </div>
@@ -4833,7 +4853,9 @@ function renderDataView() {
 
 function addGame() {
   const current = activeGame();
-  const gameNum = state.games.length + 1;
+  const usedLabels = new Set((state.games || []).map((game) => String(game.label || "").trim()));
+  let gameNum = state.games.length + 1;
+  while (usedLabels.has(`Game ${gameNum}`)) gameNum += 1;
   const entry = newGameEntry(`Game ${gameNum}`);
   entry.game.teamName = current.game.teamName;
   entry.game.opponentName = current.game.opponentName;
@@ -4859,12 +4881,88 @@ function addGame() {
   render();
 }
 
+function reverseGameDataForRemoval(gameIndex) {
+  const previousGameIndex = state.activeGameIndex;
+  const previousSide = state.activeSide;
+  const previousFullChartSide = state.fullChartSide;
+  const game = state.games[gameIndex];
+  if (!game) return;
+
+  try {
+    state.activeGameIndex = gameIndex;
+    ["home", "away"].forEach((side) => {
+      state.activeSide = side;
+      Object.keys(activeChart().scorecard || {}).forEach((cellKey) => {
+        reverseChartCell(cellKey);
+      });
+    });
+
+    const gameId = game.id;
+    state.events.forEach((event) => {
+      if (eventBelongsToGame(event, gameId)) applyEvent(event, -1);
+    });
+    state.events = state.events.filter((event) => !eventBelongsToGame(event, gameId));
+  } finally {
+    state.activeGameIndex = previousGameIndex;
+    state.activeSide = previousSide;
+    state.fullChartSide = previousFullChartSide;
+  }
+}
+
+async function removeGameFlow() {
+  if ((state.games || []).length <= 1) return;
+  const choices = state.games.slice(1).map((game, index) => {
+    const gameIndex = index + 1;
+    return {
+      label: game.label || `Game ${gameIndex + 1}`,
+      value: String(gameIndex),
+      detail: `${game.game?.gameDate || "No date"} ${game.game?.opponentName ? `vs ${game.game.opponentName}` : ""}`.trim()
+    };
+  });
+  const selectedIndexRaw = await showAppPrompt({
+    title: "Remove game",
+    message: "Choose the extra game you want to remove. Game 1 cannot be deleted here; reset it from the chart if needed.",
+    choices,
+    requireChoice: true
+  });
+  const selectedIndex = Number(selectedIndexRaw);
+  if (!Number.isInteger(selectedIndex) || selectedIndex < 1 || selectedIndex >= state.games.length) return;
+
+  const game = state.games[selectedIndex];
+  const confirmation = await showAppPrompt({
+    title: `Remove ${game.label || `Game ${selectedIndex + 1}`}?`,
+    message: "This permanently deletes that game's chart, pitch log, live events, and stat updates. This cannot be undone.",
+    choices: [
+      { label: "Yes, remove game", value: "yes", detail: "Permanent deletion" },
+      { label: "Cancel", value: "no", detail: "Keep this game" }
+    ],
+    requireChoice: true
+  });
+  if (confirmation !== "yes") return;
+
+  reverseGameDataForRemoval(selectedIndex);
+  const deletingActiveGame = selectedIndex === state.activeGameIndex;
+  state.games.splice(selectedIndex, 1);
+  if (deletingActiveGame) {
+    state.activeGameIndex = Math.min(selectedIndex, state.games.length - 1);
+    state.activeSide = "away";
+    state.fullChartSide = "away";
+  } else if (state.activeGameIndex > selectedIndex) {
+    state.activeGameIndex -= 1;
+  }
+  saveState();
+  render();
+}
+
 function renderGameSwitcher() {
   const el = document.querySelector("#gameSwitcher");
   if (!el) return;
   el.innerHTML = state.games.map((entry, i) => `
     <button class="game-tab${i === state.activeGameIndex ? " active" : ""}" data-game-index="${i}">${escapeHtml(entry.label)}</button>
-  `).join("") + `<button class="game-tab game-tab-add" id="addGameButton">+ Add Game</button>`;
+  `).join("") + `
+    <button class="game-tab game-tab-add" id="addGameButton">+ Add Game</button>
+    ${state.games.length > 1 ? `<button class="game-tab game-tab-remove danger" id="removeGameButton">Remove Game</button>` : ""}
+  `;
 }
 
 function render() {
@@ -4954,7 +5052,16 @@ function paragraphTextHtml(value) {
   return paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("");
 }
 
-function showAppPrompt({ title, message = "", defaultValue = "", choices = [], inputLabel = "" } = {}) {
+function showAppPrompt({
+  title,
+  message = "",
+  defaultValue = "",
+  choices = [],
+  inputLabel = "",
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  requireChoice = false
+} = {}) {
   if (!els.appPromptOverlay) return Promise.resolve(defaultValue);
   return new Promise((resolve) => {
     let settled = false;
@@ -4966,6 +5073,9 @@ function showAppPrompt({ title, message = "", defaultValue = "", choices = [], i
       els.appPromptCancel.onclick = null;
       els.appPromptInput.onkeydown = null;
       els.appPromptChoices.onclick = null;
+      els.appPromptConfirm.hidden = false;
+      els.appPromptConfirm.textContent = "Confirm";
+      els.appPromptCancel.textContent = "Cancel";
       resolve(value);
     };
 
@@ -4974,6 +5084,9 @@ function showAppPrompt({ title, message = "", defaultValue = "", choices = [], i
     els.appPromptInput.value = defaultValue || "";
     els.appPromptInput.placeholder = inputLabel || "";
     els.appPromptInput.hidden = Boolean(choices.length);
+    els.appPromptConfirm.textContent = confirmLabel;
+    els.appPromptCancel.textContent = cancelLabel;
+    els.appPromptConfirm.hidden = Boolean(choices.length && requireChoice);
     els.appPromptChoices.innerHTML = choices.map((choice) => `
       <button type="button" data-prompt-choice="${escapeHtml(choice.value)}">
         <strong>${escapeHtml(choice.label)}</strong>
@@ -5770,10 +5883,11 @@ function setupEvents() {
     });
   });
 
-  document.querySelector("#gameSwitcher")?.addEventListener("click", (event) => {
+  document.querySelector("#gameSwitcher")?.addEventListener("click", async (event) => {
     const btn = event.target.closest("button");
     if (!btn) return;
     if (btn.id === "addGameButton") { addGame(); return; }
+    if (btn.id === "removeGameButton") { await removeGameFlow(); return; }
     const idx = Number(btn.dataset.gameIndex);
     if (!Number.isNaN(idx) && idx !== state.activeGameIndex) {
       state.activeGameIndex = idx;
@@ -5964,6 +6078,14 @@ function setupEvents() {
   });
 
   els.chartHud.addEventListener("click", (event) => {
+    const recordSide = event.target.closest("[data-toggle-records]")?.dataset.toggleRecords;
+    if (recordSide) {
+      state.settings.expandedTeamRecords = state.settings.expandedTeamRecords || {};
+      state.settings.expandedTeamRecords[recordSide] = !state.settings.expandedTeamRecords[recordSide];
+      saveState();
+      renderChartHud();
+      return;
+    }
     applyHudStatScopeFromEvent(event);
   });
 

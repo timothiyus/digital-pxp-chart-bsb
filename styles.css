@@ -351,6 +351,17 @@ textarea {
   border-color: var(--active-team-primary, var(--accent));
 }
 
+.game-tab-remove {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, #ccc);
+}
+
+.game-tab-remove:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
 .tab {
   background: #fff;
   color: var(--active-team-primary, var(--accent-strong));
@@ -392,6 +403,7 @@ textarea {
   grid-template-columns: minmax(360px, 0.85fr) minmax(0, 1.15fr);
   gap: 12px;
   margin-bottom: 16px;
+  align-items: start;
 }
 
 .hud-panel {
@@ -428,6 +440,10 @@ textarea {
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--team-primary, var(--accent)) 7%, #fff), #fff 42%),
     var(--panel);
+}
+
+.team-stats-hud {
+  align-self: start;
 }
 
 .team-snapshot-hud .hud-stat-chip,
@@ -614,6 +630,22 @@ textarea {
   font-size: 0.78rem;
 }
 
+.compact-record-history {
+  display: grid;
+}
+
+.record-expand-toggle {
+  justify-self: stretch;
+  min-height: 30px;
+  border-width: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 6px 6px;
+  background: #fbfcfa;
+  color: var(--team-primary, var(--active-team-primary, var(--accent-strong)));
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
 .team-coach-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -625,11 +657,20 @@ textarea {
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
   gap: 8px;
+  align-items: start;
   padding: 8px;
   border: 1px solid var(--line);
   border-left: 4px solid var(--team-primary, var(--accent));
   border-radius: 6px;
   background: #fbfcfa;
+}
+
+.team-coach-card:has(.coach-bio-details[open]) {
+  grid-column: 1 / -1;
+}
+
+.team-coach-card:has(.coach-bio-details[open]) .coach-bio-details {
+  grid-column: 1 / -1;
 }
 
 .coach-photo,
@@ -673,6 +714,7 @@ textarea {
 }
 
 .coach-bio-details {
+  grid-column: 2;
   margin-top: 5px;
 }
 
@@ -1453,6 +1495,7 @@ textarea {
 
 .stat-hud[data-hud-mode="compact"] .compact-pitcher-card {
   grid-template-columns: repeat(9, minmax(0, 1fr));
+  padding: 7px 8px;
 }
 
 .stat-hud[data-hud-mode="compact"] .compact-pitcher-title {
@@ -3662,6 +3705,7 @@ textarea {
 
 .pitcher-card {
   border: 1px solid var(--line);
+  outline: 0;
   border-radius: 8px;
   padding: 12px;
   background: #fbfcfa;
@@ -3680,8 +3724,8 @@ textarea {
 }
 
 .pitcher-card.active {
-  border-color: var(--accent);
-  box-shadow: inset 4px 0 0 var(--accent);
+  border-color: var(--active-team-primary, var(--accent));
+  box-shadow: inset 4px 0 0 var(--active-team-primary, var(--accent));
 }
 
 .slot-number {
@@ -4559,6 +4603,10 @@ tr:hover td {
     font-size: 0.62rem;
   }
 
+  .stat-hud[data-hud-mode="compact"] .compact-pitcher-card {
+    padding: 6px 7px;
+  }
+
   .diamond-scorebox {
     margin: 6px 8px;
     padding: 6px;
@@ -5026,6 +5074,7 @@ tr:hover td {
 
   .stat-hud[data-hud-mode="compact"] .compact-pitcher-card {
     grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+    padding: 5px 6px;
   }
 
   .stat-hud[data-hud-mode="compact"] .compact-pitcher-card strong {
@@ -5726,4 +5775,14 @@ body :where(
   border-color: var(--active-team-primary, var(--accent));
   outline: 1px solid var(--active-team-primary, var(--accent));
   outline-offset: -1px;
+}
+
+body .pitcher-card {
+  border-color: var(--line);
+  outline: 0;
+}
+
+body .pitcher-card.active {
+  border-color: var(--active-team-primary, var(--accent));
+  box-shadow: inset 4px 0 0 var(--active-team-primary, var(--accent));
 }
