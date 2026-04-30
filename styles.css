@@ -2577,23 +2577,23 @@ textarea {
 }
 
 .runner-lane-toFirst {
-  left: 71%;
-  top: 71%;
+  left: 91%;
+  top: 91%;
 }
 
 .runner-lane-toSecond {
-  left: 71%;
-  top: 29%;
+  left: 91%;
+  top: 9%;
 }
 
 .runner-lane-toThird {
-  left: 29%;
-  top: 29%;
+  left: 9%;
+  top: 9%;
 }
 
 .runner-lane-toHome {
-  left: 29%;
-  top: 71%;
+  left: 9%;
+  top: 91%;
 }
 
 .score-cell.is-out {
