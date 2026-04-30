@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v27";
+const APP_VERSION = "v28";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -652,6 +652,7 @@ function normalizeState() {
     player.stats = { ...emptyStats(), ...(player.stats || {}) };
     player.confStats = { ...emptyStats(), ...(player.confStats || {}) };
   });
+  mergeDuplicatePlayers();
 }
 
 function saveState() {
@@ -1218,11 +1219,17 @@ function mergePlayers(imported) {
     byJersey.set(`${player.side || "home"}-${String(player.number).trim().toLowerCase()}`, player);
   });
   const byKey = new Map(state.players.map((player) => [`${player.side || "home"}-${player.number}-${player.first}-${player.last}`.toLowerCase(), player]));
+  const byName = new Map();
+  state.players.forEach((player) => {
+    const key = playerNameMergeKey(player);
+    if (key && !byName.has(key)) byName.set(key, player);
+  });
 
   imported.forEach((player) => {
     const fullKey = `${player.side}-${player.number}-${player.first}-${player.last}`.toLowerCase();
     const jerseyKey = player.number ? `${player.side}-${String(player.number).trim().toLowerCase()}` : "";
-    const existing = byKey.get(fullKey) || (jerseyKey ? byJersey.get(jerseyKey) : null);
+    const nameKey = playerNameMergeKey(player);
+    const existing = byKey.get(fullKey) || (jerseyKey ? byJersey.get(jerseyKey) : null) || (nameKey ? byName.get(nameKey) : null);
     if (existing) {
       const mergedStats = { ...existing.stats, ...(player.stats || {}) };
       const mergedConf = { ...(existing.confStats || emptyStats()), ...(player.confStats || {}) };
@@ -1242,6 +1249,7 @@ function mergePlayers(imported) {
       });
       byKey.set(fullKey, existing);
       if (jerseyKey) byJersey.set(jerseyKey, existing);
+      if (nameKey) byName.set(nameKey, existing);
     } else {
       const filled = {
         ...player,
@@ -1251,8 +1259,196 @@ function mergePlayers(imported) {
       state.players.push(filled);
       byKey.set(fullKey, filled);
       if (jerseyKey) byJersey.set(jerseyKey, filled);
+      if (nameKey) byName.set(nameKey, filled);
     }
   });
+
+  mergeDuplicatePlayers();
+}
+
+function playerNameMergeKey(player = {}) {
+  const first = normalizeBoxScoreName(player.first);
+  const last = normalizeBoxScoreName(player.last);
+  if (!first || !last) return "";
+  return `${player.side || "home"}|${first}|${last}`;
+}
+
+function playerNumberMergeKey(player = {}) {
+  const number = cleanBoxScoreNumber(player.number);
+  return number ? `${player.side || "home"}|${number}` : "";
+}
+
+function playerDataWeight(player = {}) {
+  const statWeight = (line) => Object.values(line || {}).reduce((sum, value) => sum + (toNumber(value) ? 1 : 0), 0);
+  return statWeight(player.stats) + statWeight(player.confStats) + [player.number, player.position, player.hometown, player.height, player.weight, player.handedness, player.notes].filter(Boolean).length;
+}
+
+function referencedPlayerIds() {
+  const ids = new Set();
+  const add = (id) => { if (id) ids.add(id); };
+  (state.events || []).forEach((event) => {
+    add(event.playerId);
+    add(event.pitcherId);
+  });
+  (state.boxScores || []).forEach((box) => {
+    (box.lines || []).forEach((line) => add(line.playerId));
+  });
+  (state.games || []).forEach((game) => {
+    Object.values(game.charts || {}).forEach((chart) => {
+      (chart.lineup || []).forEach(add);
+      add(chart.activePitcherId);
+      add(chart.startingPitcherId);
+      (chart.bullpenIds || []).forEach(add);
+      Object.values(chart.baseState || {}).forEach(add);
+      Object.values(chart.baseStates || {}).forEach((baseState) => Object.values(baseState || {}).forEach(add));
+      Object.values(chart.scorecard || {}).forEach((cell) => {
+        add(cell.runnerId);
+        add(cell.pitcherId);
+        Object.values(cell.baseStateBefore || {}).forEach(add);
+        (cell.runnerStatDeltas || []).forEach((item) => add(item.playerId));
+        (cell.runnerPitcherDeltas || []).forEach((item) => add(item.pitcherId));
+        (cell.pitchDeltas || []).forEach((item) => add(item.pitcherId));
+        (cell.runnerDiamondBefore || []).forEach((item) => add(item.runnerId));
+      });
+    });
+  });
+  return ids;
+}
+
+function mergeDuplicateStatLine(target = {}, source = {}) {
+  const merged = { ...emptyStats(), ...(target || {}) };
+  Object.entries(source || {}).forEach(([key, value]) => {
+    const incoming = toNumber(value);
+    const current = toNumber(merged[key]);
+    if (incoming || !current) merged[key] = value;
+  });
+  return merged;
+}
+
+function mergePlayerIdentity(target, source) {
+  ["number", "first", "last", "pronunciation", "position", "hometown", "classYear", "height", "weight", "handedness", "notes"].forEach((field) => {
+    if (!String(target[field] || "").trim() && String(source[field] || "").trim()) target[field] = source[field];
+  });
+  target.stats = mergeDuplicateStatLine(target.stats, source.stats);
+  target.confStats = mergeDuplicateStatLine(target.confStats, source.confStats);
+}
+
+function replacePlayerIdInBaseState(baseState, fromId, toId) {
+  if (!baseState) return;
+  ["first", "second", "third"].forEach((base) => {
+    if (baseState[base] === fromId) baseState[base] = toId;
+  });
+}
+
+function remapPlayerReferences(fromId, toId) {
+  if (!fromId || !toId || fromId === toId) return;
+  const swap = (id) => id === fromId ? toId : id;
+  (state.events || []).forEach((event) => {
+    event.playerId = swap(event.playerId);
+    event.pitcherId = swap(event.pitcherId);
+  });
+  (state.boxScores || []).forEach((box) => {
+    (box.lines || []).forEach((line) => { line.playerId = swap(line.playerId); });
+  });
+  (state.games || []).forEach((game) => {
+    Object.values(game.charts || {}).forEach((chart) => {
+      chart.lineup = (chart.lineup || []).map(swap);
+      chart.activePitcherId = swap(chart.activePitcherId);
+      chart.startingPitcherId = swap(chart.startingPitcherId);
+      chart.bullpenIds = [...new Set((chart.bullpenIds || []).map(swap).filter(Boolean))];
+      replacePlayerIdInBaseState(chart.baseState, fromId, toId);
+      Object.values(chart.baseStates || {}).forEach((baseState) => replacePlayerIdInBaseState(baseState, fromId, toId));
+      if (chart.pitchingLines?.[fromId]) {
+        chart.pitchingLines[toId] = { ...blankPitchingLine(), ...(chart.pitchingLines[toId] || {}) };
+        addLivePitchingLineToLine(chart.pitchingLines[toId], chart.pitchingLines[fromId]);
+        delete chart.pitchingLines[fromId];
+      }
+      if (chart.pitchCounts?.[fromId]) {
+        chart.pitchCounts[toId] = toNumber(chart.pitchCounts[toId]) + toNumber(chart.pitchCounts[fromId]);
+        delete chart.pitchCounts[fromId];
+      }
+      (chart.pitchLog || []).forEach((pitch) => { pitch.pitcherId = swap(pitch.pitcherId); });
+      Object.values(chart.scorecard || {}).forEach((cell) => {
+        cell.runnerId = swap(cell.runnerId);
+        cell.pitcherId = swap(cell.pitcherId);
+        replacePlayerIdInBaseState(cell.baseStateBefore, fromId, toId);
+        (cell.runnerStatDeltas || []).forEach((item) => { item.playerId = swap(item.playerId); });
+        (cell.runnerPitcherDeltas || []).forEach((item) => { item.pitcherId = swap(item.pitcherId); });
+        (cell.pitchDeltas || []).forEach((item) => { item.pitcherId = swap(item.pitcherId); });
+        (cell.runnerDiamondBefore || []).forEach((item) => { item.runnerId = swap(item.runnerId); });
+      });
+    });
+  });
+}
+
+function mergeDuplicatePlayerGroup(group, referencedIds) {
+  if (group.length < 2) return null;
+  const indexed = group.map((player, index) => ({ player, index }));
+  indexed.sort((a, b) => {
+    const refDelta = Number(referencedIds.has(b.player.id)) - Number(referencedIds.has(a.player.id));
+    if (refDelta) return refDelta;
+    const dataDelta = playerDataWeight(b.player) - playerDataWeight(a.player);
+    if (dataDelta) return dataDelta;
+    return a.index - b.index;
+  });
+  const target = indexed[0].player;
+  indexed.slice(1).forEach(({ player }) => {
+    mergePlayerIdentity(target, player);
+    remapPlayerReferences(player.id, target.id);
+  });
+  return target.id;
+}
+
+function mergeDuplicatePlayers() {
+  if (!Array.isArray(state.players) || state.players.length < 2) return;
+  const referenced = referencedPlayerIds();
+  const removeIds = new Set();
+  const byName = new Map();
+  state.players.forEach((player) => {
+    const key = playerNameMergeKey(player);
+    if (!key) return;
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key).push(player);
+  });
+
+  byName.forEach((group) => {
+    if (group.length < 2) return;
+    const numberBuckets = new Map();
+    const withoutNumber = [];
+    group.forEach((player) => {
+      const numberKey = playerNumberMergeKey(player);
+      if (!numberKey) {
+        withoutNumber.push(player);
+        return;
+      }
+      if (!numberBuckets.has(numberKey)) numberBuckets.set(numberKey, []);
+      numberBuckets.get(numberKey).push(player);
+    });
+
+    numberBuckets.forEach((bucket) => {
+      const targetId = mergeDuplicatePlayerGroup(bucket, referenced);
+      if (targetId) {
+        bucket.forEach((player) => { if (player.id !== targetId) removeIds.add(player.id); });
+      }
+    });
+
+    if (numberBuckets.size === 1 && withoutNumber.length) {
+      const bucket = [...numberBuckets.values()][0].filter((player) => !removeIds.has(player.id));
+      const targetId = mergeDuplicatePlayerGroup([...bucket, ...withoutNumber], referenced);
+      if (targetId) {
+        [...bucket, ...withoutNumber].forEach((player) => { if (player.id !== targetId) removeIds.add(player.id); });
+      }
+    } else if (!numberBuckets.size && withoutNumber.length > 1) {
+      const targetId = mergeDuplicatePlayerGroup(withoutNumber, referenced);
+      if (targetId) {
+        withoutNumber.forEach((player) => { if (player.id !== targetId) removeIds.add(player.id); });
+      }
+    }
+  });
+
+  if (removeIds.size) {
+    state.players = state.players.filter((player) => !removeIds.has(player.id));
+  }
 }
 
 function detectPrestoVariant(headers) {

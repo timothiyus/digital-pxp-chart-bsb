@@ -1,4 +1,4 @@
-const CACHE_NAME = "pxp-baseball-v27";
+const CACHE_NAME = "pxp-baseball-v28";
 const SHELL = ["./", "./index.html", "./app.js", "./styles.css", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
