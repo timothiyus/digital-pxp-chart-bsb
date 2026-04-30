@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v18";
+const APP_VERSION = "v19";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -3741,7 +3741,8 @@ function renderPillGroups(groups) {
 }
 
 function renderPillRow(groups, className = "") {
-  return `<div class="compact-stat-row ${className}">${renderPillGroups(groups)}</div>`;
+  const normalizedGroups = Array.isArray(groups?.[0]) ? groups : [groups];
+  return `<div class="compact-stat-row ${className}">${renderPillGroups(normalizedGroups)}</div>`;
 }
 
 function percentValue(numerator, denominator) {
