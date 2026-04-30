@@ -3761,6 +3761,10 @@ textarea {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.pitch-button-row-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .pitch-button-row-1 {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -3777,15 +3781,31 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
+.pitch-button-row-5 button {
+  font-size: 0.78rem;
+  line-height: 1;
+  white-space: normal;
+}
+
 .pitch-buttons button:disabled {
   opacity: 0.48;
   cursor: not-allowed;
 }
 
-.pitch-buttons .undo-pitch-button {
+.undo-pitch-button {
+  width: 100%;
+  min-height: 30px;
+  padding: 0;
+  font-size: 0.82rem;
+  font-weight: 950;
   background: #fffefa;
   border-color: color-mix(in srgb, var(--active-team-primary, var(--accent)) 54%, var(--line));
   color: var(--active-team-primary, var(--accent-strong));
+}
+
+.undo-pitch-button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
 }
 
 .result-buttons {
@@ -4439,6 +4459,32 @@ body.player-modal-open::before {
 .presto-series-actions button,
 .presto-series-actions .file-button {
   min-width: 180px;
+}
+
+.resource-list {
+  display: grid;
+  gap: 10px;
+}
+
+.resource-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  text-decoration: none;
+  background: #fbfcfa;
+}
+
+.resource-card:hover {
+  border-color: var(--active-team-primary, var(--accent));
+  color: var(--active-team-primary, var(--accent-strong));
+}
+
+.resource-card span {
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 
 .data-form {
@@ -5204,6 +5250,7 @@ body.player-modal-open::before {
   }
 
   .result-buttons button,
+  .undo-pitch-button,
   .clear-action-button {
     min-height: 25px;
     font-size: 0.64rem;
@@ -5312,6 +5359,7 @@ body.player-modal-open::before {
 
   .pitch-buttons button,
   .result-buttons button,
+  .undo-pitch-button,
   .clear-action-button,
   .rbi-buttons button {
     min-height: 22px;
@@ -5710,6 +5758,7 @@ body.player-modal-open::before {
   }
 
   .result-buttons button,
+  .undo-pitch-button,
   .clear-action-button {
     min-height: 22px;
     font-size: 0.54rem;
@@ -5971,6 +6020,7 @@ body.player-modal-open::before {
   }
 
   .result-buttons button,
+  .undo-pitch-button,
   .clear-action-button {
     min-height: 21px;
     font-size: 0.52rem;
@@ -6526,6 +6576,7 @@ body.player-modal-open::before {
   }
 
   .result-buttons button,
+  .undo-pitch-button,
   .clear-action-button {
     min-height: 26px;
     font-size: 0.62rem;

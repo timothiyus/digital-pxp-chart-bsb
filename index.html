@@ -390,6 +390,7 @@
             <button class="data-tab active" type="button" data-data-section="gameChangerSection">GameChanger</button>
             <button class="data-tab" type="button" data-data-section="prestoSection">PrestoSports</button>
             <button class="data-tab" type="button" data-data-section="boxScoreSection">Box Scores</button>
+            <button class="data-tab" type="button" data-data-section="resourcesSection">Resources</button>
             <button class="data-tab" type="button" data-data-section="exportSection">Export</button>
             <button class="data-tab" type="button" data-data-section="maintenanceSection">Maintenance</button>
             <button class="data-tab" type="button" data-data-section="helpSection">Settings &amp; Help</button>
@@ -426,11 +427,11 @@
                 <h2>PrestoSports Import</h2>
                 <span>NJCAA / GCCC roster + per-slice CSVs</span>
               </div>
-              <p class="meta">For GCCC and other PrestoSports-sourced rosters. Drop the roster <code>.TRX</code> first, then the four overall-season stat CSVs and (optionally) the four conference-only CSVs. Roster imports only accept <code>.TRX</code> files with the name field in <code>First Last</code> order. Each stat slot fills its own slice of <code>player.stats</code> (overall) or <code>player.confStats</code> (conference). The matching <code>.TRO</code> file is index-only.</p>
+              <p class="meta">For GCCC and other PrestoSports-sourced rosters. Drop the roster <code>.TRX</code> or Safari-downloaded <code>.TRX.txt</code> first, then the four overall-season stat CSVs and (optionally) the four conference-only CSVs. Roster names can be <code>First Last</code> or <code>Last, First</code>. Each stat slot fills its own slice of <code>player.stats</code> (overall) or <code>player.confStats</code> (conference). The matching <code>.TRO</code> file is index-only.</p>
               <div class="presto-roster-row">
                 <label class="file-button">
-                  Roster (TRX only)
-                  <input id="prestoRosterInput" type="file" accept=".trx" />
+                  Roster TRX/TXT (First Last or Last, First)
+                  <input id="prestoRosterInput" type="file" accept=".trx,.txt,text/plain" />
                 </label>
               </div>
               <div class="presto-grid">
@@ -531,6 +532,21 @@
                 </label>
               </form>
               <div id="boxScoreList" class="source-list"></div>
+            </div>
+          </section>
+
+          <section id="resourcesSection" class="data-section">
+            <div class="panel">
+              <div class="panel-heading">
+                <h2>Resources</h2>
+                <span>Conference stat hubs</span>
+              </div>
+              <div class="resource-list">
+                <a class="resource-card" href="https://kjccc.prestosports.com/sports/bsb/index" target="_blank" rel="noopener noreferrer">
+                  <strong>KJCCC Baseball</strong>
+                  <span>Overall and conference data CSVs across the league</span>
+                </a>
+              </div>
             </div>
           </section>
 

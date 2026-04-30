@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v32";
+const APP_VERSION = "v33";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -1538,9 +1538,21 @@ function isPrestoCsvHeader(headers) {
 function splitPrestoName(value) {
   const collapsed = String(value || "").replace(/\s+/g, " ").trim();
   if (!collapsed) return { first: "", last: "" };
+  if (collapsed.includes(",")) {
+    const [last, ...rest] = collapsed.split(",");
+    return {
+      first: rest.join(",").trim(),
+      last: last.trim()
+    };
+  }
   const idx = collapsed.indexOf(" ");
   if (idx < 0) return { first: "", last: collapsed };
   return { first: collapsed.slice(0, idx).trim(), last: collapsed.slice(idx + 1).trim() };
+}
+
+function isSupportedPrestoRosterFilename(filename) {
+  const lower = String(filename || "").toLowerCase();
+  return lower.endsWith(".trx") || lower.endsWith(".trx.txt") || lower.endsWith(".txt");
 }
 
 const prestoStatMaps = {
@@ -1703,14 +1715,14 @@ function importPrestoRosterFromTrx(text, filename) {
   });
 
   if (!imported.length) {
-    throw new Error("No roster rows parsed from this TRX file.");
+    throw new Error("No roster rows parsed from this TRX/TXT roster file.");
   }
 
   mergePlayers(imported);
 
   state.sources.unshift({
     id: uid("source"),
-    type: "trx",
+    type: String(filename || "").toLowerCase().endsWith(".txt") ? "txt" : "trx",
     name: filename,
     importedAt: new Date().toISOString(),
     detail: `${imported.length} roster rows`,
@@ -5889,14 +5901,12 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
         <button type="button" data-pitch="ball-wp">Ball WP</button>
         <button type="button" data-pitch="ball-pb">Ball PB</button>
       </div>
-      <div class="pitch-button-row pitch-button-row-4">
-        <button type="button" data-pitch="strike">Strike</button>
-        <button type="button" data-pitch="strike-swinging">Swing</button>
-        <button type="button" data-pitch="strike-looking">Look</button>
+      <div class="pitch-button-row pitch-button-row-5">
+        <button type="button" data-pitch="strike-swinging">Swinging</button>
+        <button type="button" data-pitch="strike-looking">Looking</button>
         <button type="button" data-pitch="foul">Foul</button>
-      </div>
-      <div class="pitch-button-row pitch-button-row-1">
-        <button type="button" class="muted undo-pitch-button" data-undo-pitch="${cellKey}" ${pitchTotal || balkTotal ? "" : "disabled"}>Undo Pitch</button>
+        <button type="button" data-pitch="foul-bunt">Foul Bunt</button>
+        <button type="button" data-pitch="foul-tip">Foul Tip</button>
       </div>
     </div>
     <div class="result-buttons">
@@ -5907,18 +5917,7 @@ function renderScoreCellHtml(slotIndex, column, abIndex, opts = {}) {
         ${["BI", "BALK", "OUT"].map(actionButtonHtml).join("")}
       </div>
     </div>
-    <details class="pitcher-adjuster">
-      <summary>Pitcher line</summary>
-      <div class="pitcher-adjust-grid">
-        ${pitcherAdjustmentFields.map(({ key, label }) => `
-          <label>
-            <span>${label}</span>
-            <input type="number" min="0" max="9" step="1" value="${toNumber(cell.pitcherUpdates?.[key])}" data-pitcher-update="${cellKey}" data-pitcher-update-key="${key}" />
-          </label>
-        `).join("")}
-      </div>
-    </details>
-    <div class="control-spacer" aria-hidden="true"></div>
+    <button type="button" class="muted undo-pitch-button" data-undo-pitch="${cellKey}" ${pitchTotal || balkTotal ? "" : "disabled"}>Undo Pitch</button>
     <button type="button" data-clear-cell="${cellKey}" class="danger clear-action-button" title="Clear cell">Clear AB Data</button>
     ${abIndex > 0 ? `<div class="score-result-row"><button type="button" data-remove-ab="${cellKey}" class="muted remove-ab-button" title="Remove extra at-bat">Remove AB</button></div>` : ""}
   ` : "";
@@ -7020,7 +7019,7 @@ async function addPitchToCell(cellKey, type) {
   const gameType = cell.gameType || activeGameType();
   const beforeCount = cell.count || "0-0";
   const [ballsRaw, strikesRaw] = String(beforeCount).split("-").map(toNumber);
-  const pitchKind = type.startsWith("ball") ? "ball" : type.startsWith("strike") ? "strike" : type;
+  const pitchKind = pitchKindForCount(type);
   let balls = ballsRaw;
   let strikes = strikesRaw;
 
@@ -7077,7 +7076,8 @@ async function addPitchToCell(cellKey, type) {
     if (pitchDelta) pitchDelta.autoAppliedAction = "BB";
     applyChartAction(cellKey, "BB", { skipResultPitch: true });
   }
-  if (canAutoLogResult && pitchKind === "strike" && strikesRaw >= 2) {
+  const strikeoutPitch = pitchKind === "strike" || type === "foul-bunt" || type === "foul-tip";
+  if (canAutoLogResult && strikeoutPitch && strikesRaw >= 2) {
     cell.count = `${balls}-2`;
     if (type === "strike-looking") {
       if (pitchDelta) pitchDelta.autoAppliedAction = "KC";
@@ -7089,14 +7089,21 @@ async function addPitchToCell(cellKey, type) {
     }
     else {
       if (pitchDelta) pitchDelta.autoAppliedAction = "K";
-      await strikeThreeChoice(cellKey, { skipResultPitch: true });
+      applyChartAction(cellKey, "K", { skipResultPitch: true });
     }
   }
 }
 
+function pitchKindForCount(type) {
+  if (String(type || "").startsWith("ball")) return "ball";
+  if (String(type || "").startsWith("strike")) return "strike";
+  if (["foul", "foul-bunt", "foul-tip"].includes(type)) return "foul";
+  return type;
+}
+
 function fallbackCountBeforeUndo(count, type) {
   const [ballsRaw, strikesRaw] = String(count || "0-0").split("-").map(toNumber);
-  const pitchKind = type.startsWith("ball") ? "ball" : type.startsWith("strike") ? "strike" : type;
+  const pitchKind = pitchKindForCount(type);
   let balls = ballsRaw;
   let strikes = strikesRaw;
   if (pitchKind === "ball") balls = Math.max(0, balls - 1);
@@ -7571,6 +7578,27 @@ function positionStatExplanation(popover, anchor) {
   popover.style.width = `${width}px`;
 }
 
+function repositionAnchoredPopovers() {
+  const statPopover = document.querySelector("#statExplanationPopover");
+  if (statPopover) {
+    if (!activeStatExplanationAnchor?.isConnected) closeStatExplanation();
+    else if (anchorIsOffscreen(activeStatExplanationAnchor)) closeStatExplanation();
+    else positionStatExplanation(statPopover, activeStatExplanationAnchor);
+  }
+
+  const hudPopover = document.querySelector("#hudContextPopover");
+  if (hudPopover) {
+    if (!activeHudContextAnchor?.isConnected) closeHudContextPopover();
+    else if (anchorIsOffscreen(activeHudContextAnchor)) closeHudContextPopover();
+    else positionStatExplanation(hudPopover, activeHudContextAnchor);
+  }
+}
+
+function anchorIsOffscreen(anchor) {
+  const rect = anchor.getBoundingClientRect();
+  return rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth;
+}
+
 function toggleStatExplanation(anchor) {
   const key = anchor?.dataset?.statExplain;
   const info = statExplanationData[key];
@@ -7626,6 +7654,9 @@ function toggleHudContextPopover(anchor) {
 }
 
 function setupEvents() {
+  window.addEventListener("resize", repositionAnchoredPopovers);
+  document.addEventListener("scroll", repositionAnchoredPopovers, true);
+
   if (els.collapseSetupButton) {
     els.collapseSetupButton.addEventListener("click", () => {
       els.appShell.classList.toggle("setup-collapsed");
@@ -7883,8 +7914,8 @@ function setupEvents() {
           alert("TRO is index-only — drop the matching .TRX instead.");
           return;
         }
-        if (!lower.endsWith(".trx")) {
-          alert("Roster file must be .trx (or .tro index, which will be skipped).");
+        if (!isSupportedPrestoRosterFilename(file.name)) {
+          alert("Roster file must be .TRX, .TRX.txt, or compatible @-delimited roster text.");
           return;
         }
         importPrestoRosterFromTrx(await file.text(), file.name);
