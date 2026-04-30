@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v22";
+const APP_VERSION = "v23";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -609,11 +609,15 @@ function normalizeState() {
   state.settings = {
     showAtBatControls: false,
     showFocusControls: false,
-    showStatExplanations: false,
+    showStatExplanations: true,
     lineScoreExpandedTeam: "",
     expandedTeamRecords: {},
     ...(state.settings || {})
   };
+  if (state.settings.statExplanationDefaulted !== "v23") {
+    state.settings.showStatExplanations = true;
+    state.settings.statExplanationDefaulted = "v23";
+  }
   state.settings.expandedTeamRecords = {
     home: false,
     away: false,
@@ -2797,8 +2801,27 @@ function formatIpFromOuts(outs) {
   return `${Math.floor(outs / 3)}.${outs % 3}`;
 }
 
+function pitchingOuts(value = {}) {
+  return Object.prototype.hasOwnProperty.call(value, "outs") ? toNumber(value.outs) : ipToOuts(value.IP);
+}
+
+function formatRatioValue(numerator, denominator, digits = 2) {
+  const denom = toNumber(denominator);
+  return denom ? formatFixed(toNumber(numerator) / denom, digits) : "-";
+}
+
+function formatPerNine(numerator, outs) {
+  const innings = toNumber(outs) / 3;
+  return innings ? formatFixed((toNumber(numerator) * 9) / innings, 2) : "-";
+}
+
+function formatPerInning(numerator, outs) {
+  const innings = toNumber(outs) / 3;
+  return innings ? formatFixed(toNumber(numerator) / innings, 2) : "-";
+}
+
 function livePitchingRates(line) {
-  const outs = toNumber(line.outs);
+  const outs = pitchingOuts(line);
   const innings = outs / 3;
   const era = outs ? (toNumber(line.ER) * 9) / innings : 0;
   const whip = outs ? (toNumber(line.BB) + toNumber(line.H)) / innings : 0;
@@ -3503,6 +3526,25 @@ function addLivePitchingLineToStats(stats, line = {}) {
   stats.Strikes = Math.max(0, toNumber(stats.Strikes) + toNumber(line.strikes));
 }
 
+function addLivePitchingLineToLine(target, line = {}) {
+  Object.keys(blankPitchingLine()).forEach((key) => {
+    target[key] = Math.max(0, toNumber(target[key]) + toNumber(line[key]));
+  });
+}
+
+function seriesPitchingLine(playerId) {
+  const line = blankPitchingLine();
+  if (!playerId) return line;
+  (state.games || []).forEach((game) => {
+    Object.values(game.charts || {}).forEach((chart) => {
+      const chartLine = chart.pitchingLines?.[playerId];
+      if (!chartLine) return;
+      addLivePitchingLineToLine(line, chartLine);
+    });
+  });
+  return line;
+}
+
 function seriesPitcherStats(playerId) {
   const stats = emptyStats();
   if (!playerId) return stats;
@@ -3636,10 +3678,16 @@ const statExplanationData = {
   PA: { title: "PA", formula: "Plate appearances are AB + BB + HBP + SF when an explicit PA total is not available.", example: "Example: 40 AB, 8 BB, 2 HBP, and 1 SF is 51 PA." },
   AB: { title: "AB", formula: "Official at-bats exclude walks, hit by pitch, sacrifice flies, and some other plate appearances.", example: "Example: a walk counts as a PA but not an AB." },
   AVG: { title: "AVG", formula: "Hits divided by at-bats.", example: "Example: 3 hits in 10 at-bats is .300." },
+  HIT: { title: "H", formula: "Hits recorded by a batter.", example: "Example: a single, double, triple, and homer each add one hit." },
+  RUN: { title: "R", formula: "Runs scored by the batter/runner.", example: "Example: crossing home safely adds one run." },
+  RBI: { title: "RBI", formula: "Runs batted in credited to the hitter.", example: "Example: a single that scores two runners adds 2 RBI." },
   OBP: { title: "OBP", formula: "(Hits + walks + hit by pitch) divided by (AB + BB + HBP + SF).", example: "Example: 2 H, 1 BB, 1 HBP in 10 AB plus 1 SF is 4 / 13, or .308." },
   SLG: { title: "SLG", formula: "Total bases divided by at-bats.", example: "Example: a single, double, and homer is 7 total bases. In 10 AB, SLG is .700." },
   OPS: { title: "OPS", formula: "On-base percentage plus slugging percentage.", example: "Example: .380 OBP plus .520 SLG equals a .900 OPS." },
   ONEB: { title: "1B", formula: "Hits minus doubles, triples, and home runs.", example: "Example: 20 H minus 4 doubles, 1 triple, and 2 HR gives 13 singles." },
+  TWOB: { title: "2B", formula: "Doubles hit.", example: "Example: a ball that puts the batter safely on second as the result of the hit adds one double." },
+  THREEB: { title: "3B", formula: "Triples hit.", example: "Example: a ball that puts the batter safely on third as the result of the hit adds one triple." },
+  HRCOUNT: { title: "HR", formula: "Home runs hit by the batter.", example: "Example: a solo homer adds one HR, one R, one RBI, and four total bases." },
   TB: { title: "TB", formula: "Singles + 2 times doubles + 3 times triples + 4 times home runs.", example: "Example: 10 singles, 4 doubles, 1 triple, and 2 HR is 29 total bases." },
   XBHCOUNT: { title: "XBH", formula: "Doubles plus triples plus home runs.", example: "Example: 4 doubles, 1 triple, and 2 HR is 7 extra-base hits." },
   ISO: { title: "ISO", formula: "Slugging percentage minus batting average.", example: "Example: .520 SLG minus .300 AVG equals .220 ISO." },
@@ -3650,8 +3698,12 @@ const statExplanationData = {
   XBHPA: { title: "XBH/PA", formula: "Extra-base hits divided by plate appearances.", example: "Example: 6 extra-base hits in 75 PA is 8.0%." },
   HRPA: { title: "HR/PA", formula: "Home runs divided by plate appearances.", example: "Example: 3 home runs in 75 PA is 4.0%." },
   HRP: { title: "HR%", formula: "Home runs divided by at-bats.", example: "Example: 3 home runs in 50 AB is 6.0%." },
+  SBCOUNT: { title: "SB", formula: "Stolen bases.", example: "Example: a successful steal of second adds one SB." },
   SBP: { title: "SB%", formula: "Stolen bases divided by stolen-base attempts.", example: "Example: 8 steals in 10 tries is 80.0%." },
   SBCS: { title: "SB/CS", formula: "Stolen bases compared to caught stealing.", example: "Example: 8/2 means eight steals and two times caught stealing." },
+  BBCOUNT: { title: "BB", formula: "Walks drawn by a batter.", example: "Example: a four-pitch walk adds one BB and one PA, but not an AB." },
+  KCOUNT: { title: "SO/K", formula: "Strikeouts by a batter.", example: "Example: a swinging, looking, or dropped-third strikeout all add one strikeout." },
+  HBP: { title: "HBP", formula: "Hit by pitch.", example: "Example: a batter hit by a pitch is credited with one HBP and one PA, but not an AB." },
   BBK: { title: "BB/K", formula: "Walks divided by strikeouts.", example: "Example: 12 walks and 8 strikeouts is a 1.50 BB/K." },
   RRBIHR: { title: "R+RBI-HR", formula: "Runs plus RBI minus home runs, avoiding double-counting a player's own homer.", example: "Example: 30 R plus 28 RBI minus 5 HR is 53 run-production events." },
   PAAB: { title: "PA/AB", formula: "Plate appearances compared to official at-bats.", example: "Example: walks, HBP, and sac flies count as PA but not AB." },
@@ -3670,28 +3722,79 @@ const statExplanationData = {
   GWHIP: { title: "Game WHIP", formula: "Current-game walks plus hits allowed, divided by current-game innings pitched.", example: "Example: 4 baserunners in 3 IP is a 1.33 game WHIP." },
   BAA: { title: "AVG / BAA", formula: "Hits allowed divided by at-bats against.", example: "Example: 5 hits allowed in 25 AB against is a .200 opponent average." },
   GAVG: { title: "Game AVG Against", formula: "Current-game hits allowed divided by estimated at-bats against.", example: "Example: 3 hits in 15 AB against is .200." },
+  PH: { title: "H Allowed", formula: "Hits allowed by the pitcher.", example: "Example: a single, double, triple, or homer against the pitcher adds one hit allowed." },
+  PR: { title: "R Allowed", formula: "Runs charged to the pitcher.", example: "Example: if two charged runners score, the pitcher is charged with 2 R." },
+  ER: { title: "ER", formula: "Earned runs charged to the pitcher.", example: "Example: a run that scores without an error extending the inning is usually earned." },
+  P2B: { title: "2B Allowed", formula: "Doubles allowed by the pitcher.", example: "Example: a double against the pitcher adds one 2B allowed." },
+  P3B: { title: "3B Allowed", formula: "Triples allowed by the pitcher.", example: "Example: a triple against the pitcher adds one 3B allowed." },
+  PHR: { title: "HR Allowed", formula: "Home runs allowed by the pitcher.", example: "Example: two opponent homers add 2 HR allowed." },
+  PBB: { title: "BB Allowed", formula: "Walks issued by the pitcher.", example: "Example: 3 walks to 20 batters faced is a 15.0% walk rate." },
+  PSO: { title: "SO / K", formula: "Strikeouts recorded by the pitcher.", example: "Example: swinging, looking, and dropped-third strikeouts all add one pitching strikeout." },
+  KLOOK: { title: "K/ꓘ", formula: "Total strikeouts compared to looking strikeouts.", example: "Example: 7/2 means seven total strikeouts, two of them looking." },
+  PHBP: { title: "HBP Allowed", formula: "Batters hit by pitch.", example: "Example: hitting one batter adds one HBP allowed." },
+  PWP: { title: "WP", formula: "Wild pitches charged to the pitcher.", example: "Example: a pitch that gets away and lets a runner advance can add one WP." },
+  PBK: { title: "Bk", formula: "Balks charged to the pitcher.", example: "Example: a balk that advances runners adds one Bk." },
+  BF: { title: "BF", formula: "Batters faced by the pitcher.", example: "Example: five plate appearances against a pitcher adds 5 BF." },
+  K9: { title: "K/9", formula: "Strikeouts times 9, divided by innings pitched.", example: "Example: 8 K in 6 IP is 12.00 K/9." },
+  BB9: { title: "BB/9", formula: "Walks times 9, divided by innings pitched.", example: "Example: 2 BB in 6 IP is 3.00 BB/9." },
+  H9: { title: "H/9", formula: "Hits allowed times 9, divided by innings pitched.", example: "Example: 4 H in 6 IP is 6.00 H/9." },
+  HR9: { title: "HR/9", formula: "Home runs allowed times 9, divided by innings pitched.", example: "Example: 1 HR in 6 IP is 1.50 HR/9." },
+  PKP: { title: "Pitcher K%", formula: "Pitching strikeouts divided by batters faced.", example: "Example: 6 K against 24 BF is 25.0%." },
+  PBBP: { title: "Pitcher BB%", formula: "Walks issued divided by batters faced.", example: "Example: 3 BB against 24 BF is 12.5%." },
+  KBBP: { title: "K-BB%", formula: "Pitcher K% minus pitcher BB%.", example: "Example: 25.0% K% minus 8.0% BB% is 17.0%." },
+  KBB: { title: "K/BB", formula: "Pitching strikeouts divided by walks.", example: "Example: 8 K and 2 BB is a 4.00 K/BB." },
+  PIP: { title: "P/IP", formula: "Total pitches divided by innings pitched.", example: "Example: 72 pitches in 6 IP is 12.00 P/IP." },
+  PBF: { title: "P/BF", formula: "Total pitches divided by batters faced.", example: "Example: 72 pitches to 24 BF is 3.00 P/BF." },
+  STRIKEP: { title: "Strike%", formula: "Strikes divided by total pitches.", example: "Example: 45 strikes on 72 pitches is 62.5%." },
+  BALLP: { title: "Ball%", formula: "Balls divided by total pitches.", example: "Example: 27 balls on 72 pitches is 37.5%." },
+  FOULP: { title: "Foul%", formula: "Fouls divided by total pitches.", example: "Example: 12 fouls on 72 pitches is 16.7%." },
   GBP: { title: "Game BB%", formula: "Current-game walks divided by batters faced.", example: "Example: 2 walks against 20 batters faced is 10.0%." },
   G2STR: { title: "Game Two-Strike%", formula: "Two-strike pitches divided by total pitches.", example: "Example: 18 two-strike pitches out of 72 pitches is 25.0%." },
+  LRA: { title: "Leadoff Runner Allowed", formula: "First batter faced by the pitcher in an inning who reaches base.", example: "Example: 2/5 means two leadoff runners allowed in five pitcher-innings." },
+  FBOIR: { title: "First Batter of Inning Reached", formula: "The official first batter of an inning reaches base against that pitcher.", example: "Example: if the first batter of the third walks, FBoIR adds one." },
+  ONE23I: { title: "1-2-3 Inning", formula: "A pitcher faces three batters in an inning and allows no traffic.", example: "Example: three up, three down adds one 123I." },
+  TR: { title: "Traffic Rate", formula: "Baserunners allowed divided by innings pitched.", example: "Example: 6 baserunners in 4 IP is a 1.50 traffic rate." },
   PSBF: { title: "P/S/B/F", formula: "Total pitches, strikes, balls, and fouls in the current game.", example: "Example: 72/45/27/12 means 72 pitches, 45 strikes, 27 balls, 12 fouls." },
   IP: { title: "IP", formula: "Innings pitched, shown as innings.outs.", example: "Example: 5.2 means five innings and two outs, not five and two-thirds as a decimal." }
 };
 
 function statExplanationKey(label) {
+  const raw = String(label || "").trim().toUpperCase();
+  if (raw === "K%") return "KP";
+  if (raw === "BB%") return "BBP";
+  if (raw === "HR%") return "HRP";
+  if (raw === "SB%") return "SBP";
+  if (raw === "XBH%") return "XBH";
+  if (raw === "STRIKE%") return "STRIKEP";
+  if (raw === "BALL%") return "BALLP";
+  if (raw === "FOUL%") return "FOULP";
+  if (raw === "K-BB%") return "KBBP";
+  if (raw === "2-STRIKE PITCH%") return "G2STR";
   const compact = String(label || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   const aliases = {
     SLG: "SLG",
     SLG2: "SLG",
     SLGPC: "SLG",
     SLGPCT: "SLG",
-    K: "KP",
+    K: "KCOUNT",
+    SO: "KCOUNT",
+    SOK: "KCOUNT",
     KPCT: "KP",
-    BB: "BBP",
+    BB: "BBCOUNT",
     BBPCT: "BBP",
-    XBH: "XBH",
+    XBH: "XBHCOUNT",
     XBHPCT: "XBH",
-    HR: "HRP",
+    HR: "HRCOUNT",
     HRPCT: "HRP",
-    SB: "SBP",
+    H: "HIT",
+    R: "RUN",
+    RBI: "RBI",
+    AB: "AB",
+    PA: "PA",
+    "1B": "ONEB",
+    "2B": "TWOB",
+    "3B": "THREEB",
+    SB: "SBCOUNT",
     SBPCT: "SBP",
     SBCS: "SBCS",
     BBK: "BBK",
@@ -3709,6 +3812,23 @@ function statExplanationKey(label) {
     APPGS: "APP",
     WL: "WL",
     AVG: "AVG",
+    WHIP: "WHIP",
+    ERA: "ERA",
+    BF: "BF",
+    HBP: "HBP",
+    WP: "WP",
+    BK: "BK",
+    PIP: "PIP",
+    PBF: "PBF",
+    K9: "K9",
+    BB9: "BB9",
+    H9: "H9",
+    HR9: "HR9",
+    KBB: "KBB",
+    LRA: "LRA",
+    FBOIR: "FBOIR",
+    "123I": "ONE23I",
+    TR: "TR",
     GAVG: "GAVG",
     GBB: "GBP",
     GBBPCT: "GBP",
@@ -3723,20 +3843,38 @@ function statExplanationFor(label) {
   return statExplanationData[statExplanationKey(label)] || null;
 }
 
-function statPill({ label, value, type = "neutral", show = true, className = "", explain = "" }) {
+function ensureStatExplanation(explainKey, label) {
+  if (!explainKey) return null;
+  if (!statExplanationData[explainKey]) {
+    statExplanationData[explainKey] = {
+      title: String(label || explainKey),
+      formula: "Tracked count or rate shown by this stat chip.",
+      example: "This chip updates from imported statistics or live charted data when available."
+    };
+  }
+  return statExplanationData[explainKey];
+}
+
+function statPill({ label, value, type = "neutral", show = true, className = "", explain = "", span = 1 }) {
   const classes = ["hud-stat-chip", hudStatClass(value, type), hudStatSizeClass(label, value), className].filter(Boolean).join(" ");
   const explainKey = statExplanationKey(explain || label);
-  const canExplain = Boolean(state.settings?.showStatExplanations && statExplanationData[explainKey]);
+  const canExplain = Boolean(state.settings?.showStatExplanations && ensureStatExplanation(explainKey, explain || label));
   const explainAttrs = canExplain
     ? ` data-stat-explain="${escapeHtml(explainKey)}" role="button" tabindex="0" title="Tap for stat explanation"`
     : "";
-  return show ? `<span class="${classes}${canExplain ? " is-explainable" : ""}"${explainAttrs}><b>${escapeHtml(String(value))}</b><i>${escapeHtml(label)}</i></span>` : "";
+  const spanStyle = toNumber(span) > 1 ? ` style="grid-column:span ${Math.min(4, toNumber(span))}"` : "";
+  return show ? `<span class="${classes}${canExplain ? " is-explainable" : ""}"${explainAttrs}${spanStyle}><b>${escapeHtml(String(value))}</b><i>${escapeHtml(label)}</i></span>` : "";
+}
+
+function pillSpan(pill = {}) {
+  if (toNumber(pill.span) > 1) return toNumber(pill.span);
+  return String(pill.className || "").includes("pitch-count-chip") ? 2 : 1;
 }
 
 function renderPillGroups(groups) {
   return groups
     .filter((group) => group.some((pill) => pill.show !== false))
-    .map((group) => `<div class="hud-pill-group" style="--pill-count:${group.length}">${group.map(statPill).join("")}</div>`)
+    .map((group) => `<div class="hud-pill-group" style="--pill-count:${group.reduce((sum, pill) => sum + pillSpan(pill), 0)}">${group.map(statPill).join("")}</div>`)
     .join("");
 }
 
@@ -3974,59 +4112,170 @@ function batterLeverageRows(playerId, scope = "currentgame") {
   return chunkPills(batterLeveragePills(playerId, scope), 3);
 }
 
-function currentPitcherPills(line) {
+function pitchingPercentage(numerator, denominator) {
+  return percentValue(numerator, denominator);
+}
+
+function pitchingPercentageDiff(leftNumerator, leftDenominator, rightNumerator, rightDenominator) {
+  const leftDenom = toNumber(leftDenominator);
+  const rightDenom = toNumber(rightDenominator);
+  if (!leftDenom || !rightDenom) return "-";
+  return `${(((toNumber(leftNumerator) / leftDenom) - (toNumber(rightNumerator) / rightDenom)) * 100).toFixed(1)}%`;
+}
+
+function pitcherReachedBase(event) {
+  return ["single", "double", "triple", "hr", "walk", "hbp", "reachedError", "catcherInterference", "fieldersChoice"].includes(event?.result);
+}
+
+function pitcherMatchesCell(item, pitcherId) {
+  return Boolean(pitcherId && (item.cell?.pitcherId === pitcherId || item.event?.pitcherId === pitcherId));
+}
+
+function emptyPitcherContextLine() {
+  return { lra: 0, lraOpps: 0, fboir: 0, fboirOpps: 0, oneTwoThree: 0, traffic: 0 };
+}
+
+function addPitcherContextFromChart(context, chart, eventsById, pitcherId) {
+  const innings = new Map();
+  chartEventCells(chart, eventsById).forEach((item) => {
+    const parsed = parseScoreCellKey(item.key);
+    const inning = cellActualInning(item.cell, parsed.inning);
+    if (!innings.has(inning)) innings.set(inning, []);
+    innings.get(inning).push(item);
+  });
+
+  innings.forEach((items) => {
+    const sorted = items.sort(scoreCellSortChronological);
+    const firstInningItem = sorted[0];
+    const pitcherItems = sorted.filter((item) => pitcherMatchesCell(item, pitcherId));
+    if (!pitcherItems.length) return;
+
+    if (pitcherMatchesCell(firstInningItem, pitcherId)) {
+      context.fboirOpps += 1;
+      if (pitcherReachedBase(firstInningItem.event)) context.fboir += 1;
+    }
+
+    context.lraOpps += 1;
+    if (pitcherReachedBase(pitcherItems[0].event)) context.lra += 1;
+
+    const traffic = pitcherItems.filter((item) => pitcherReachedBase(item.event)).length;
+    const recordedOuts = pitcherItems.filter((item) => cellRecordsOut(item.cell)).length;
+    context.traffic += traffic;
+    if (pitcherItems.length === 3 && recordedOuts >= 3 && traffic === 0) context.oneTwoThree += 1;
+  });
+}
+
+function pitcherContextLine(playerId, scope = "currentgame") {
+  const context = emptyPitcherContextLine();
+  if (!playerId) return context;
+  const games = scope === "series" ? (state.games || []) : [activeGame()];
+  games.forEach((game) => {
+    const eventsById = new Map((state.events || []).filter((event) => eventBelongsToGame(event, game.id)).map((event) => [event.id, event]));
+    Object.values(game.charts || {}).forEach((chart) => addPitcherContextFromChart(context, chart, eventsById, playerId));
+  });
+  return context;
+}
+
+function livePitcherBasicRows(line) {
   const rates = livePitchingRates(line);
   return [
-    { label: "IP", value: formatIpFromOuts(line.outs) },
-    { label: "P/S/B/F", value: `${line.pitches}/${line.strikes}/${line.balls}/${line.fouls}`, className: "pitch-count-chip", explain: "P/S/B/F" },
-    { label: "H", value: line.H },
-    { label: "R", value: line.R },
-    { label: "ER", value: line.ER },
-    { label: "K", value: line.K, type: "count" },
-    { label: "2B", value: line["2B"] },
-    { label: "3B", value: line["3B"] },
-    { label: "HR", value: line.HR },
-    { label: "BB", value: line.BB },
-    { label: "HBP", value: line.HBP },
-    { label: "BF", value: line.BF },
-    { label: "GERA", value: line.outs ? rates.ERA : "-", type: "era" },
-    { label: "GWHIP", value: line.outs ? rates.WHIP : "-", type: "whip" },
-    { label: "GAVG", value: line.BF ? rates.BAA : "-", type: "baa", explain: "GAVG" },
-    { label: "GBB%", value: percentValue(line.BB, line.BF), type: "bbp" },
-    { label: "G2-Str%", value: percentValue(line.twoStrikePitches, line.pitches) }
+    [
+      { label: "P/S/B/F", value: `${line.pitches}/${line.strikes}/${line.balls}/${line.fouls}`, className: "pitch-count-chip", span: 2, explain: "P/S/B/F" },
+      { label: "IP", value: formatIpFromOuts(line.outs) },
+      { label: "H", value: line.H, explain: "PH" },
+      { label: "R", value: line.R, explain: "PR" },
+      { label: "ER", value: line.ER, explain: "ER" },
+      { label: "K/ꓘ", value: `${line.K || 0}/${line.KC || 0}`, type: "count", explain: "KLOOK" },
+      { label: "BB", value: line.BB, explain: "PBB" }
+    ],
+    [
+      { label: "BF", value: line.BF, explain: "BF" },
+      { label: "2B", value: line["2B"], explain: "P2B" },
+      { label: "3B", value: line["3B"], explain: "P3B" },
+      { label: "HR", value: line.HR, explain: "PHR" },
+      { label: "HBP", value: line.HBP, explain: "PHBP" },
+      { label: "ERA", value: line.outs ? rates.ERA : "-", type: "era" },
+      { label: "AVG", value: line.BF ? rates.BAA : "-", type: "baa", explain: "BAA" },
+      { label: "WHIP", value: line.outs ? rates.WHIP : "-", type: "whip" }
+    ]
   ];
 }
 
-function seasonPitcherPills(stats) {
+function livePitcherAdvancedRows(line, context) {
+  const outs = pitchingOuts(line);
+  const traffic = toNumber(context.traffic) || toNumber(line.H) + toNumber(line.BB) + toNumber(line.HBP);
+  const pills = [
+    { label: "K%", value: pitchingPercentage(line.K, line.BF), type: "kp", explain: "PKP" },
+    { label: "BB%", value: pitchingPercentage(line.BB, line.BF), type: "bbp", explain: "PBBP" },
+    { label: "K-BB%", value: pitchingPercentageDiff(line.K, line.BF, line.BB, line.BF), type: "kp", explain: "KBBP" },
+    { label: "P/IP", value: formatPerInning(line.pitches, outs), explain: "PIP" },
+    { label: "P/BF", value: formatRatioValue(line.pitches, line.BF), explain: "PBF" },
+    { label: "Strike%", value: pitchingPercentage(line.strikes, line.pitches), type: "kp", explain: "STRIKEP" },
+    { label: "Ball%", value: pitchingPercentage(line.balls, line.pitches), explain: "BALLP" },
+    { label: "Foul%", value: pitchingPercentage(line.fouls, line.pitches), explain: "FOULP" },
+    { label: "2-Strike Pitch%", value: pitchingPercentage(line.twoStrikePitches, line.pitches), explain: "G2STR" },
+    { label: "LRA", value: `${context.lra || 0}/${context.lraOpps || 0}`, explain: "LRA" },
+    { label: "FBoIR", value: `${context.fboir || 0}/${context.fboirOpps || 0}`, explain: "FBOIR" },
+    { label: "123I", value: context.oneTwoThree || 0, explain: "ONE23I" },
+    { label: "TR", value: formatPerInning(traffic, outs), explain: "TR" }
+  ];
+  return chunkPills(pills, 5);
+}
+
+function seasonPitcherBasicRows(stats) {
   const apps = pitcherAppearanceCount(stats);
   const avgDenom = toNumber(stats.P_AB) || Math.max(0, toNumber(stats.BF) - toNumber(stats.P_BB) - toNumber(stats.P_HBP));
   const hasIp = ipToOuts(stats.IP) > 0;
   return [
-    { label: "IP", value: formatIpValue(stats.IP) },
-    { label: "ERA", value: hasIp ? formatFixed(stats.ERA, 2) : "-", type: "era" },
-    { label: "W/L", value: `${stats.W || 0}/${stats.L || 0}` },
-    { label: "GP/GS", value: `${apps}/${stats.GS || 0}` },
-    { label: "App/GS", value: `${apps}/${stats.GS || 0}` },
-    { label: "H", value: stats.P_H || 0 },
-    { label: "R", value: stats.P_R || 0 },
-    { label: "ER", value: stats.P_ER || 0 },
-    { label: "BB", value: stats.P_BB || 0 },
-    { label: "SO", value: stats.P_SO || 0 },
-    { label: "HR", value: stats.P_HR || 0 },
-    { label: "AVG", value: avgDenom ? formatRate(toNumber(stats.BAA)) : "-", type: "baa", explain: "BAA" },
-    { label: "WHIP", value: hasIp ? formatFixed(stats.WHIP, 2) : "-", type: "whip" },
-    { label: "WP", value: stats.P_WP || 0 },
-    { label: "HBP", value: stats.P_HBP || 0 }
+    [
+      { label: "IP", value: formatIpValue(stats.IP) },
+      { label: "ERA", value: hasIp ? formatFixed(stats.ERA, 2) : "-", type: "era" },
+      { label: "W/L", value: `${stats.W || 0}/${stats.L || 0}` },
+      { label: "App/GS", value: `${apps}/${stats.GS || 0}`, explain: "APP" },
+      { label: "H", value: stats.P_H || 0, explain: "PH" },
+      { label: "R", value: stats.P_R || 0, explain: "PR" },
+      { label: "ER", value: stats.P_ER || 0, explain: "ER" },
+      { label: "HR", value: stats.P_HR || 0, explain: "PHR" }
+    ],
+    [
+      { label: "BB", value: stats.P_BB || 0, explain: "PBB" },
+      { label: "HBP", value: stats.P_HBP || 0, explain: "PHBP" },
+      { label: "SO", value: stats.P_SO || 0, explain: "PSO" },
+      { label: "BF", value: stats.BF || 0, explain: "BF" },
+      { label: "AVG", value: avgDenom ? formatRate(toNumber(stats.BAA)) : "-", type: "baa", explain: "BAA" },
+      { label: "WHIP", value: hasIp ? formatFixed(stats.WHIP, 2) : "-", type: "whip" },
+      { label: "WP", value: stats.P_WP || 0, explain: "PWP" },
+      { label: "Bk", value: stats.P_BK || 0, explain: "PBK" }
+    ]
   ];
 }
 
-function visiblePitcherPills(pills, scope, view) {
-  if (scope === "currentgame") {
-    const basicLabels = new Set(["IP", "P/S/B/F", "H", "R", "ER", "K", "BB", "BF"]);
-    return pills.filter((pill) => view === "basic" ? basicLabels.has(pill.label) : !basicLabels.has(pill.label));
+function seasonPitcherAdvancedRows(stats) {
+  const outs = ipToOuts(stats.IP);
+  const pills = [
+    { label: "K/9", value: formatPerNine(stats.P_SO, outs), type: "kp", explain: "K9" },
+    { label: "BB/9", value: formatPerNine(stats.P_BB, outs), type: "bbp", explain: "BB9" },
+    { label: "H/9", value: formatPerNine(stats.P_H, outs), explain: "H9" },
+    { label: "HR/9", value: formatPerNine(stats.P_HR, outs), explain: "HR9" },
+    { label: "K%", value: pitchingPercentage(stats.P_SO, stats.BF), type: "kp", explain: "PKP" },
+    { label: "BB%", value: pitchingPercentage(stats.P_BB, stats.BF), type: "bbp", explain: "PBBP" },
+    { label: "K/BB", value: formatRatioValue(stats.P_SO, stats.P_BB), explain: "KBB" },
+    { label: "P/IP", value: formatPerInning(stats.Pitches, outs), explain: "PIP" },
+    { label: "P/BF", value: formatRatioValue(stats.Pitches, stats.BF), explain: "PBF" },
+    { label: "Strike%", value: pitchingPercentage(stats.Strikes, stats.Pitches), type: "kp", explain: "STRIKEP" }
+  ];
+  return chunkPills(pills, 5);
+}
+
+function pitcherHudRows({ scope, view, liveLine, pitcherStats, pitcherId }) {
+  if (scope === "currentgame" || scope === "series") {
+    const line = scope === "series" ? seriesPitchingLine(pitcherId) : liveLine;
+    return view === "advanced"
+      ? livePitcherAdvancedRows(line, pitcherContextLine(pitcherId, scope))
+      : livePitcherBasicRows(line);
   }
-  const basicLabels = new Set(["IP", "ERA", "W/L", "App/GS", "H", "R", "ER", "BB", "SO"]);
-  return pills.filter((pill) => view === "basic" ? basicLabels.has(pill.label) : !basicLabels.has(pill.label));
+  const stats = pitcherStats || emptyStats();
+  return view === "advanced" ? seasonPitcherAdvancedRows(stats) : seasonPitcherBasicRows(stats);
 }
 
 function aggregateTeamStats(side) {
@@ -4339,6 +4588,15 @@ function hudViewToggleHtml(kind, side = state.activeSide) {
   `;
 }
 
+function hudControlsHtml(kind, player, side = player?.side || state.activeSide) {
+  return `
+    <div class="hud-control-row">
+      ${hudScopeToggleHtml(kind, player)}
+      ${hudViewToggleHtml(kind, side)}
+    </div>
+  `;
+}
+
 function applyHudStatScopeFromEvent(event) {
   const button = event.target.closest("[data-hud-stat-scope]");
   if (!button || button.disabled) return false;
@@ -4434,8 +4692,7 @@ function batterDetailHtml() {
         ${player.pronunciation ? `<span>${escapeHtml(player.pronunciation)}</span>` : ""}
         <span>${escapeHtml(playerMeta)}</span>
         <span>${escapeHtml(player.hometown || "No hometown provided")}</span>
-        ${hudScopeToggleHtml("batter", player)}
-        ${hudViewToggleHtml("batter", player.side || state.activeSide)}
+        ${hudControlsHtml("batter", player, player.side || state.activeSide)}
       </div>
       <div class="compact-batter-line">
         ${visibleBatterRowsHtml}
@@ -4453,8 +4710,7 @@ function batterDetailHtml() {
           <span class="batter-detail-meta">${escapeHtml([player.position, player.classYear].filter(Boolean).join(" / ") || "—")}</span>
         </div>
         ${player.pronunciation ? `<div class="batter-pronunciation">${escapeHtml(player.pronunciation)}</div>` : ""}
-        ${hudScopeToggleHtml("batter", player)}
-        ${hudViewToggleHtml("batter", player.side || state.activeSide)}
+        ${hudControlsHtml("batter", player, player.side || state.activeSide)}
       </div>
       <div class="batter-slash">
         <span><b>${rates.AVG}</b><i>AVG</i></span>
@@ -4536,8 +4792,8 @@ function renderInningTotals() {
   const pitcherStats = pitcher ? hudStatsFor(pitcher, "pitcher") : null;
   const pitcherScope = pitcher ? selectedHudStatScope("pitcher", pitcher) : "overall";
   const pitcherView = selectedHudStatView("pitcher");
-  const pitcherPills = pitcherScope === "currentgame" ? currentPitcherPills(liveLine) : seasonPitcherPills(pitcherStats || emptyStats());
-  const visiblePitcher = visiblePitcherPills(pitcherPills, pitcherScope, pitcherView);
+  const pitcherRows = pitcher ? pitcherHudRows({ scope: pitcherScope, view: pitcherView, liveLine, pitcherStats, pitcherId: pitcher.id }) : [];
+  const pitcherRowsHtml = pitcherRows.map((row, index) => renderPillRow(row, `pitcher-${pitcherView}-row pitcher-row-${index + 1}`)).join("");
   const outs = currentInningOuts(inning);
   const pitcherBio = pitcher
     ? [pitcher.classYear, pitcher.weight ? `Wt ${pitcher.weight}` : "", pitcher.height ? `Ht ${pitcher.height}` : "", pitcher.hometown].filter(Boolean).join(" | ")
@@ -4549,9 +4805,8 @@ function renderInningTotals() {
           <strong>P #${escapeHtml(pitcher.number)} ${escapeHtml(fullName(pitcher))}</strong>
           ${pitcherBio ? `<span class="pitcher-meta">${escapeHtml(pitcherBio)}</span>` : ""}
         </div>
-        ${hudScopeToggleHtml("pitcher", pitcher)}
-        ${hudViewToggleHtml("pitcher", pitcher.side || oppositeSide())}
-        ${visiblePitcher.map(statPill).join("")}
+        ${hudControlsHtml("pitcher", pitcher, pitcher.side || oppositeSide())}
+        <div class="compact-pitcher-stats">${pitcherRowsHtml}</div>
       </div>
     `
     : `<div class="compact-pitcher-card empty">P --</div>`;
