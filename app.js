@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v19";
+const APP_VERSION = "v20";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -4372,12 +4372,14 @@ function batterDetailHtml() {
   const batterPillRows = batterHudPills(stats, rates, advanced);
   const batterScope = selectedHudStatScope("batter", player);
   const batterView = selectedHudStatView("batter");
-  const currentContextPills = currentGameBatterSpecialPills(player.id);
   const visibleBatterRows = batterView === "advanced" ? batterPillRows[1] : batterPillRows[0];
   const visibleBatterRowsHtml = visibleBatterRows
     .map((row, index) => renderPillRow(row, `batter-season-row batter-${batterView}-row batter-row-${index + 1}`))
     .join("");
   const showCurrentContext = batterView === "advanced" && batterScope === "currentgame";
+  const currentContextHtml = showCurrentContext
+    ? `<div class="compact-analytics-line">${currentGameBatterSpecialPills(player.id).map(statPill).join("")}</div>`
+    : "";
   const positionText = displayPosition(activeChart().lineupPositions?.[slot - 1] || player.position) || "POS --";
   const physicalText = [player.weight ? `Wt ${player.weight}` : "", player.height ? `Ht ${player.height}` : ""].filter(Boolean).join(" | ");
   const playerMeta = [positionText, player.classYear, physicalText].filter(Boolean).join(" | ");
@@ -4415,9 +4417,7 @@ function batterDetailHtml() {
       <div class="compact-batter-line">
         ${visibleBatterRowsHtml}
       </div>
-      <div class="compact-analytics-line" ${showCurrentContext ? "" : "hidden"}>
-        ${currentContextPills.map(statPill).join("")}
-      </div>
+      ${currentContextHtml}
       <div class="compact-storyline-line">
         <span class="hud-context-chip">Today: ${escapeHtml(tonightSummary)}</span>
         <span class="hud-context-chip">Prev: ${escapeHtml(recentPaText(events))}</span>
