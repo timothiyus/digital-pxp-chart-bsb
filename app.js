@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v26";
+const APP_VERSION = "v27";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -1054,11 +1054,20 @@ function parseCsv(text) {
   return rows.filter((item) => item.some((value) => value.trim() !== ""));
 }
 
+function normalizedHeaderName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function rowHasHeaders(row, names) {
+  const normalized = row.map(normalizedHeaderName);
+  return names.every((name) => normalized.includes(normalizedHeaderName(name)));
+}
+
 function headerIndex(headers, name, occurrence = 1) {
-  const target = String(name || "").trim().toLowerCase();
+  const target = normalizedHeaderName(name);
   let seen = 0;
   for (let i = 0; i < headers.length; i += 1) {
-    if (String(headers[i] || "").trim().toLowerCase() === target) {
+    if (normalizedHeaderName(headers[i]) === target) {
       seen += 1;
       if (seen === occurrence) return i;
     }
@@ -1150,7 +1159,7 @@ function gameChangerStatsFromRow(row, headers) {
 
 function importPlayersFromCsv(text, filename, scope = "overall") {
   const rows = parseCsv(text);
-  const headerRowIndex = rows.findIndex((row) => row.includes("Number") && row.includes("Last") && row.includes("First"));
+  const headerRowIndex = rows.findIndex((row) => rowHasHeaders(row, ["Number", "Last", "First"]));
   if (headerRowIndex < 0) {
     throw new Error("Could not find a roster/stat header row with Number, Last, and First columns.");
   }
@@ -1258,7 +1267,7 @@ function detectPrestoVariant(headers) {
 
 function isPrestoCsvHeader(headers) {
   const trimmed = headers.map((h) => String(h || "").trim());
-  return trimmed.includes("#") && trimmed.includes("Name") && Boolean(detectPrestoVariant(trimmed));
+  return rowHasHeaders(trimmed, ["#", "Name"]) && Boolean(detectPrestoVariant(trimmed));
 }
 
 function splitPrestoName(value) {
@@ -1333,7 +1342,7 @@ const prestoStatMaps = {
 
 function importPrestoStatsFromCsv(text, filename, scope = "overall") {
   const rows = parseCsv(text);
-  const headerRowIndex = rows.findIndex((row) => row.some((cell) => String(cell).trim() === "#") && row.some((cell) => String(cell).trim() === "Name"));
+  const headerRowIndex = rows.findIndex((row) => rowHasHeaders(row, ["#", "Name"]));
   if (headerRowIndex < 0) {
     throw new Error("Could not find a PrestoSports header row (#, Name, ...).");
   }
@@ -1821,7 +1830,7 @@ function saveImportedBoxScore(lines, filename, meta = {}, sourceFormat = "CSV") 
 
 function importBoxScoreFromCsv(text, filename, meta = {}) {
   const rows = parseCsv(text);
-  const headerRowIndex = rows.findIndex((row) => row.includes("Number") && row.includes("Last") && row.includes("First"));
+  const headerRowIndex = rows.findIndex((row) => rowHasHeaders(row, ["Number", "Last", "First"]));
   if (headerRowIndex < 0) {
     throw new Error("Could not find a header row with Number, Last, and First columns.");
   }
