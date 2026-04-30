@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v23";
+const APP_VERSION = "v24";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -4252,6 +4252,7 @@ function seasonPitcherBasicRows(stats) {
 
 function seasonPitcherAdvancedRows(stats) {
   const outs = ipToOuts(stats.IP);
+  const hasPitchTotals = toNumber(stats.Pitches) > 0;
   const pills = [
     { label: "K/9", value: formatPerNine(stats.P_SO, outs), type: "kp", explain: "K9" },
     { label: "BB/9", value: formatPerNine(stats.P_BB, outs), type: "bbp", explain: "BB9" },
@@ -4259,11 +4260,15 @@ function seasonPitcherAdvancedRows(stats) {
     { label: "HR/9", value: formatPerNine(stats.P_HR, outs), explain: "HR9" },
     { label: "K%", value: pitchingPercentage(stats.P_SO, stats.BF), type: "kp", explain: "PKP" },
     { label: "BB%", value: pitchingPercentage(stats.P_BB, stats.BF), type: "bbp", explain: "PBBP" },
-    { label: "K/BB", value: formatRatioValue(stats.P_SO, stats.P_BB), explain: "KBB" },
-    { label: "P/IP", value: formatPerInning(stats.Pitches, outs), explain: "PIP" },
-    { label: "P/BF", value: formatRatioValue(stats.Pitches, stats.BF), explain: "PBF" },
-    { label: "Strike%", value: pitchingPercentage(stats.Strikes, stats.Pitches), type: "kp", explain: "STRIKEP" }
+    { label: "K/BB", value: formatRatioValue(stats.P_SO, stats.P_BB), explain: "KBB" }
   ];
+  if (hasPitchTotals) {
+    pills.push(
+      { label: "P/IP", value: formatPerInning(stats.Pitches, outs), explain: "PIP" },
+      { label: "P/BF", value: formatRatioValue(stats.Pitches, stats.BF), explain: "PBF" },
+      { label: "Strike%", value: pitchingPercentage(stats.Strikes, stats.Pitches), type: "kp", explain: "STRIKEP" }
+    );
+  }
   return chunkPills(pills, 5);
 }
 
