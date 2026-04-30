@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v30";
+const APP_VERSION = "v31";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -182,6 +182,11 @@ const els = {
   boxScoreOpponent: document.querySelector("#boxScoreOpponent"),
   boxScoreResultNote: document.querySelector("#boxScoreResultNote"),
   boxScoreList: document.querySelector("#boxScoreList"),
+  prestoSeriesXmlUrls: document.querySelector("#prestoSeriesXmlUrls"),
+  importPrestoSeriesXmlButton: document.querySelector("#importPrestoSeriesXmlButton"),
+  prestoSeriesXmlRaw: document.querySelector("#prestoSeriesXmlRaw"),
+  importPrestoSeriesXmlRawButton: document.querySelector("#importPrestoSeriesXmlRawButton"),
+  prestoSeriesXmlFileInput: document.querySelector("#prestoSeriesXmlFileInput"),
   notationDocs: document.querySelector("#notationDocs"),
   appPromptOverlay: document.querySelector("#appPromptOverlay"),
   appPromptTitle: document.querySelector("#appPromptTitle"),
@@ -2063,6 +2068,8 @@ function saveImportedBoxScore(lines, filename, meta = {}, sourceFormat = "CSV") 
     resultNote: meta.resultNote || "",
     filename,
     format,
+    source: meta.source || "gamechanger",
+    sourceUrl: meta.sourceUrl || "",
     importedAt: new Date().toISOString(),
     lines
   };
@@ -2074,13 +2081,13 @@ function saveImportedBoxScore(lines, filename, meta = {}, sourceFormat = "CSV") 
   state.sources = (state.sources || []).filter((source) => source.boxImportKey !== importKey);
   state.sources.unshift({
     id: uid("source"),
-    type: "box-score",
+    type: meta.type || "box-score",
     name: filename,
     importedAt: box.importedAt,
     detail: `${lines.length} players, ${box.opponent || "opponent unknown"} ${box.gameDate}`,
-    source: "gamechanger",
-    scope: "box-score",
-    variant: format,
+    source: meta.source || "gamechanger",
+    scope: meta.scope || "box-score",
+    variant: meta.variant || format,
     boxImportKey: importKey
   });
 
@@ -2192,6 +2199,359 @@ function importBoxScoreFromTxt(text, filename, meta = {}) {
   });
 
   saveImportedBoxScore(lines, filename, meta, "TXT");
+}
+
+function prestoXmlKey(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function prestoXmlElements(root) {
+  return Array.from(root?.getElementsByTagName?.("*") || []);
+}
+
+function prestoXmlAttribute(node, names) {
+  const wanted = new Set(names.map(prestoXmlKey));
+  for (const attr of Array.from(node?.attributes || [])) {
+    if (wanted.has(prestoXmlKey(attr.name))) return attr.value;
+  }
+  return "";
+}
+
+function prestoXmlChildText(node, names) {
+  const wanted = new Set(names.map(prestoXmlKey));
+  for (const child of Array.from(node?.children || [])) {
+    if (wanted.has(prestoXmlKey(child.tagName || child.nodeName))) {
+      return String(child.textContent || "").trim();
+    }
+  }
+  return "";
+}
+
+function prestoXmlValue(node, names) {
+  const attr = prestoXmlAttribute(node, names);
+  if (attr !== "") return attr;
+  return prestoXmlChildText(node, names);
+}
+
+function prestoXmlHasValue(node, aliases) {
+  return aliases.some((alias) => String(prestoXmlValue(node, [alias]) || "").trim() !== "");
+}
+
+const prestoXmlIdentityAliases = {
+  number: ["uni", "uniform", "uniformnumber", "number", "no", "num", "jersey", "jerseynumber", "playernumber"],
+  name: ["name", "player", "playername", "fullname", "full_name", "athlete"],
+  first: ["first", "firstname", "first_name", "givenname"],
+  last: ["last", "lastname", "last_name", "surname", "familyname"]
+};
+
+const prestoXmlStatAliases = {
+  batting: {
+    AB: ["ab", "atbats", "at_bats"],
+    R: ["r", "run", "runs"],
+    H: ["h", "hit", "hits"],
+    "2B": ["2b", "b2", "double", "doubles", "twob", "two_b"],
+    "3B": ["3b", "b3", "triple", "triples", "threeb", "three_b"],
+    HR: ["hr", "hrs", "homerun", "homeruns", "home_runs"],
+    RBI: ["rbi", "rbis", "runbattedin", "runsbattedin"],
+    BB: ["bb", "walk", "walks", "baseonballs"],
+    SO: ["so", "k", "ks", "strikeout", "strikeouts"],
+    HBP: ["hbp", "hb", "hp", "hitbypitch"],
+    SB: ["sb", "stolenbase", "stolenbases"],
+    CS: ["cs", "caughtstealing"]
+  },
+  pitching: {
+    IP: ["ip", "inn", "innings", "inningspitched"],
+    P_H: ["ha", "h", "hitsallowed", "hits"],
+    P_R: ["ra", "r", "runsallowed", "runs"],
+    P_ER: ["er", "earnedruns"],
+    P_HR: ["hra", "hr", "homerunsallowed", "home_runs_allowed"],
+    P_BB: ["bba", "bb", "walksallowed", "walks", "baseonballs"],
+    P_SO: ["so", "k", "ks", "strikeout", "strikeouts"],
+    P_HBP: ["hbp", "hb", "hitbatter", "hitbatters", "hitbypitch"],
+    P_WP: ["wp", "wildpitch", "wildpitches"],
+    BF: ["bf", "bfp", "battersfaced"],
+    Pitches: ["np", "pitches", "pitchcount", "numberofpitches", "numpitches"]
+  }
+};
+
+function prestoXmlNodeContext(node) {
+  const pieces = [];
+  let current = node;
+  for (let depth = 0; current && current.nodeType === 1 && depth < 5; depth += 1) {
+    pieces.push(current.tagName || current.nodeName || "");
+    pieces.push(prestoXmlAttribute(current, ["class", "id", "type", "section", "category"]));
+    current = current.parentElement;
+  }
+  return prestoXmlKey(pieces.join(" "));
+}
+
+function prestoXmlPlayerIdentity(node) {
+  let current = node;
+  let source = null;
+  const identity = { number: "", first: "", last: "", rawName: "" };
+  for (let depth = 0; current && current.nodeType === 1 && depth < 5; depth += 1) {
+    const currentTag = prestoXmlKey(current.tagName || current.nodeName || "");
+    const currentPlayerish = /(player|batter|hitter|pitcher|lineup|participant)/.test(currentTag);
+    const number = prestoXmlAttribute(current, prestoXmlIdentityAliases.number);
+    const first = prestoXmlValue(current, prestoXmlIdentityAliases.first);
+    const last = prestoXmlValue(current, prestoXmlIdentityAliases.last);
+    const rawName = prestoXmlValue(current, prestoXmlIdentityAliases.name);
+    if (!identity.number && number) identity.number = number;
+    if (!identity.first && first && (currentPlayerish || !source)) identity.first = first;
+    if (!identity.last && last && (currentPlayerish || !source)) identity.last = last;
+    if (!identity.rawName && rawName && (currentPlayerish || !source)) identity.rawName = rawName;
+    if ((number || first || last || rawName) && !source) source = current;
+    if (identity.rawName || identity.first || identity.last) break;
+    current = current.parentElement;
+  }
+  return { ...identity, source };
+}
+
+function addPrestoXmlStats(stats, node, aliasesByStat) {
+  Object.entries(aliasesByStat).forEach(([stat, aliases]) => {
+    const raw = prestoXmlValue(node, aliases);
+    if (raw !== "" && raw !== undefined && raw !== null) stats[stat] = raw;
+  });
+}
+
+function prestoXmlStatsForNode(node) {
+  const stats = {};
+  const context = prestoXmlNodeContext(node);
+  const hasPitchSpecific = (
+    prestoXmlHasValue(node, prestoXmlStatAliases.pitching.IP)
+    || prestoXmlHasValue(node, prestoXmlStatAliases.pitching.P_ER)
+    || prestoXmlHasValue(node, prestoXmlStatAliases.pitching.BF)
+    || prestoXmlHasValue(node, prestoXmlStatAliases.pitching.P_WP)
+    || prestoXmlHasValue(node, prestoXmlStatAliases.pitching.Pitches)
+  );
+  const hasBatSpecific = (
+    prestoXmlHasValue(node, prestoXmlStatAliases.batting.AB)
+    || prestoXmlHasValue(node, prestoXmlStatAliases.batting.RBI)
+    || prestoXmlHasValue(node, prestoXmlStatAliases.batting.SB)
+    || prestoXmlHasValue(node, prestoXmlStatAliases.batting.CS)
+    || prestoXmlHasValue(node, prestoXmlStatAliases.batting["2B"])
+    || prestoXmlHasValue(node, prestoXmlStatAliases.batting["3B"])
+  );
+  const contextIsPitching = context.includes("pitch");
+  const contextIsBatting = context.includes("bat") || context.includes("hit") || context.includes("offense");
+
+  if (contextIsPitching || hasPitchSpecific) addPrestoXmlStats(stats, node, prestoXmlStatAliases.pitching);
+  if (contextIsBatting || hasBatSpecific || (!contextIsPitching && !hasPitchSpecific)) {
+    addPrestoXmlStats(stats, node, prestoXmlStatAliases.batting);
+  }
+  return stats;
+}
+
+function prestoXmlLooksLikePlayerStatNode(node, identity, stats) {
+  if (!identity.rawName && !identity.first && !identity.last) return false;
+  if (!Object.keys(stats).length) return false;
+  const sourceTag = prestoXmlKey(identity.source?.tagName || identity.source?.nodeName || "");
+  const nodeTag = prestoXmlKey(node?.tagName || node?.nodeName || "");
+  const playerish = /(player|batter|hitter|pitcher|lineup|participant)/.test(`${sourceTag} ${nodeTag}`);
+  if (!playerish && !cleanBoxScoreNumber(identity.number)) return false;
+  const nameText = String(identity.rawName || [identity.first, identity.last].filter(Boolean).join(" ")).trim();
+  return !/^(totals?|team totals?|opponents?|opponent totals?)$/i.test(nameText);
+}
+
+function mergePrestoXmlBoxScoreLines(lines) {
+  const merged = new Map();
+  lines.forEach((line) => {
+    const key = line.playerId
+      || `${cleanBoxScoreNumber(line.number)}|${normalizeBoxScoreName([line.first, line.last].filter(Boolean).join(" "))}`;
+    if (!merged.has(key)) {
+      merged.set(key, { ...line });
+      return;
+    }
+    const target = merged.get(key);
+    boxScoreLineStats.forEach((stat) => {
+      if (stat === "IP") {
+        target.IP = outsToIpValue(ipToOuts(target.IP) + ipToOuts(line.IP));
+      } else {
+        target[stat] = toNumber(target[stat]) + toNumber(line[stat]);
+      }
+    });
+  });
+  return [...merged.values()];
+}
+
+function parsePrestoXmlDocument(text, label = "PrestoSports XML") {
+  const doc = new DOMParser().parseFromString(String(text || ""), "application/xml");
+  const parserError = doc.querySelector("parsererror");
+  if (parserError) {
+    throw new Error(`Could not parse ${label} as XML.`);
+  }
+  return doc;
+}
+
+function prestoXmlBoxScoreLinesFromDoc(doc) {
+  const lines = [];
+  prestoXmlElements(doc).forEach((node) => {
+    const identity = prestoXmlPlayerIdentity(node);
+    const stats = prestoXmlStatsForNode(node);
+    if (!prestoXmlLooksLikePlayerStatNode(node, identity, stats)) return;
+    const parsed = splitBoxScoreName(identity.rawName || [identity.first, identity.last].filter(Boolean).join(" "), identity.number);
+    const line = makeBoxScoreLine({
+      number: identity.number || parsed.number,
+      first: identity.first || parsed.first,
+      last: identity.last || parsed.last,
+      rawName: identity.rawName,
+      stats
+    });
+    if (line) lines.push(line);
+  });
+  return mergePrestoXmlBoxScoreLines(lines);
+}
+
+function normalizeImportedGameDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  let match = raw.match(/\b((?:19|20)\d{2})[-_/]?(\d{2})[-_/]?(\d{2})\b/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  match = raw.match(/\b(\d{1,2})[/-](\d{1,2})[/-]((?:19|20)\d{2})\b/);
+  if (match) return `${match[3]}-${String(match[1]).padStart(2, "0")}-${String(match[2]).padStart(2, "0")}`;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : "";
+}
+
+function prestoXmlSourceName(sourceLabel) {
+  const raw = String(sourceLabel || "").trim();
+  if (!raw) return "presto-series.xml";
+  try {
+    const url = new URL(raw);
+    return decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || url.hostname || "presto-series.xml");
+  } catch (_) {
+    return raw;
+  }
+}
+
+function prestoXmlTeamCandidates(doc) {
+  const out = [];
+  const seen = new Set();
+  const add = (name, score = "") => {
+    const cleanName = String(name || "").replace(/\s+/g, " ").trim();
+    if (!cleanName || /^(home|away|visitor|vis)$/i.test(cleanName)) return;
+    const key = prestoXmlKey(cleanName);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ name: cleanName, score: score === "" ? "" : toNumber(score) });
+  };
+
+  const root = doc.documentElement;
+  [
+    ["visname", ""],
+    ["visitorname", ""],
+    ["awayname", ""],
+    ["homename", ""],
+    ["home_name", ""],
+    ["visitor_name", ""]
+  ].forEach(([attr]) => add(prestoXmlAttribute(root, [attr])));
+
+  prestoXmlElements(doc).forEach((node) => {
+    const tag = prestoXmlKey(node.tagName || node.nodeName);
+    if (!tag.includes("team") && !tag.includes("school")) return;
+    const name = prestoXmlValue(node, ["name", "teamname", "schoolname", "shortname", "displayname"]);
+    const score = prestoXmlValue(node, ["score", "runs", "r"]);
+    add(name, score);
+  });
+  return out;
+}
+
+function teamCompareKeys(value) {
+  const compact = prestoXmlKey(value);
+  if (!compact) return [];
+  return [
+    compact,
+    compact.replace(/communitycollege/g, "cc"),
+    compact.replace(/cc/g, "communitycollege"),
+    compact.replace(/(community|college|university|state|cc|jc)/g, "")
+  ].filter(Boolean);
+}
+
+function sideTeamCompareKeys(side) {
+  const meta = teamMetaForSide(side);
+  return [
+    sideLabel(side),
+    meta.abbreviation,
+    meta.mascot,
+    meta.institutionInfo
+  ].flatMap(teamCompareKeys);
+}
+
+function teamCandidateMatchesKeys(candidateName, keys) {
+  const candidateKeys = teamCompareKeys(candidateName);
+  return candidateKeys.some((candidateKey) => keys.some((key) => candidateKey === key || candidateKey.includes(key) || key.includes(candidateKey)));
+}
+
+function prestoXmlOpponentName(doc) {
+  const candidates = prestoXmlTeamCandidates(doc);
+  if (!candidates.length) return "";
+  const activeKeys = sideTeamCompareKeys(state.activeSide);
+  const oppositeKeys = sideTeamCompareKeys(oppositeSide());
+  const oppositeMatch = candidates.find((candidate) => teamCandidateMatchesKeys(candidate.name, oppositeKeys));
+  if (oppositeMatch) return oppositeMatch.name;
+  const nonActive = candidates.find((candidate) => !teamCandidateMatchesKeys(candidate.name, activeKeys));
+  return nonActive?.name || candidates[1]?.name || candidates[0]?.name || "";
+}
+
+function prestoXmlResultNote(doc) {
+  const teams = prestoXmlTeamCandidates(doc).filter((team) => team.score !== "");
+  if (teams.length >= 2) return `${teams[0].name} ${teams[0].score}, ${teams[1].name} ${teams[1].score}`;
+  return "";
+}
+
+function prestoXmlGameMeta(doc, sourceLabel) {
+  const root = doc.documentElement;
+  const date = normalizeImportedGameDate(
+    prestoXmlValue(root, ["date", "gamedate", "game_date"])
+    || prestoXmlValue(root, ["startdate", "start_date"])
+    || sourceLabel
+  );
+  return {
+    gameDate: date || new Date().toISOString().slice(0, 10),
+    opponent: prestoXmlOpponentName(doc),
+    resultNote: prestoXmlResultNote(doc),
+    source: "presto",
+    scope: "series box-score",
+    variant: "presto-xml",
+    sourceUrl: /^https?:\/\//i.test(String(sourceLabel || "")) ? sourceLabel : ""
+  };
+}
+
+function importPrestoSeriesXmlText(text, sourceLabel = "PrestoSports XML") {
+  const doc = parsePrestoXmlDocument(text, sourceLabel);
+  const lines = prestoXmlBoxScoreLinesFromDoc(doc);
+  const filename = prestoXmlSourceName(sourceLabel);
+  const meta = prestoXmlGameMeta(doc, sourceLabel);
+  saveImportedBoxScore(lines, filename, meta, "Presto XML");
+  return { filename, lines: lines.length, meta };
+}
+
+function prestoXmlUrlsFromInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  const matches = raw.match(/https?:\/\/[^\s,]+/gi);
+  if (matches?.length) return [...new Set(matches.map((item) => item.trim()))];
+  return raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+async function importPrestoSeriesXmlUrls(value) {
+  const urls = prestoXmlUrlsFromInput(value);
+  if (!urls.length) throw new Error("Paste at least one PrestoSports XML link.");
+  const imported = [];
+  const failures = [];
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      imported.push(importPrestoSeriesXmlText(await response.text(), url));
+    } catch (error) {
+      failures.push(`${url}: ${error.message}`);
+    }
+  }
+  if (failures.length && !imported.length) {
+    throw new Error(`Could not import the XML link${urls.length === 1 ? "" : "s"}. ${failures.join(" ")} If the host blocks browser fetch, download the XML and use Import XML File or paste the raw XML.`);
+  }
+  return { imported, failures };
 }
 
 function resolvePdfBridgeUrl() {
@@ -2316,10 +2676,25 @@ function bindPdfBridge() {
   return false;
 }
 
+function boxScoreLineMatchesPlayer(line, player) {
+  if (!line || !player) return false;
+  if (line.playerId) return line.playerId === player.id;
+  const lineNumber = cleanBoxScoreNumber(line.number);
+  const playerNumber = cleanBoxScoreNumber(player.number);
+  const lineFull = normalizeBoxScoreName([line.first, line.last].filter(Boolean).join(" "));
+  const playerFull = normalizeBoxScoreName(fullName(player));
+  const lineLast = normalizeBoxScoreName(line.last);
+  const playerLast = normalizeBoxScoreName(player.last);
+  const nameMatches = Boolean(lineFull && playerFull && lineFull === playerFull) || Boolean(lineLast && playerLast && lineLast === playerLast);
+  if (lineNumber && playerNumber && lineNumber === playerNumber) return !lineFull || nameMatches;
+  return !lineNumber && nameMatches;
+}
+
 function boxScoreLinesForPlayer(playerId) {
   const out = [];
+  const player = playerById(playerId);
   state.boxScores.forEach((box) => {
-    const line = box.lines.find((l) => l.playerId === playerId);
+    const line = box.lines.find((l) => boxScoreLineMatchesPlayer(l, player));
     if (line) out.push({ box, line });
   });
   out.sort((a, b) => (a.box.gameDate < b.box.gameDate ? 1 : -1));
@@ -7489,6 +7864,50 @@ function setupEvents() {
           return;
         }
         importPrestoRosterFromTrx(await file.text(), file.name);
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        event.target.value = "";
+      }
+    });
+  }
+
+  if (els.importPrestoSeriesXmlButton) {
+    els.importPrestoSeriesXmlButton.addEventListener("click", async () => {
+      try {
+        const { imported, failures } = await importPrestoSeriesXmlUrls(els.prestoSeriesXmlUrls?.value || "");
+        if (els.prestoSeriesXmlUrls && !failures.length) els.prestoSeriesXmlUrls.value = "";
+        alert(`Imported ${imported.length} PrestoSports XML box score${imported.length === 1 ? "" : "s"}${failures.length ? `; ${failures.length} failed. Use XML file/raw fallback for blocked links.` : "."}`);
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+  }
+
+  if (els.importPrestoSeriesXmlRawButton) {
+    els.importPrestoSeriesXmlRawButton.addEventListener("click", () => {
+      try {
+        const raw = els.prestoSeriesXmlRaw?.value || "";
+        if (!raw.trim()) throw new Error("Paste raw PrestoSports XML first.");
+        const imported = importPrestoSeriesXmlText(raw, `pasted-presto-${new Date().toISOString().slice(0, 10)}.xml`);
+        if (els.prestoSeriesXmlRaw) els.prestoSeriesXmlRaw.value = "";
+        alert(`Imported ${imported.filename} with ${imported.lines} player rows.`);
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+  }
+
+  if (els.prestoSeriesXmlFileInput) {
+    els.prestoSeriesXmlFileInput.addEventListener("change", async (event) => {
+      const files = Array.from(event.target.files || []);
+      if (!files.length) return;
+      const imported = [];
+      try {
+        for (const file of files) {
+          imported.push(importPrestoSeriesXmlText(await file.text(), file.name));
+        }
+        alert(`Imported ${imported.length} PrestoSports XML file${imported.length === 1 ? "" : "s"}.`);
       } catch (error) {
         alert(error.message);
       } finally {

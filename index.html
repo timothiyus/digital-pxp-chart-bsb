@@ -473,6 +473,30 @@
                   </label>
                 </div>
               </div>
+              <div class="presto-series-import">
+                <div class="panel-heading compact">
+                  <h3>Series box scores</h3>
+                  <span>PrestoSports XML links or files</span>
+                </div>
+                <div class="presto-series-grid">
+                  <label>
+                    XML link(s)
+                    <textarea id="prestoSeriesXmlUrls" placeholder="https://gobroncbusters.com/sports/bsb/2025-26/boxscores/20260429_qfxn.xml"></textarea>
+                  </label>
+                  <label>
+                    Raw XML fallback
+                    <textarea id="prestoSeriesXmlRaw" placeholder="Paste downloaded Presto XML here if the host blocks browser fetch."></textarea>
+                  </label>
+                </div>
+                <div class="presto-series-actions">
+                  <button id="importPrestoSeriesXmlButton" type="button">Import XML Links</button>
+                  <button id="importPrestoSeriesXmlRawButton" type="button">Import Raw XML</button>
+                  <label class="file-button">
+                    Import XML File
+                    <input id="prestoSeriesXmlFileInput" type="file" accept=".xml,text/xml,application/xml" multiple />
+                  </label>
+                </div>
+              </div>
               <div id="prestoSourceList" class="source-list"></div>
             </div>
           </section>
