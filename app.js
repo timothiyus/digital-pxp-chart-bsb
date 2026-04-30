@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v28";
+const APP_VERSION = "v29";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -1221,15 +1221,17 @@ function mergePlayers(imported) {
   const byKey = new Map(state.players.map((player) => [`${player.side || "home"}-${player.number}-${player.first}-${player.last}`.toLowerCase(), player]));
   const byName = new Map();
   state.players.forEach((player) => {
-    const key = playerNameMergeKey(player);
-    if (key && !byName.has(key)) byName.set(key, player);
+    playerNameMergeKeys(player).forEach((key) => {
+      if (!byName.has(key)) byName.set(key, player);
+    });
   });
 
   imported.forEach((player) => {
     const fullKey = `${player.side}-${player.number}-${player.first}-${player.last}`.toLowerCase();
     const jerseyKey = player.number ? `${player.side}-${String(player.number).trim().toLowerCase()}` : "";
-    const nameKey = playerNameMergeKey(player);
-    const existing = byKey.get(fullKey) || (jerseyKey ? byJersey.get(jerseyKey) : null) || (nameKey ? byName.get(nameKey) : null);
+    const nameKeys = playerNameMergeKeys(player);
+    const existingByName = nameKeys.map((key) => byName.get(key)).find(Boolean) || null;
+    const existing = byKey.get(fullKey) || (jerseyKey ? byJersey.get(jerseyKey) : null) || existingByName;
     if (existing) {
       const mergedStats = { ...existing.stats, ...(player.stats || {}) };
       const mergedConf = { ...(existing.confStats || emptyStats()), ...(player.confStats || {}) };
@@ -1249,7 +1251,7 @@ function mergePlayers(imported) {
       });
       byKey.set(fullKey, existing);
       if (jerseyKey) byJersey.set(jerseyKey, existing);
-      if (nameKey) byName.set(nameKey, existing);
+      nameKeys.forEach((key) => byName.set(key, existing));
     } else {
       const filled = {
         ...player,
@@ -1259,7 +1261,7 @@ function mergePlayers(imported) {
       state.players.push(filled);
       byKey.set(fullKey, filled);
       if (jerseyKey) byJersey.set(jerseyKey, filled);
-      if (nameKey) byName.set(nameKey, filled);
+      nameKeys.forEach((key) => byName.set(key, filled));
     }
   });
 
@@ -1267,10 +1269,39 @@ function mergePlayers(imported) {
 }
 
 function playerNameMergeKey(player = {}) {
-  const first = normalizeBoxScoreName(player.first);
-  const last = normalizeBoxScoreName(player.last);
-  if (!first || !last) return "";
-  return `${player.side || "home"}|${first}|${last}`;
+  return playerNameMergeKeys(player)[0] || "";
+}
+
+function playerNameMergeKeys(player = {}) {
+  const side = player.side || "home";
+  const values = new Set();
+  const addName = (value) => {
+    const normalized = normalizeBoxScoreName(value);
+    if (normalized && normalized.split(/\s+/).length >= 2) values.add(`${side}|${normalized}`);
+  };
+
+  const first = String(player.first || "").trim();
+  const last = String(player.last || "").trim();
+  addName([first, last].filter(Boolean).join(" "));
+  addName(fullName(player));
+
+  [first, last].forEach((part) => {
+    const text = String(part || "").trim();
+    if (!text.includes(",")) return;
+    const [left, ...rest] = text.split(",");
+    addName(`${rest.join(" ").trim()} ${left.trim()}`);
+  });
+
+  if (!first && last) {
+    const pieces = last.split(/\s+/).filter(Boolean);
+    if (pieces.length === 2) addName(`${pieces[1]} ${pieces[0]}`);
+  }
+  if (first && !last) {
+    const pieces = first.split(/\s+/).filter(Boolean);
+    if (pieces.length === 2) addName(`${pieces[1]} ${pieces[0]}`);
+  }
+
+  return [...values];
 }
 
 function playerNumberMergeKey(player = {}) {
@@ -1405,10 +1436,11 @@ function mergeDuplicatePlayers() {
   const removeIds = new Set();
   const byName = new Map();
   state.players.forEach((player) => {
-    const key = playerNameMergeKey(player);
-    if (!key) return;
-    if (!byName.has(key)) byName.set(key, []);
-    byName.get(key).push(player);
+    playerNameMergeKeys(player).forEach((key) => {
+      if (!byName.has(key)) byName.set(key, []);
+      const group = byName.get(key);
+      if (!group.includes(player)) group.push(player);
+    });
   });
 
   byName.forEach((group) => {
