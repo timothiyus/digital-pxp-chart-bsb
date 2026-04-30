@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v29";
+const APP_VERSION = "v30";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -1231,7 +1231,11 @@ function mergePlayers(imported) {
     const jerseyKey = player.number ? `${player.side}-${String(player.number).trim().toLowerCase()}` : "";
     const nameKeys = playerNameMergeKeys(player);
     const existingByName = nameKeys.map((key) => byName.get(key)).find(Boolean) || null;
-    const existing = byKey.get(fullKey) || (jerseyKey ? byJersey.get(jerseyKey) : null) || existingByName;
+    const existingByJersey = jerseyKey ? byJersey.get(jerseyKey) : null;
+    const existing = byKey.get(fullKey)
+      || (existingByJersey && existingByName && existingByJersey !== existingByName && !playersNameCompatible(existingByJersey, player) ? existingByName : null)
+      || existingByJersey
+      || existingByName;
     if (existing) {
       const mergedStats = { ...existing.stats, ...(player.stats || {}) };
       const mergedConf = { ...(existing.confStats || emptyStats()), ...(player.confStats || {}) };
@@ -1300,8 +1304,18 @@ function playerNameMergeKeys(player = {}) {
     const pieces = first.split(/\s+/).filter(Boolean);
     if (pieces.length === 2) addName(`${pieces[1]} ${pieces[0]}`);
   }
+  if (first && last) {
+    addName(`${last} ${first}`);
+  }
 
   return [...values];
+}
+
+function playersNameCompatible(left = {}, right = {}) {
+  const leftKeys = playerNameMergeKeys(left);
+  const rightKeys = new Set(playerNameMergeKeys(right));
+  if (!leftKeys.length || !rightKeys.size) return true;
+  return leftKeys.some((key) => rightKeys.has(key));
 }
 
 function playerNumberMergeKey(player = {}) {
@@ -1434,8 +1448,26 @@ function mergeDuplicatePlayers() {
   if (!Array.isArray(state.players) || state.players.length < 2) return;
   const referenced = referencedPlayerIds();
   const removeIds = new Set();
+  const byNumber = new Map();
+  state.players.forEach((player) => {
+    const key = playerNumberMergeKey(player);
+    if (!key) return;
+    if (!byNumber.has(key)) byNumber.set(key, []);
+    byNumber.get(key).push(player);
+  });
+
+  byNumber.forEach((group) => {
+    const alive = group.filter((player) => !removeIds.has(player.id));
+    if (alive.length < 2) return;
+    const targetId = mergeDuplicatePlayerGroup(alive, referenced);
+    if (targetId) {
+      alive.forEach((player) => { if (player.id !== targetId) removeIds.add(player.id); });
+    }
+  });
+
   const byName = new Map();
   state.players.forEach((player) => {
+    if (removeIds.has(player.id)) return;
     playerNameMergeKeys(player).forEach((key) => {
       if (!byName.has(key)) byName.set(key, []);
       const group = byName.get(key);
