@@ -16,6 +16,7 @@ Primary user need: duplicate the usefulness of a handwritten baseball scorecard,
 - `docs/DATA_PIPELINE.md`: early notes on future CSV/PDF import architecture.
 - `docs/HANDOFF.md`: previous short handoff.
 - `docs/FOR_CLAUDE.md`: this file.
+- `docs/ROADMAP.md`: living backlog from live-game testing.
 
 ## Current Data Model
 

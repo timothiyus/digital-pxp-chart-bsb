@@ -1,5 +1,9 @@
 const STORAGE_KEY = "pxp-baseball-chart-v1";
-const APP_VERSION = "v14";
+const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
+const STATE_DB_NAME = "pxp-baseball-workspace";
+const STATE_DB_STORE = "snapshots";
+const STATE_DB_RECORD_ID = "workspace";
+const APP_VERSION = "v15";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -228,6 +232,7 @@ function loadState() {
       return JSON.parse(saved);
     } catch {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(STORAGE_META_KEY);
     }
   }
 
@@ -248,6 +253,79 @@ function loadState() {
     sources: [],
     boxScores: []
   };
+}
+
+function localStateSavedAt() {
+  return toNumber(localStorage.getItem(STORAGE_META_KEY));
+}
+
+function openStateDatabase() {
+  if (!("indexedDB" in window)) return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(STATE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STATE_DB_STORE)) {
+        db.createObjectStore(STATE_DB_STORE, { keyPath: "id" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveStateToIndexedDb(serialized, savedAt) {
+  try {
+    const db = await openStateDatabase();
+    if (!db) return false;
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STATE_DB_STORE, "readwrite");
+      tx.objectStore(STATE_DB_STORE).put({
+        id: STATE_DB_RECORD_ID,
+        serialized,
+        savedAt
+      });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+    db.close();
+    return true;
+  } catch (error) {
+    console.warn("Could not write IndexedDB state backup:", error?.message || error);
+    return false;
+  }
+}
+
+async function readStateFromIndexedDb() {
+  try {
+    const db = await openStateDatabase();
+    if (!db) return null;
+    const record = await new Promise((resolve, reject) => {
+      const tx = db.transaction(STATE_DB_STORE, "readonly");
+      const request = tx.objectStore(STATE_DB_STORE).get(STATE_DB_RECORD_ID);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return record;
+  } catch (error) {
+    console.warn("Could not read IndexedDB state backup:", error?.message || error);
+    return null;
+  }
+}
+
+function persistStateSnapshot(serialized, savedAt = Date.now()) {
+  let localSaved = false;
+  try {
+    localStorage.setItem(STORAGE_KEY, serialized);
+    localStorage.setItem(STORAGE_META_KEY, String(savedAt));
+    localSaved = true;
+  } catch (error) {
+    console.warn("Could not save local state:", error?.message || error);
+  }
+  saveStateToIndexedDb(serialized, savedAt);
+  return localSaved;
 }
 
 function emptyTeamMeta() {
@@ -562,14 +640,12 @@ function normalizeState() {
 function saveState() {
   syncSharedTeamMetaToGames();
   const serialized = JSON.stringify(state);
-  try {
-    localStorage.setItem(STORAGE_KEY, serialized);
-  } catch (error) {
-    console.warn("Could not save local state:", error?.message || error);
-    setCloudSyncStatus(supabaseSession ? "Cloud save pending" : "Local save failed");
+  const localSaved = persistStateSnapshot(serialized);
+  if (!localSaved) {
+    setCloudSyncStatus(supabaseSession ? "Cloud save pending; local backup pending" : "Local backup pending");
   }
   if (els.saveState) {
-    els.saveState.textContent = `Saved ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    els.saveState.textContent = `${localSaved ? "Saved" : "Backup pending"} ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
   }
   schedulePushState();
 }
@@ -7090,6 +7166,30 @@ function bootApp() {
   render();
 }
 
+async function recoverIndexedDbState() {
+  const record = await readStateFromIndexedDb();
+  if (!record?.serialized) return false;
+  const indexedSavedAt = toNumber(record.savedAt);
+  if (indexedSavedAt <= localStateSavedAt()) return false;
+
+  let recoveredState;
+  try {
+    recoveredState = JSON.parse(record.serialized);
+  } catch (error) {
+    console.warn("IndexedDB state backup could not be parsed:", error?.message || error);
+    return false;
+  }
+  if (!recoveredState || typeof recoveredState !== "object" || !Array.isArray(recoveredState.games)) return false;
+
+  Object.keys(state).forEach((key) => delete state[key]);
+  Object.assign(state, recoveredState);
+  persistStateSnapshot(record.serialized, indexedSavedAt || Date.now());
+  bootApp();
+  setCloudSyncStatus("Recovered local workspace");
+  schedulePushState();
+  return true;
+}
+
 // ---------------- Supabase auth + sync ----------------
 
 const authEls = {
@@ -7310,7 +7410,7 @@ function applyRemoteState(remote, updatedAt) {
   Object.assign(state, remote);
   lastPushedSerialized = JSON.stringify(state);
   lastSyncedAt = updatedAt ? new Date(updatedAt).getTime() : Date.now();
-  try { localStorage.setItem(STORAGE_KEY, lastPushedSerialized); } catch (_) {}
+  persistStateSnapshot(lastPushedSerialized, lastSyncedAt);
   bootApp();
 }
 
@@ -7503,6 +7603,9 @@ function hideAuthOverlay() {}
 renderCloudSyncUi();
 setCloudSyncStatus(supabaseClient ? "Local first" : "Local only");
 bootApp();
+recoverIndexedDbState().catch((error) => {
+  console.warn("Workspace backup recovery failed:", error?.message || error);
+});
 if (supabaseClient) {
   supabaseClient.auth.getSession().then(({ data }) => {
     if (!data?.session && !supabaseSession) setCloudSyncStatus("Local only");
