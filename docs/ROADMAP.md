@@ -14,6 +14,9 @@ Living backlog for post-live-test improvements.
 - [x] Add previous/next player controls inside the roster edit modal for fast roster cleanup.
 - [x] Auto-populate the defense chart from lineup position entries while preserving dropdown overrides.
 - [x] First-pass pitcher stat pipeline audit: add manual App editing and make pitcher appearances fall back from imported/live pitching data instead of showing 0 apps for pitchers with mound stats.
+- [x] Add HUD Basic/Advanced view toggles for batter and pitcher cards.
+- [x] Add a `series` stat scope for charted workspace games, covering batting and pitching.
+- [x] Add a settings toggle for tappable stat explanations with formula and broadcast-style examples.
 
 ## Roster Workflow
 
@@ -26,22 +29,11 @@ Living backlog for post-live-test improvements.
 
 ## HUD Statistics
 
-- Add HUD stat tabs/buttons for batting views:
-  - Current rundown/basic stats.
-  - Advanced batting statistics.
-  - Current game.
-  - Series.
-  - Overall.
-  - Conference.
-  - Non-conference.
-- Add the same scope structure for pitcher HUD stats.
 - Keep the main HUD readable and let deeper analytics appear only when selected.
 
 ## Series Stats
 
-- Add a `series` stat scope that combines Game 1, Game 2, Game 3, etc. within the current workspace series.
-- Apply series stats to both batting and pitching.
-- Make series stats update live as games are added and charted.
+- Expand series stats into generated end-of-game and live stats views once those pages exist.
 
 ## Advanced Analytics
 
@@ -69,13 +61,7 @@ Living backlog for post-live-test improvements.
 
 ## Stat Explanations
 
-- Add a settings toggle for tappable stat explanations.
-- When enabled, tapping a stat pill should show:
-  - What the stat means.
-  - The formula.
-  - A quick broadcast-friendly calculation example.
-- Tapping the stat again should dismiss the explanation.
-- Cover every calculated stat that needs explanation, especially rate stats like SLG.
+- Add more explanation entries as new advanced analytics are introduced.
 
 ## Setup Profiles
 

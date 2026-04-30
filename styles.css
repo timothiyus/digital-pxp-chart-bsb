@@ -453,7 +453,8 @@ textarea {
   border-color: color-mix(in srgb, var(--team-primary, var(--accent)) 26%, var(--line));
 }
 
-.hud-scope-toggle {
+.hud-scope-toggle,
+.hud-view-toggle {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -465,7 +466,12 @@ textarea {
   background: #fbfcfa;
 }
 
-.hud-scope-toggle button {
+.hud-view-toggle {
+  margin-top: 0;
+}
+
+.hud-scope-toggle button,
+.hud-view-toggle button {
   min-height: 26px;
   padding: 0 8px;
   border: 0;
@@ -480,12 +486,14 @@ textarea {
   cursor: pointer;
 }
 
-.hud-scope-toggle button.active {
+.hud-scope-toggle button.active,
+.hud-view-toggle button.active {
   background: var(--team-primary, var(--active-team-primary, var(--accent)));
   color: #fff;
 }
 
-.hud-scope-toggle button:disabled {
+.hud-scope-toggle button:disabled,
+.hud-view-toggle button:disabled {
   background: #eceeed;
   color: #9aa3a0;
   cursor: not-allowed;
@@ -973,6 +981,44 @@ textarea {
   font-size: 0.38rem;
 }
 
+.hud-stat-chip.is-explainable {
+  cursor: pointer;
+  outline-offset: 2px;
+}
+
+.hud-stat-chip.is-explainable:focus {
+  outline: 2px solid var(--team-primary, var(--active-team-primary, var(--accent)));
+}
+
+.stat-explanation-popover {
+  position: fixed;
+  z-index: 150;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--active-team-primary, var(--accent));
+  border-radius: 7px;
+  background: #fffdf8;
+  box-shadow: 0 18px 42px rgba(21, 35, 30, 0.26);
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.stat-explanation-popover strong {
+  color: var(--active-team-primary, var(--accent-strong));
+  font-size: 0.9rem;
+}
+
+.stat-explanation-popover p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.stat-explanation-popover b {
+  color: var(--ink);
+}
+
 .hud-stat-chip.game-context-chip {
   background: var(--team-primary, var(--active-team-primary, var(--accent)));
   border-color: color-mix(in srgb, var(--team-primary, var(--active-team-primary, var(--accent))) 82%, #15231e);
@@ -1321,7 +1367,7 @@ textarea {
 
 .stat-hud[data-hud-mode="compact"] .compact-batter-line {
   display: grid;
-  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
   gap: 4px;
   color: var(--accent-strong);
@@ -1418,13 +1464,15 @@ textarea {
   white-space: nowrap;
 }
 
-.stat-hud[data-hud-mode="compact"] .compact-player-identity .hud-scope-toggle {
+.stat-hud[data-hud-mode="compact"] .compact-player-identity .hud-scope-toggle,
+.stat-hud[data-hud-mode="compact"] .compact-player-identity .hud-view-toggle {
   margin: 0;
   width: 100%;
   justify-content: center;
 }
 
-.stat-hud[data-hud-mode="compact"] .compact-player-identity .hud-scope-toggle button {
+.stat-hud[data-hud-mode="compact"] .compact-player-identity .hud-scope-toggle button,
+.stat-hud[data-hud-mode="compact"] .compact-player-identity .hud-view-toggle button {
   flex: 1 1 0;
   min-height: 24px;
   padding: 0 5px;
@@ -1629,13 +1677,15 @@ textarea {
   min-width: 0;
 }
 
-.stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-scope-toggle {
+.stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-scope-toggle,
+.stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-view-toggle {
   grid-column: 1 / -1;
   justify-self: center;
   margin: 0;
 }
 
-.stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-scope-toggle button {
+.stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-scope-toggle button,
+.stat-hud[data-hud-mode="compact"] .compact-pitcher-card .hud-view-toggle button {
   min-height: 22px;
   font-size: 0.56rem;
 }

@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v16";
+const APP_VERSION = "v17";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -118,6 +118,7 @@ const els = {
   gameNotes: document.querySelector("#gameNotes"),
   showAtBatControls: document.querySelector("#showAtBatControls"),
   showFocusControls: document.querySelector("#showFocusControls"),
+  showStatExplanations: document.querySelector("#showStatExplanations"),
   playerCount: document.querySelector("#playerCount"),
   sourceList: document.querySelector("#sourceList"),
   inningCount: document.querySelector("#inningCount"),
@@ -608,6 +609,7 @@ function normalizeState() {
   state.settings = {
     showAtBatControls: false,
     showFocusControls: false,
+    showStatExplanations: false,
     lineScoreExpandedTeam: "",
     expandedTeamRecords: {},
     ...(state.settings || {})
@@ -623,9 +625,17 @@ function normalizeState() {
     ...(state.hudStatScopes || {})
   };
   ["batter", "pitcher"].forEach((kind) => {
-    if (!["overall", "conference", "nonconference", "currentgame"].includes(state.hudStatScopes[kind])) {
+    if (!["overall", "conference", "nonconference", "currentgame", "series"].includes(state.hudStatScopes[kind])) {
       state.hudStatScopes[kind] = "overall";
     }
+  });
+  state.hudStatViews = {
+    batter: "basic",
+    pitcher: "basic",
+    ...(state.hudStatViews || {})
+  };
+  ["batter", "pitcher"].forEach((kind) => {
+    if (!["basic", "advanced"].includes(state.hudStatViews[kind])) state.hudStatViews[kind] = "basic";
   });
   state.pinStatHud = state.pinStatHud ?? Boolean(state.pinScorecard);
   state.players = state.players || [];
@@ -3061,6 +3071,7 @@ function renderSetup() {
   if (els.teamProfilePanel) els.teamProfilePanel.innerHTML = teamSetupHtml(state.activeSide);
   if (els.showAtBatControls) els.showAtBatControls.checked = Boolean(state.settings.showAtBatControls);
   if (els.showFocusControls) els.showFocusControls.checked = Boolean(state.settings.showFocusControls);
+  if (els.showStatExplanations) els.showStatExplanations.checked = Boolean(state.settings.showStatExplanations);
   if (!state.settings.showFocusControls) {
     Object.values(activeGame().charts).forEach((chart) => {
       chart.viewMode = "all";
@@ -3368,9 +3379,11 @@ function tonightLineForPlayer(playerId) {
 function currentGameBatterStats(playerId) {
   const stats = emptyStats();
   if (!playerId) return stats;
+  const gameIds = new Set();
   activeGameEvents()
     .filter((event) => event.playerId === playerId)
     .forEach((event) => {
+      gameIds.add(event.gameId || activeGame().id);
       const delta = eventDelta(event.result);
       Object.entries(delta).forEach(([key, value]) => {
         stats[key] = Math.max(0, toNumber(stats[key]) + toNumber(value));
@@ -3383,11 +3396,100 @@ function currentGameBatterStats(playerId) {
     Object.values(chart.scorecard || {}).forEach((cell) => {
       (cell.runnerStatDeltas || []).forEach((item) => {
         if (item.playerId !== playerId) return;
+        gameIds.add(activeGame().id);
         stats[item.key] = Math.max(0, toNumber(stats[item.key]) + toNumber(item.value));
       });
     });
   });
+  stats.GP = gameIds.size ? 1 : 0;
   return stats;
+}
+
+function addEventStats(stats, event) {
+  const delta = eventDelta(event.result);
+  Object.entries(delta).forEach(([key, value]) => {
+    stats[key] = Math.max(0, toNumber(stats[key]) + toNumber(value));
+  });
+  stats.RBI = Math.max(0, toNumber(stats.RBI) + toNumber(event.rbi));
+  stats.SB = Math.max(0, toNumber(stats.SB) + toNumber(event.sb));
+  stats.CS = Math.max(0, toNumber(stats.CS) + toNumber(event.cs));
+}
+
+function seriesBatterStats(playerId) {
+  const stats = emptyStats();
+  if (!playerId) return stats;
+  const gameIds = new Set();
+  (state.events || [])
+    .filter((event) => event.playerId === playerId)
+    .forEach((event) => {
+      addEventStats(stats, event);
+      if (event.gameId) gameIds.add(event.gameId);
+    });
+
+  (state.games || []).forEach((game) => {
+    Object.values(game.charts || {}).forEach((chart) => {
+      Object.values(chart.scorecard || {}).forEach((cell) => {
+        (cell.runnerStatDeltas || []).forEach((item) => {
+          if (item.playerId !== playerId) return;
+          stats[item.key] = Math.max(0, toNumber(stats[item.key]) + toNumber(item.value));
+          if (game.id) gameIds.add(game.id);
+        });
+      });
+    });
+  });
+  stats.GP = gameIds.size;
+  return stats;
+}
+
+function livePitchingLineHasData(line = {}) {
+  return ["outs", "H", "R", "ER", "BB", "K", "HR", "2B", "3B", "HBP", "WP", "BF", "pitches", "strikes", "BK"]
+    .some((key) => toNumber(line[key]) > 0);
+}
+
+function addLivePitchingLineToStats(stats, line = {}) {
+  stats.IP = outsToIpValue(ipToOuts(stats.IP) + toNumber(line.outs));
+  stats.P_H = Math.max(0, toNumber(stats.P_H) + toNumber(line.H));
+  stats.P_R = Math.max(0, toNumber(stats.P_R) + toNumber(line.R));
+  stats.P_ER = Math.max(0, toNumber(stats.P_ER) + toNumber(line.ER));
+  stats.P_BB = Math.max(0, toNumber(stats.P_BB) + toNumber(line.BB));
+  stats.P_SO = Math.max(0, toNumber(stats.P_SO) + toNumber(line.K));
+  stats.P_HR = Math.max(0, toNumber(stats.P_HR) + toNumber(line.HR));
+  stats.P_2B = Math.max(0, toNumber(stats.P_2B) + toNumber(line["2B"]));
+  stats.P_3B = Math.max(0, toNumber(stats.P_3B) + toNumber(line["3B"]));
+  stats.P_HBP = Math.max(0, toNumber(stats.P_HBP) + toNumber(line.HBP));
+  stats.P_WP = Math.max(0, toNumber(stats.P_WP) + toNumber(line.WP));
+  stats.P_BK = Math.max(0, toNumber(stats.P_BK) + toNumber(line.BK));
+  stats.BK = Math.max(0, toNumber(stats.BK) + toNumber(line.BK));
+  stats.BF = Math.max(0, toNumber(stats.BF) + toNumber(line.BF));
+  stats.Pitches = Math.max(0, toNumber(stats.Pitches) + toNumber(line.pitches));
+  stats.Strikes = Math.max(0, toNumber(stats.Strikes) + toNumber(line.strikes));
+}
+
+function seriesPitcherStats(playerId) {
+  const stats = emptyStats();
+  if (!playerId) return stats;
+  const gameIds = new Set();
+  (state.games || []).forEach((game) => {
+    Object.values(game.charts || {}).forEach((chart) => {
+      const line = chart.pitchingLines?.[playerId];
+      if (!line || !livePitchingLineHasData(line)) return;
+      addLivePitchingLineToStats(stats, line);
+      if (game.id) gameIds.add(game.id);
+    });
+  });
+  stats.P_GP = gameIds.size;
+  calculatePitchingRates(stats);
+  return stats;
+}
+
+function seriesStatsFor(player, kind) {
+  return kind === "pitcher" ? seriesPitcherStats(player?.id) : seriesBatterStats(player?.id);
+}
+
+function hasSeriesStats(player, kind) {
+  if (!player?.id) return false;
+  const stats = seriesStatsFor(player, kind);
+  return hasStatData(stats, kind === "pitcher" ? pitcherStatKeys : batterStatKeys);
 }
 
 function gameLineForPlayer(playerId, gameId) {
@@ -3492,9 +3594,80 @@ function hudStatChip(label, value, type = "neutral") {
   return `<span class="hud-stat-chip ${hudStatClass(value, type)} ${hudStatSizeClass(label, value)}"><b>${escapeHtml(String(value))}</b><i>${escapeHtml(label)}</i></span>`;
 }
 
-function statPill({ label, value, type = "neutral", show = true, className = "" }) {
+const statExplanationData = {
+  AVG: { title: "AVG", formula: "Hits divided by at-bats.", example: "Example: 3 hits in 10 at-bats is .300." },
+  OBP: { title: "OBP", formula: "(Hits + walks + hit by pitch) divided by (AB + BB + HBP + SF).", example: "Example: 2 H, 1 BB, 1 HBP in 10 AB plus 1 SF is 4 / 13, or .308." },
+  SLG: { title: "SLG", formula: "Total bases divided by at-bats.", example: "Example: a single, double, and homer is 7 total bases. In 10 AB, SLG is .700." },
+  OPS: { title: "OPS", formula: "On-base percentage plus slugging percentage.", example: "Example: .380 OBP plus .520 SLG equals a .900 OPS." },
+  ISO: { title: "ISO", formula: "Slugging percentage minus batting average.", example: "Example: .520 SLG minus .300 AVG equals .220 ISO." },
+  BABIP: { title: "BABIP", formula: "(Hits - home runs) divided by (AB - strikeouts - HR + SF).", example: "Example: 30 non-HR hits on 90 balls in play is .333." },
+  KP: { title: "K%", formula: "Strikeouts divided by plate appearances.", example: "Example: 12 strikeouts in 60 PA is 20.0%." },
+  BBP: { title: "BB%", formula: "Walks divided by plate appearances.", example: "Example: 9 walks in 60 PA is 15.0%." },
+  XBH: { title: "XBH%", formula: "Extra-base hits divided by total hits.", example: "Example: 6 extra-base hits among 20 hits is 30.0%." },
+  HRP: { title: "HR%", formula: "Home runs divided by at-bats.", example: "Example: 3 home runs in 50 AB is 6.0%." },
+  SBP: { title: "SB%", formula: "Stolen bases divided by stolen-base attempts.", example: "Example: 8 steals in 10 tries is 80.0%." },
+  BBK: { title: "BB/K", formula: "Walks compared to strikeouts.", example: "Example: 12 walks and 8 strikeouts is 12/8, a strong zone-control profile." },
+  PAAB: { title: "PA/AB", formula: "Plate appearances compared to official at-bats.", example: "Example: walks, HBP, and sac flies count as PA but not AB." },
+  GP: { title: "GP/GS", formula: "Games played compared to games started.", example: "Example: 21/19 means 21 appearances and 19 starts." },
+  APP: { title: "App/GS", formula: "Pitching appearances compared to games started.", example: "Example: 7/3 means seven mound appearances and three starts." },
+  WL: { title: "W/L", formula: "Pitching wins compared to pitching losses.", example: "Example: 4/2 means four wins and two losses." },
+  ERA: { title: "ERA", formula: "Earned runs times 9, divided by innings pitched.", example: "Example: 6 ER in 18 IP gives a 3.00 ERA." },
+  GERA: { title: "Game ERA", formula: "Current-game earned runs times 9, divided by current-game innings pitched.", example: "Example: 1 ER in 3 IP is a 3.00 game ERA." },
+  WHIP: { title: "WHIP", formula: "(Walks + hits allowed) divided by innings pitched.", example: "Example: 12 H plus 4 BB in 16 IP is a 1.00 WHIP." },
+  GWHIP: { title: "Game WHIP", formula: "Current-game walks plus hits allowed, divided by current-game innings pitched.", example: "Example: 4 baserunners in 3 IP is a 1.33 game WHIP." },
+  BAA: { title: "AVG / BAA", formula: "Hits allowed divided by at-bats against.", example: "Example: 5 hits allowed in 25 AB against is a .200 opponent average." },
+  GAVG: { title: "Game AVG Against", formula: "Current-game hits allowed divided by estimated at-bats against.", example: "Example: 3 hits in 15 AB against is .200." },
+  GBP: { title: "Game BB%", formula: "Current-game walks divided by batters faced.", example: "Example: 2 walks against 20 batters faced is 10.0%." },
+  G2STR: { title: "Game Two-Strike%", formula: "Two-strike pitches divided by total pitches.", example: "Example: 18 two-strike pitches out of 72 pitches is 25.0%." },
+  PSBF: { title: "P/S/B/F", formula: "Total pitches, strikes, balls, and fouls in the current game.", example: "Example: 72/45/27/12 means 72 pitches, 45 strikes, 27 balls, 12 fouls." },
+  IP: { title: "IP", formula: "Innings pitched, shown as innings.outs.", example: "Example: 5.2 means five innings and two outs, not five and two-thirds as a decimal." }
+};
+
+function statExplanationKey(label) {
+  const compact = String(label || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const aliases = {
+    SLG: "SLG",
+    SLG2: "SLG",
+    SLGPC: "SLG",
+    SLGPCT: "SLG",
+    K: "KP",
+    KPCT: "KP",
+    BB: "BBP",
+    BBPCT: "BBP",
+    XBH: "XBH",
+    XBHPCT: "XBH",
+    HR: "HRP",
+    HRPCT: "HRP",
+    SB: "SBP",
+    SBPCT: "SBP",
+    BBK: "BBK",
+    PAAB: "PAAB",
+    GPGS: "GP",
+    APPGS: "APP",
+    WL: "WL",
+    AVG: "AVG",
+    GAVG: "GAVG",
+    GBB: "GBP",
+    GBBPCT: "GBP",
+    G2STR: "G2STR",
+    G2STRPCT: "G2STR",
+    PSBF: "PSBF"
+  };
+  return aliases[compact] || compact;
+}
+
+function statExplanationFor(label) {
+  return statExplanationData[statExplanationKey(label)] || null;
+}
+
+function statPill({ label, value, type = "neutral", show = true, className = "", explain = "" }) {
   const classes = ["hud-stat-chip", hudStatClass(value, type), hudStatSizeClass(label, value), className].filter(Boolean).join(" ");
-  return show ? `<span class="${classes}"><b>${escapeHtml(String(value))}</b><i>${escapeHtml(label)}</i></span>` : "";
+  const explainKey = statExplanationKey(explain || label);
+  const canExplain = Boolean(state.settings?.showStatExplanations && statExplanationData[explainKey]);
+  const explainAttrs = canExplain
+    ? ` data-stat-explain="${escapeHtml(explainKey)}" role="button" tabindex="0" title="Tap for stat explanation"`
+    : "";
+  return show ? `<span class="${classes}${canExplain ? " is-explainable" : ""}"${explainAttrs}><b>${escapeHtml(String(value))}</b><i>${escapeHtml(label)}</i></span>` : "";
 }
 
 function renderPillGroups(groups) {
@@ -3717,7 +3890,7 @@ function currentPitcherPills(line) {
   const rates = livePitchingRates(line);
   return [
     { label: "IP", value: formatIpFromOuts(line.outs) },
-    { label: "P/S/B/F", value: `${line.pitches}/${line.strikes}/${line.balls}/${line.fouls}`, className: "pitch-count-chip" },
+    { label: "P/S/B/F", value: `${line.pitches}/${line.strikes}/${line.balls}/${line.fouls}`, className: "pitch-count-chip", explain: "P/S/B/F" },
     { label: "H", value: line.H },
     { label: "R", value: line.R },
     { label: "ER", value: line.ER },
@@ -3730,7 +3903,7 @@ function currentPitcherPills(line) {
     { label: "BF", value: line.BF },
     { label: "GERA", value: line.outs ? rates.ERA : "-", type: "era" },
     { label: "GWHIP", value: line.outs ? rates.WHIP : "-", type: "whip" },
-    { label: "GAVG", value: line.BF ? rates.BAA : "-", type: "baa" },
+    { label: "GAVG", value: line.BF ? rates.BAA : "-", type: "baa", explain: "GAVG" },
     { label: "GBB%", value: percentValue(line.BB, line.BF), type: "bbp" },
     { label: "G2-Str%", value: percentValue(line.twoStrikePitches, line.pitches) }
   ];
@@ -3752,11 +3925,20 @@ function seasonPitcherPills(stats) {
     { label: "BB", value: stats.P_BB || 0 },
     { label: "SO", value: stats.P_SO || 0 },
     { label: "HR", value: stats.P_HR || 0 },
-    { label: "AVG", value: avgDenom ? formatRate(toNumber(stats.BAA)) : "-", type: "baa" },
+    { label: "AVG", value: avgDenom ? formatRate(toNumber(stats.BAA)) : "-", type: "baa", explain: "BAA" },
     { label: "WHIP", value: hasIp ? formatFixed(stats.WHIP, 2) : "-", type: "whip" },
     { label: "WP", value: stats.P_WP || 0 },
     { label: "HBP", value: stats.P_HBP || 0 }
   ];
+}
+
+function visiblePitcherPills(pills, scope, view) {
+  if (scope === "currentgame") {
+    const basicLabels = new Set(["IP", "P/S/B/F", "H", "R", "ER", "K", "BB", "BF"]);
+    return pills.filter((pill) => view === "basic" ? basicLabels.has(pill.label) : !basicLabels.has(pill.label));
+  }
+  const basicLabels = new Set(["IP", "ERA", "W/L", "App/GS", "H", "R", "ER", "BB", "SO"]);
+  return pills.filter((pill) => view === "basic" ? basicLabels.has(pill.label) : !basicLabels.has(pill.label));
 }
 
 function aggregateTeamStats(side) {
@@ -4020,6 +4202,7 @@ function teamSnapshotGroupsHtml(side) {
 function selectedHudStatScope(kind, player) {
   const requested = state.hudStatScopes?.[kind] || "overall";
   if (requested === "currentgame") return "currentgame";
+  if (requested === "series" && hasSeriesStats(player, kind)) return "series";
   if (requested === "conference" && hasConferenceStats(player, kind)) return "conference";
   if (requested === "nonconference" && hasNonConferenceStats(player, kind)) return "nonconference";
   return "overall";
@@ -4028,23 +4211,42 @@ function selectedHudStatScope(kind, player) {
 function hudStatsFor(player, kind) {
   const scope = selectedHudStatScope(kind, player);
   if (scope === "currentgame" && kind === "batter") return currentGameBatterStats(player?.id);
+  if (scope === "series") return seriesStatsFor(player, kind);
   if (scope === "nonconference") return nonConferenceStatsFor(player);
   const source = scope === "conference" ? player?.confStats : player?.stats;
   return { ...emptyStats(), ...(source || {}) };
+}
+
+function selectedHudStatView(kind) {
+  const requested = state.hudStatViews?.[kind] || "basic";
+  return requested === "advanced" ? "advanced" : "basic";
 }
 
 function hudScopeToggleHtml(kind, player) {
   const selected = selectedHudStatScope(kind, player);
   const canUseConference = hasConferenceStats(player, kind);
   const canUseNonConference = hasNonConferenceStats(player, kind);
+  const canUseSeries = hasSeriesStats(player, kind);
   const label = kind === "pitcher" ? "Pitcher stats scope" : "Batter stats scope";
   const side = player?.side || state.activeSide;
   return `
     <div class="hud-scope-toggle" role="group" aria-label="${label}" style="${teamColorStyle(side)}">
       <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="currentgame" class="${selected === "currentgame" ? "active" : ""}">CG</button>
+      <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="series" class="${selected === "series" ? "active" : ""}" ${canUseSeries ? "" : "disabled"} title="${canUseSeries ? "Show charted series stats" : "No charted series stats yet"}">SERIES</button>
       <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="overall" class="${selected === "overall" ? "active" : ""}">OVERALL</button>
       <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="conference" class="${selected === "conference" ? "active" : ""}" ${canUseConference ? "" : "disabled"} title="${canUseConference ? "Show conference stats" : "No conference stats imported"}">CONF</button>
       <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-scope="nonconference" class="${selected === "nonconference" ? "active" : ""}" ${canUseNonConference ? "" : "disabled"} title="${canUseNonConference ? "Show overall minus conference stats" : "Overall and conference stats are needed"}">NON-CONF</button>
+    </div>
+  `;
+}
+
+function hudViewToggleHtml(kind, side = state.activeSide) {
+  const selected = selectedHudStatView(kind);
+  const label = kind === "pitcher" ? "Pitcher HUD view" : "Batter HUD view";
+  return `
+    <div class="hud-view-toggle" role="group" aria-label="${label}" style="${teamColorStyle(side)}">
+      <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-view="basic" class="${selected === "basic" ? "active" : ""}">BASIC</button>
+      <button type="button" data-hud-stat-kind="${kind}" data-hud-stat-view="advanced" class="${selected === "advanced" ? "active" : ""}">ADV</button>
     </div>
   `;
 }
@@ -4054,9 +4256,25 @@ function applyHudStatScopeFromEvent(event) {
   if (!button || button.disabled) return false;
   const kind = button.dataset.hudStatKind;
   const scope = button.dataset.hudStatScope;
-  if (!["batter", "pitcher"].includes(kind) || !["overall", "conference", "nonconference", "currentgame"].includes(scope)) return false;
+  if (!["batter", "pitcher"].includes(kind) || !["overall", "conference", "nonconference", "currentgame", "series"].includes(scope)) return false;
+  closeStatExplanation();
   state.hudStatScopes = state.hudStatScopes || { batter: "overall", pitcher: "overall" };
   state.hudStatScopes[kind] = scope;
+  saveState();
+  renderInningTotals();
+  renderChartHud();
+  return true;
+}
+
+function applyHudStatViewFromEvent(event) {
+  const button = event.target.closest("[data-hud-stat-view]");
+  if (!button || button.disabled) return false;
+  const kind = button.dataset.hudStatKind;
+  const view = button.dataset.hudStatView;
+  if (!["batter", "pitcher"].includes(kind) || !["basic", "advanced"].includes(view)) return false;
+  closeStatExplanation();
+  state.hudStatViews = state.hudStatViews || { batter: "basic", pitcher: "basic" };
+  state.hudStatViews[kind] = view;
   saveState();
   renderInningTotals();
   renderChartHud();
@@ -4086,7 +4304,9 @@ function batterDetailHtml() {
   const rates = calcStats(stats);
   const advanced = advancedStats(stats);
   const batterPillRows = batterHudPills(stats, rates, advanced);
+  const batterView = selectedHudStatView("batter");
   const currentContextPills = currentGameBatterSpecialPills(player.id);
+  const visibleBatterRows = batterView === "advanced" ? batterPillRows[1] : batterPillRows[0];
   const positionText = displayPosition(activeChart().lineupPositions?.[slot - 1] || player.position) || "POS --";
   const physicalText = [player.weight ? `Wt ${player.weight}` : "", player.height ? `Ht ${player.height}` : ""].filter(Boolean).join(" | ");
   const playerMeta = [positionText, player.classYear, physicalText].filter(Boolean).join(" | ");
@@ -4119,12 +4339,12 @@ function batterDetailHtml() {
         <span>${escapeHtml(playerMeta)}</span>
         <span>${escapeHtml(player.hometown || "No hometown provided")}</span>
         ${hudScopeToggleHtml("batter", player)}
+        ${hudViewToggleHtml("batter", player.side || state.activeSide)}
       </div>
       <div class="compact-batter-line">
-        ${renderPillRow(batterPillRows[0], "batter-season-row batter-season-row-top")}
-        ${renderPillRow(batterPillRows[1], "batter-season-row batter-season-row-bottom")}
+        ${renderPillRow(visibleBatterRows, `batter-season-row batter-${batterView}-row`)}
       </div>
-      <div class="compact-analytics-line">
+      <div class="compact-analytics-line" ${batterView === "advanced" ? "" : "hidden"}>
         ${currentContextPills.map(statPill).join("")}
       </div>
       <div class="compact-storyline-line">
@@ -4141,6 +4361,7 @@ function batterDetailHtml() {
         </div>
         ${player.pronunciation ? `<div class="batter-pronunciation">${escapeHtml(player.pronunciation)}</div>` : ""}
         ${hudScopeToggleHtml("batter", player)}
+        ${hudViewToggleHtml("batter", player.side || state.activeSide)}
       </div>
       <div class="batter-slash">
         <span><b>${rates.AVG}</b><i>AVG</i></span>
@@ -4221,7 +4442,9 @@ function renderInningTotals() {
   const liveLine = getPitchingLine(chart);
   const pitcherStats = pitcher ? hudStatsFor(pitcher, "pitcher") : null;
   const pitcherScope = pitcher ? selectedHudStatScope("pitcher", pitcher) : "overall";
+  const pitcherView = selectedHudStatView("pitcher");
   const pitcherPills = pitcherScope === "currentgame" ? currentPitcherPills(liveLine) : seasonPitcherPills(pitcherStats || emptyStats());
+  const visiblePitcher = visiblePitcherPills(pitcherPills, pitcherScope, pitcherView);
   const outs = currentInningOuts(inning);
   const pitcherBio = pitcher
     ? [pitcher.classYear, pitcher.weight ? `Wt ${pitcher.weight}` : "", pitcher.height ? `Ht ${pitcher.height}` : "", pitcher.hometown].filter(Boolean).join(" | ")
@@ -4234,7 +4457,8 @@ function renderInningTotals() {
           ${pitcherBio ? `<span class="pitcher-meta">${escapeHtml(pitcherBio)}</span>` : ""}
         </div>
         ${hudScopeToggleHtml("pitcher", pitcher)}
-        ${pitcherPills.map(statPill).join("")}
+        ${hudViewToggleHtml("pitcher", pitcher.side || oppositeSide())}
+        ${visiblePitcher.map(statPill).join("")}
       </div>
     `
     : `<div class="compact-pitcher-card empty">P --</div>`;
@@ -6127,6 +6351,50 @@ function importWorkspaceJson(text, filename = "workspace JSON") {
   alert(`Imported ${filename}.`);
 }
 
+let activeStatExplanationAnchor = null;
+
+function closeStatExplanation() {
+  document.querySelector("#statExplanationPopover")?.remove();
+  activeStatExplanationAnchor = null;
+}
+
+function positionStatExplanation(popover, anchor) {
+  const rect = anchor.getBoundingClientRect();
+  const width = Math.min(320, window.innerWidth - 16);
+  const left = Math.min(window.innerWidth - width - 8, Math.max(8, rect.left));
+  const top = rect.bottom + 8 > window.innerHeight - 160
+    ? Math.max(8, rect.top - 142)
+    : rect.bottom + 8;
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+  popover.style.width = `${width}px`;
+}
+
+function toggleStatExplanation(anchor) {
+  const key = anchor?.dataset?.statExplain;
+  const info = statExplanationData[key];
+  if (!info) return false;
+  const existing = document.querySelector("#statExplanationPopover");
+  if (existing && activeStatExplanationAnchor === anchor) {
+    closeStatExplanation();
+    return true;
+  }
+  closeStatExplanation();
+  const popover = document.createElement("div");
+  popover.id = "statExplanationPopover";
+  popover.className = "stat-explanation-popover";
+  popover.dataset.statExplain = key;
+  popover.innerHTML = `
+    <strong>${escapeHtml(info.title)}</strong>
+    <p><b>Formula:</b> ${escapeHtml(info.formula)}</p>
+    <p><b>Example:</b> ${escapeHtml(info.example)}</p>
+  `;
+  document.body.appendChild(popover);
+  activeStatExplanationAnchor = anchor;
+  positionStatExplanation(popover, anchor);
+  return true;
+}
+
 function setupEvents() {
   if (els.collapseSetupButton) {
     els.collapseSetupButton.addEventListener("click", () => {
@@ -6214,7 +6482,7 @@ function setupEvents() {
     });
   }
 
-  ["showAtBatControls", "showFocusControls"].forEach((key) => {
+  ["showAtBatControls", "showFocusControls", "showStatExplanations"].forEach((key) => {
     if (!els[key]) return;
     els[key].addEventListener("change", () => {
       state.settings[key] = els[key].checked;
@@ -6223,6 +6491,7 @@ function setupEvents() {
           chart.viewMode = "all";
         });
       }
+      if (key === "showStatExplanations" && !els[key].checked) closeStatExplanation();
       saveState();
       render();
     });
@@ -6614,6 +6883,11 @@ function setupEvents() {
   });
 
   els.chartHud.addEventListener("click", (event) => {
+    const statExplain = event.target.closest("[data-stat-explain]");
+    if (statExplain) {
+      toggleStatExplanation(statExplain);
+      return;
+    }
     const recordSide = event.target.closest("[data-toggle-records]")?.dataset.toggleRecords;
     if (recordSide) {
       state.settings.expandedTeamRecords = state.settings.expandedTeamRecords || {};
@@ -6622,7 +6896,8 @@ function setupEvents() {
       renderChartHud();
       return;
     }
-    applyHudStatScopeFromEvent(event);
+    if (applyHudStatScopeFromEvent(event)) return;
+    applyHudStatViewFromEvent(event);
   });
 
   els.inningTotals.addEventListener("input", (event) => {
@@ -6647,7 +6922,13 @@ function setupEvents() {
   });
 
   els.inningTotals.addEventListener("click", (event) => {
+    const statExplain = event.target.closest("[data-stat-explain]");
+    if (statExplain) {
+      toggleStatExplanation(statExplain);
+      return;
+    }
     if (applyHudStatScopeFromEvent(event)) return;
+    if (applyHudStatViewFromEvent(event)) return;
     const clearBase = event.target.closest("[data-clear-base]")?.dataset.clearBase;
     const steal = event.target.closest("[data-steal]")?.dataset.steal;
     const chart = activeChart();
@@ -7174,9 +7455,18 @@ function setupEvents() {
   els.closePlayerModalButton?.addEventListener("click", () => closePlayerEditModal());
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && rosterEditModalOpen) closePlayerEditModal();
+    if (event.key === "Escape") closeStatExplanation();
+    const statExplain = event.target.closest?.("[data-stat-explain]");
+    if (statExplain && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      toggleStatExplanation(statExplain);
+    }
   });
 
   document.body.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-stat-explain]") && !event.target.closest("#statExplanationPopover")) {
+      closeStatExplanation();
+    }
     const editId = event.target.dataset.editPlayer;
     const deleteId = event.target.dataset.deletePlayer;
     const deleteEventId = event.target.dataset.deleteEvent;
