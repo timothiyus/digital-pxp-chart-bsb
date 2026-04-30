@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v25";
+const APP_VERSION = "v26";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -1055,9 +1055,10 @@ function parseCsv(text) {
 }
 
 function headerIndex(headers, name, occurrence = 1) {
+  const target = String(name || "").trim().toLowerCase();
   let seen = 0;
   for (let i = 0; i < headers.length; i += 1) {
-    if (headers[i] === name) {
+    if (String(headers[i] || "").trim().toLowerCase() === target) {
       seen += 1;
       if (seen === occurrence) return i;
     }
@@ -4127,15 +4128,20 @@ function pitcherAppearanceCount(stats = {}) {
   const explicitApps = toNumber(stats.P_GP);
   if (explicitApps > 0) return explicitApps;
   const starts = toNumber(stats.GS);
-  const battingGames = toNumber(stats.GP);
-  if (!hasPitchingStats(stats)) return starts || 0;
-  if (battingGames > 0) return Math.max(battingGames, starts);
-  return Math.max(starts, 1);
+  return starts > 0 ? starts : 0;
+}
+
+function pitcherAppearanceDisplay(stats = {}) {
+  const explicitApps = toNumber(stats.P_GP);
+  if (explicitApps > 0) return String(explicitApps);
+  const starts = toNumber(stats.GS);
+  if (starts > 0) return String(starts);
+  return hasPitchingStats(stats) ? "-" : "0";
 }
 
 function pitchingStatsLine(stats = {}) {
   const line = { ...emptyStats(), ...(stats || {}) };
-  return `P ${line.Pitches || 0} - W-L ${line.W || 0}-${line.L || 0} - ERA ${formatPitchingStatsLineValue("ERA", line.ERA)} - G/GS ${pitcherAppearanceCount(line)}/${line.GS || 0} - IP ${formatPitchingStatsLineValue("IP", line.IP)} - H ${line.P_H || 0} - R ${line.P_R || 0} - ER ${line.P_ER || 0} - HR ${line.P_HR || 0} - BB ${line.P_BB || 0} - K ${line.P_SO || 0} - HBP ${line.P_HBP || 0} - WP ${line.P_WP || 0} - BK ${line.P_BK || 0} - WHIP ${formatPitchingStatsLineValue("WHIP", line.WHIP)} - AVG ${formatPitchingStatsLineValue("BAA", line.BAA)}`;
+  return `P ${line.Pitches || 0} - W-L ${line.W || 0}-${line.L || 0} - ERA ${formatPitchingStatsLineValue("ERA", line.ERA)} - G/GS ${pitcherAppearanceDisplay(line)}/${line.GS || 0} - IP ${formatPitchingStatsLineValue("IP", line.IP)} - H ${line.P_H || 0} - R ${line.P_R || 0} - ER ${line.P_ER || 0} - HR ${line.P_HR || 0} - BB ${line.P_BB || 0} - K ${line.P_SO || 0} - HBP ${line.P_HBP || 0} - WP ${line.P_WP || 0} - BK ${line.P_BK || 0} - WHIP ${formatPitchingStatsLineValue("WHIP", line.WHIP)} - AVG ${formatPitchingStatsLineValue("BAA", line.BAA)}`;
 }
 
 function batterHudPills(stats, rates, advanced) {
@@ -4376,7 +4382,7 @@ function livePitcherAdvancedRows(line, context) {
 }
 
 function seasonPitcherBasicRows(stats) {
-  const apps = pitcherAppearanceCount(stats);
+  const apps = pitcherAppearanceDisplay(stats);
   const avgDenom = toNumber(stats.P_AB) || Math.max(0, toNumber(stats.BF) - toNumber(stats.P_BB) - toNumber(stats.P_HBP));
   const hasIp = ipToOuts(stats.IP) > 0;
   return [
