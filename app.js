@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v33";
+const APP_VERSION = "v34";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -3060,13 +3060,71 @@ function addRunnerPitcherOut(cell) {
   addRunnerPitcherDelta(cell, { outs: 1 });
 }
 
-function addRunnerPitcherDelta(cell, updates) {
+const dedupedRunnerPitcherUpdateKeys = new Set(["WP", "BK", "PB"]);
+
+function livePlayPitcherChargeKey(pitcherId, key) {
+  const loc = getActiveCellLocation();
+  const activeCell = activeChart().scorecard[loc.key];
+  const pitchSequence = (activeCell?.pitchDeltas || []).filter((pitch) => pitch.type !== "result").length;
+  return `${activeGame().id}|${state.activeSide}|${loc.key}|${pitchSequence}|${pitcherId}|${key}`;
+}
+
+function runnerDeltaAlreadyChargedForLivePlay(pitcherId, key) {
+  const chart = activeChart();
+  const chargeKey = livePlayPitcherChargeKey(pitcherId, key);
+  return Object.values(chart.scorecard || {}).some((cell) => (
+    (cell.runnerPitcherDeltas || []).some((item) => item.dedupeKeys?.[key] === chargeKey)
+  ));
+}
+
+function latestActivePitchAlreadyChargedPitcherKey(pitcherId, key) {
+  const chart = activeChart();
+  const loc = getActiveCellLocation();
+  const activeCell = chart.scorecard[loc.key];
+  const latestPitch = [...(activeCell?.pitchDeltas || [])].reverse().find((pitch) => (
+    pitch.type !== "result" && pitch.pitcherId === pitcherId
+  ));
+  return toNumber(latestPitch?.updates?.[key]) > 0;
+}
+
+function activeCellAlreadyChargedPitcherKey(pitcherId, key) {
+  const chart = activeChart();
+  const loc = getActiveCellLocation();
+  const activeCell = chart.scorecard[loc.key];
+  if (latestActivePitchAlreadyChargedPitcherKey(pitcherId, key)) return true;
+  if (activeCell?.pitcherId === pitcherId && toNumber(activeCell.pitcherUpdates?.[key]) > 0) return true;
+  return runnerDeltaAlreadyChargedForLivePlay(pitcherId, key);
+}
+
+function dedupeRunnerPitcherUpdates(pitcherId, updates, options = {}) {
+  const cleanUpdates = {};
+  const dedupeKeys = {};
+  Object.entries(updates || {}).forEach(([key, value]) => {
+    const amount = toNumber(value);
+    if (!amount) return;
+    if (options.dedupeByActiveCell && dedupedRunnerPitcherUpdateKeys.has(key)) {
+      if (activeCellAlreadyChargedPitcherKey(pitcherId, key)) return;
+      dedupeKeys[key] = livePlayPitcherChargeKey(pitcherId, key);
+    }
+    cleanUpdates[key] = amount;
+  });
+  return { updates: cleanUpdates, dedupeKeys };
+}
+
+function addRunnerPitcherDelta(cell, updates, options = {}) {
   const chart = activeChart();
   if (!chart.activePitcherId) return;
   const gameType = cell.gameType || activeGameType();
-  addToPitchingLine(chart.activePitcherId, updates, gameType);
+  const prepared = dedupeRunnerPitcherUpdates(chart.activePitcherId, updates, options);
+  if (!Object.keys(prepared.updates).length) return;
+  addToPitchingLine(chart.activePitcherId, prepared.updates, gameType);
   cell.runnerPitcherDeltas = cell.runnerPitcherDeltas || [];
-  cell.runnerPitcherDeltas.push({ pitcherId: chart.activePitcherId, updates: { ...updates }, gameType });
+  cell.runnerPitcherDeltas.push({
+    pitcherId: chart.activePitcherId,
+    updates: { ...prepared.updates },
+    dedupeKeys: prepared.dedupeKeys,
+    gameType
+  });
 }
 
 function reverseRunnerPitcherDelta(item) {
@@ -7032,12 +7090,12 @@ async function addPitchToCell(cellKey, type) {
   if (chart.activePitcherId) {
     const updates = {};
     if (type === "balk") {
-      updates.BK = 1;
+      if (!runnerDeltaAlreadyChargedForLivePlay(chart.activePitcherId, "BK")) updates.BK = 1;
     } else {
       chart.pitchCounts[chart.activePitcherId] = (chart.pitchCounts[chart.activePitcherId] || 0) + 1;
       updates.pitches = 1;
       if (pitchKind === "ball") updates.balls = 1;
-      if (type === "ball-wp") updates.WP = 1;
+      if (type === "ball-wp" && !runnerDeltaAlreadyChargedForLivePlay(chart.activePitcherId, "WP")) updates.WP = 1;
       if (pitchKind === "foul") updates.fouls = 1;
       if (pitchKind === "strike" || pitchKind === "foul") updates.strikes = 1;
       if (strikesRaw >= 2) updates.twoStrikePitches = 1;
@@ -7459,7 +7517,7 @@ async function applyRunnerEvent(cellKey, eventValue, laneTerminal = "") {
     addRunnerStatDelta(cell, runnerId, option.runnerStat, 1);
   }
   if (option.pitcher) {
-    addRunnerPitcherDelta(cell, option.pitcher);
+    addRunnerPitcherDelta(cell, option.pitcher, { dedupeByActiveCell: true });
   }
   if (option.defensive) {
     const { inning } = parseScoreCellKey(cellKey);
@@ -8679,7 +8737,7 @@ function setupEvents() {
       const cell = getScoreCellFromKey(wpCellKey);
       clearRunnerOutcome(cell);
       applyTerminalChange(wpCellKey, "toHome");
-      addRunnerPitcherDelta(cell, { WP: 1 });
+      addRunnerPitcherDelta(cell, { WP: 1 }, { dedupeByActiveCell: true });
       cell.runnerNote = "WP";
       if (!cell.notation && !cell.result) cell.notation = "WP";
       saveState();
