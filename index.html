@@ -426,11 +426,11 @@
                 <h2>PrestoSports Import</h2>
                 <span>NJCAA / GCCC roster + per-slice CSVs</span>
               </div>
-              <p class="meta">For GCCC and other PrestoSports-sourced rosters. Drop the roster <code>.TRX</code> first, then the four overall-season stat CSVs and (optionally) the four conference-only CSVs. Each slot fills its own slice of <code>player.stats</code> (overall) or <code>player.confStats</code> (conference). The matching <code>.TRO</code> file is index-only — drop the <code>.TRX</code> instead.</p>
+              <p class="meta">For GCCC and other PrestoSports-sourced rosters. Drop the roster <code>.TRX</code> first, then the four overall-season stat CSVs and (optionally) the four conference-only CSVs. Roster imports only accept <code>.TRX</code> files with the name field in <code>First Last</code> order. Each stat slot fills its own slice of <code>player.stats</code> (overall) or <code>player.confStats</code> (conference). The matching <code>.TRO</code> file is index-only.</p>
               <div class="presto-roster-row">
                 <label class="file-button">
-                  Roster (TRX / TRO)
-                  <input id="prestoRosterInput" type="file" accept=".trx,.tro" />
+                  Roster (TRX only)
+                  <input id="prestoRosterInput" type="file" accept=".trx" />
                 </label>
               </div>
               <div class="presto-grid">

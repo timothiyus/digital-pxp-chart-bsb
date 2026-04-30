@@ -1367,7 +1367,7 @@ textarea {
 
 .stat-hud[data-hud-mode="compact"] .compact-batter-line {
   display: grid;
-  grid-template-rows: minmax(0, 1fr);
+  grid-auto-rows: minmax(0, 1fr);
   align-items: stretch;
   gap: 4px;
   color: var(--accent-strong);

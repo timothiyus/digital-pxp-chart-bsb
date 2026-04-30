@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v17";
+const APP_VERSION = "v18";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -910,13 +910,40 @@ function playersForSide(side) {
     });
 }
 
+function battingPlateAppearances(stats = {}) {
+  return toNumber(stats.PA) || toNumber(stats.AB) + toNumber(stats.BB) + toNumber(stats.HBP) + toNumber(stats.SF);
+}
+
+function battingExtraBaseHits(stats = {}) {
+  return toNumber(stats["2B"]) + toNumber(stats["3B"]) + toNumber(stats.HR);
+}
+
+function battingSingles(stats = {}) {
+  return Math.max(0, toNumber(stats.H) - battingExtraBaseHits(stats));
+}
+
+function battingTotalBases(stats = {}) {
+  const derived = battingSingles(stats) + toNumber(stats["2B"]) * 2 + toNumber(stats["3B"]) * 3 + toNumber(stats.HR) * 4;
+  return derived || toNumber(stats.TB);
+}
+
+function formatRatio(numerator, denominator, digits = 2) {
+  const denom = toNumber(denominator);
+  return denom ? formatFixed(toNumber(numerator) / denom, digits) : "-";
+}
+
 function calcStats(stats) {
-  const singles = Math.max(0, stats.H - stats["2B"] - stats["3B"] - stats.HR);
-  const totalBases = singles + stats["2B"] * 2 + stats["3B"] * 3 + stats.HR * 4;
-  const obpDenom = stats.AB + stats.BB + stats.HBP + stats.SF;
-  const avg = stats.AB ? stats.H / stats.AB : 0;
-  const obp = obpDenom ? (stats.H + stats.BB + stats.HBP) / obpDenom : 0;
-  const slg = stats.AB ? totalBases / stats.AB : 0;
+  const singles = battingSingles(stats);
+  const totalBases = battingTotalBases(stats);
+  const ab = toNumber(stats.AB);
+  const h = toNumber(stats.H);
+  const bb = toNumber(stats.BB);
+  const hbp = toNumber(stats.HBP);
+  const sf = toNumber(stats.SF);
+  const obpDenom = ab + bb + hbp + sf;
+  const avg = ab ? h / ab : 0;
+  const obp = obpDenom ? (h + bb + hbp) / obpDenom : 0;
+  const slg = ab ? totalBases / ab : 0;
   return {
     AVG: formatRate(avg),
     OBP: formatRate(obp),
@@ -929,14 +956,25 @@ function calcStats(stats) {
 
 function advancedStats(stats) {
   const rates = calcStats(stats);
-  const paDenom = stats.AB + stats.BB + stats.HBP + stats.SF;
+  const paDenom = battingPlateAppearances(stats);
   const iso = (toNumber(rates.SLG) - toNumber(rates.AVG)).toFixed(3).replace(/^0/, "");
-  const bbPct = paDenom ? `${((stats.BB / paDenom) * 100).toFixed(1)}%` : "--";
-  const kPct = paDenom ? `${((stats.SO / paDenom) * 100).toFixed(1)}%` : "--";
-  const babipDenom = stats.AB - stats.SO - stats.HR + stats.SF;
-  const babip = babipDenom > 0 ? formatRate((stats.H - stats.HR) / babipDenom) : ".000";
-  const xbh = stats["2B"] + stats["3B"] + stats.HR;
-  return { ...rates, ISO: iso, BBP: bbPct, KP: kPct, BABIP: babip, XBH: xbh };
+  const bbPct = paDenom ? `${((toNumber(stats.BB) / paDenom) * 100).toFixed(1)}%` : "--";
+  const kPct = paDenom ? `${((toNumber(stats.SO) / paDenom) * 100).toFixed(1)}%` : "--";
+  const babipDenom = toNumber(stats.AB) - toNumber(stats.SO) - toNumber(stats.HR) + toNumber(stats.SF);
+  const babip = babipDenom > 0 ? formatRate((toNumber(stats.H) - toNumber(stats.HR)) / babipDenom) : ".000";
+  const xbh = battingExtraBaseHits(stats);
+  return {
+    ...rates,
+    ISO: iso,
+    BBP: bbPct,
+    KP: kPct,
+    BBK: formatRatio(stats.BB, stats.SO),
+    BABIP: babip,
+    XBH: xbh,
+    XBH_PA: percentValue(xbh, paDenom),
+    HR_PA: percentValue(stats.HR, paDenom),
+    RUN_PRODUCTION: Math.max(0, toNumber(stats.R) + toNumber(stats.RBI) - toNumber(stats.HR))
+  };
 }
 
 function fullName(player) {
@@ -3595,19 +3633,34 @@ function hudStatChip(label, value, type = "neutral") {
 }
 
 const statExplanationData = {
+  PA: { title: "PA", formula: "Plate appearances are AB + BB + HBP + SF when an explicit PA total is not available.", example: "Example: 40 AB, 8 BB, 2 HBP, and 1 SF is 51 PA." },
+  AB: { title: "AB", formula: "Official at-bats exclude walks, hit by pitch, sacrifice flies, and some other plate appearances.", example: "Example: a walk counts as a PA but not an AB." },
   AVG: { title: "AVG", formula: "Hits divided by at-bats.", example: "Example: 3 hits in 10 at-bats is .300." },
   OBP: { title: "OBP", formula: "(Hits + walks + hit by pitch) divided by (AB + BB + HBP + SF).", example: "Example: 2 H, 1 BB, 1 HBP in 10 AB plus 1 SF is 4 / 13, or .308." },
   SLG: { title: "SLG", formula: "Total bases divided by at-bats.", example: "Example: a single, double, and homer is 7 total bases. In 10 AB, SLG is .700." },
   OPS: { title: "OPS", formula: "On-base percentage plus slugging percentage.", example: "Example: .380 OBP plus .520 SLG equals a .900 OPS." },
+  ONEB: { title: "1B", formula: "Hits minus doubles, triples, and home runs.", example: "Example: 20 H minus 4 doubles, 1 triple, and 2 HR gives 13 singles." },
+  TB: { title: "TB", formula: "Singles + 2 times doubles + 3 times triples + 4 times home runs.", example: "Example: 10 singles, 4 doubles, 1 triple, and 2 HR is 29 total bases." },
+  XBHCOUNT: { title: "XBH", formula: "Doubles plus triples plus home runs.", example: "Example: 4 doubles, 1 triple, and 2 HR is 7 extra-base hits." },
   ISO: { title: "ISO", formula: "Slugging percentage minus batting average.", example: "Example: .520 SLG minus .300 AVG equals .220 ISO." },
   BABIP: { title: "BABIP", formula: "(Hits - home runs) divided by (AB - strikeouts - HR + SF).", example: "Example: 30 non-HR hits on 90 balls in play is .333." },
   KP: { title: "K%", formula: "Strikeouts divided by plate appearances.", example: "Example: 12 strikeouts in 60 PA is 20.0%." },
   BBP: { title: "BB%", formula: "Walks divided by plate appearances.", example: "Example: 9 walks in 60 PA is 15.0%." },
   XBH: { title: "XBH%", formula: "Extra-base hits divided by total hits.", example: "Example: 6 extra-base hits among 20 hits is 30.0%." },
+  XBHPA: { title: "XBH/PA", formula: "Extra-base hits divided by plate appearances.", example: "Example: 6 extra-base hits in 75 PA is 8.0%." },
+  HRPA: { title: "HR/PA", formula: "Home runs divided by plate appearances.", example: "Example: 3 home runs in 75 PA is 4.0%." },
   HRP: { title: "HR%", formula: "Home runs divided by at-bats.", example: "Example: 3 home runs in 50 AB is 6.0%." },
   SBP: { title: "SB%", formula: "Stolen bases divided by stolen-base attempts.", example: "Example: 8 steals in 10 tries is 80.0%." },
-  BBK: { title: "BB/K", formula: "Walks compared to strikeouts.", example: "Example: 12 walks and 8 strikeouts is 12/8, a strong zone-control profile." },
+  SBCS: { title: "SB/CS", formula: "Stolen bases compared to caught stealing.", example: "Example: 8/2 means eight steals and two times caught stealing." },
+  BBK: { title: "BB/K", formula: "Walks divided by strikeouts.", example: "Example: 12 walks and 8 strikeouts is a 1.50 BB/K." },
+  RRBIHR: { title: "R+RBI-HR", formula: "Runs plus RBI minus home runs, avoiding double-counting a player's own homer.", example: "Example: 30 R plus 28 RBI minus 5 HR is 53 run-production events." },
   PAAB: { title: "PA/AB", formula: "Plate appearances compared to official at-bats.", example: "Example: walks, HBP, and sac flies count as PA but not AB." },
+  AVGWRISP: { title: "Current AVG w/RISP", formula: "Current-game hits divided by at-bats when a runner was on second or third before the play.", example: "Example: 2 hits in 5 RISP at-bats is .400." },
+  TWOOUTPA: { title: "Current 2-Out PA", formula: "Current-game plate appearances that began with two outs.", example: "Example: three trips with two outs gives 3 current 2-out PA." },
+  TWOOUTAVG: { title: "Current 2-Out AVG", formula: "Current-game two-out hits divided by current-game two-out at-bats.", example: "Example: 2 hits in 6 two-out at-bats is .333." },
+  TWOOUTOBP: { title: "Current 2-Out OBP", formula: "Current-game two-out times on base divided by current-game two-out PA.", example: "Example: 3 times on base in 8 two-out PA is .375." },
+  TWOOUTHIT: { title: "Current 2-Out Hit", formula: "Current-game hits recorded in plate appearances that began with two outs.", example: "Example: a two-out single and a two-out double gives 2 two-out hits." },
+  TWOOUTRBI: { title: "Current 2-Out RBI", formula: "Current-game RBI recorded in plate appearances that began with two outs.", example: "Example: a two-out, two-run double adds 2 current 2-out RBI." },
   GP: { title: "GP/GS", formula: "Games played compared to games started.", example: "Example: 21/19 means 21 appearances and 19 starts." },
   APP: { title: "App/GS", formula: "Pitching appearances compared to games started.", example: "Example: 7/3 means seven mound appearances and three starts." },
   WL: { title: "W/L", formula: "Pitching wins compared to pitching losses.", example: "Example: 4/2 means four wins and two losses." },
@@ -3640,8 +3693,18 @@ function statExplanationKey(label) {
     HRPCT: "HRP",
     SB: "SBP",
     SBPCT: "SBP",
+    SBCS: "SBCS",
     BBK: "BBK",
     PAAB: "PAAB",
+    XBHPA: "XBHPA",
+    HRPA: "HRPA",
+    RRBIHR: "RRBIHR",
+    AVGWRISP: "AVGWRISP",
+    "2OUTPA": "TWOOUTPA",
+    "2OUTAVG": "TWOOUTAVG",
+    "2OUTOBP": "TWOOUTOBP",
+    "2OUTHIT": "TWOOUTHIT",
+    "2OUTRBI": "TWOOUTRBI",
     GPGS: "GP",
     APPGS: "APP",
     WL: "WL",
@@ -3686,12 +3749,13 @@ function percentValue(numerator, denominator) {
   return denom ? `${((toNumber(numerator) / denom) * 100).toFixed(1)}%` : "-";
 }
 
-function calculatedPercentPill(label, numerator, denominator, type = "neutral", className = "") {
+function calculatedPercentPill(label, numerator, denominator, type = "neutral", className = "", explain = "") {
   return {
     label,
     value: percentValue(numerator, denominator),
     type,
-    className
+    className,
+    explain
   };
 }
 
@@ -3775,49 +3839,50 @@ function pitchingStatsLine(stats = {}) {
 }
 
 function batterHudPills(stats, rates, advanced) {
-  const pa = stats.PA || stats.AB + stats.BB + stats.HBP + stats.SF;
-  const obpDenom = stats.AB + stats.BB + stats.HBP + stats.SF;
+  const pa = battingPlateAppearances(stats);
+  const obpDenom = toNumber(stats.AB) + toNumber(stats.BB) + toNumber(stats.HBP) + toNumber(stats.SF);
   const sbAttempts = stats.SB + stats.CS;
-  const xbh = stats["2B"] + stats["3B"] + stats.HR;
+  const singles = battingSingles(stats);
+  const xbh = battingExtraBaseHits(stats);
+  const totalBases = battingTotalBases(stats);
   return [
     [
       [
-        { label: "GP/GS", value: `${stats.GP || 0}/${stats.GS || 0}` },
-        { label: "PA/AB", value: `${pa}/${stats.AB || 0}` },
+        { label: "PA", value: pa },
+        { label: "AB", value: stats.AB || 0 },
         { label: "AVG", value: stats.AB > 0 ? rates.AVG : "-", type: "avg" },
         { label: "OBP", value: obpDenom > 0 ? rates.OBP : "-", type: "obp" },
         { label: "SLG%", value: stats.AB > 0 ? rates.SLG : "-", type: "slg" },
-        { label: "OPS", value: obpDenom > 0 && stats.AB > 0 ? rates.OPS : "-", type: "ops" }
-      ],
-      [
+        { label: "OPS", value: obpDenom > 0 && stats.AB > 0 ? rates.OPS : "-", type: "ops" },
         { label: "R", value: stats.R, type: "count" },
         { label: "H", value: stats.H, type: "count" },
-        { label: "2B", value: stats["2B"], type: "count" },
+        { label: "1B", value: singles, type: "count", explain: "ONEB" },
+        { label: "2B", value: stats["2B"], type: "count" }
+      ],
+      [
         { label: "3B", value: stats["3B"], type: "count" },
         { label: "HR", value: stats.HR, type: "count" },
-        { label: "RBI", value: stats.RBI, type: "count" }
+        { label: "RBI", value: stats.RBI, type: "count" },
+        { label: "TB", value: totalBases, type: "count" },
+        { label: "XBH", value: xbh, type: "count", explain: "XBHCOUNT" },
+        { label: "BB", value: stats.BB },
+        { label: "HBP", value: stats.HBP },
+        { label: "SO/K", value: stats.SO },
+        { label: "SB/CS", value: `${stats.SB || 0}/${stats.CS || 0}`, explain: "SB/CS" },
+        calculatedPercentPill("SB%", stats.SB, sbAttempts, "count")
       ]
     ],
     [
       [
-        { label: "BB", value: stats.BB },
-        { label: "SO", value: stats.SO },
-        { label: "HBP", value: stats.HBP }
-      ],
-      [
         { label: "K%", value: pa > 0 ? advanced.KP : "-", type: "kp" },
         { label: "BB%", value: pa > 0 ? advanced.BBP : "-", type: "bbp" },
-        { label: "BB/K", value: `${stats.BB}/${stats.SO}` }
-      ],
-      [
+        { label: "BB/K", value: advanced.BBK },
         { label: "ISO", value: stats.AB > 0 ? advanced.ISO : "-", type: "iso" },
         calculatedPercentPill("XBH%", xbh, stats.H, "iso"),
-        calculatedPercentPill("HR%", stats.HR, stats.AB, "iso")
-      ],
-      [
-        { label: "SB", value: stats.SB },
-        { label: "CS", value: stats.CS },
-        calculatedPercentPill("SB%", stats.SB, sbAttempts, "count")
+        calculatedPercentPill("XBH/PA", xbh, pa, "iso"),
+        calculatedPercentPill("HR/PA", stats.HR, pa, "iso"),
+        { label: "BABIP", value: stats.AB > 0 ? advanced.BABIP : "-", type: "avg" },
+        { label: "R+RBI-HR", value: advanced.RUN_PRODUCTION, type: "count" }
       ]
     ]
   ];
@@ -3847,7 +3912,7 @@ function currentGameBatterSpecialPills(playerId) {
     rispAb: 0,
     rispH: 0,
     twoOutH: 0,
-    twoOutBbhbp: 0,
+    twoOutAb: 0,
     twoOutPa: 0,
     twoOutObpEvents: 0,
     twoOutRbi: 0
@@ -3867,8 +3932,8 @@ function currentGameBatterSpecialPills(playerId) {
       if (outsBefore >= 2) {
         const paDelta = delta.AB || delta.BB || delta.HBP || delta.SF;
         line.twoOutPa += paDelta ? 1 : 0;
+        line.twoOutAb += delta.AB || 0;
         line.twoOutH += delta.H || 0;
-        line.twoOutBbhbp += (delta.BB || 0) + (delta.HBP || 0);
         line.twoOutObpEvents += (delta.H || 0) + (delta.BB || 0) + (delta.HBP || 0);
         line.twoOutRbi += toNumber(item.event.rbi);
       }
@@ -3877,12 +3942,12 @@ function currentGameBatterSpecialPills(playerId) {
   });
 
   return [
-    { label: "CURRENT GAME AVG W/RISP", value: line.rispAb ? formatRate(line.rispH / line.rispAb) : "-", className: "game-context-chip" },
-    { label: "CURRENT 2-OUT HIT", value: line.twoOutH, className: "game-context-chip" },
-    { label: "CURRENT 2-OUT BB/HBP", value: line.twoOutBbhbp, className: "game-context-chip" },
-    { label: "CURRENT 2-OUT PA", value: line.twoOutPa, className: "game-context-chip" },
-    { label: "CURRENT 2-OUT OBP", value: line.twoOutPa ? formatRate(line.twoOutObpEvents / line.twoOutPa) : "-", className: "game-context-chip" },
-    { label: "CURRENT 2-OUT RBI", value: line.twoOutRbi, className: "game-context-chip" }
+    { label: "AVG w/RISP", value: line.rispAb ? formatRate(line.rispH / line.rispAb) : "-", type: "avg", className: "game-context-chip" },
+    { label: "2-Out PA", value: line.twoOutPa, className: "game-context-chip" },
+    { label: "2-Out AVG", value: line.twoOutAb ? formatRate(line.twoOutH / line.twoOutAb) : "-", type: "avg", className: "game-context-chip" },
+    { label: "2-Out OBP", value: line.twoOutPa ? formatRate(line.twoOutObpEvents / line.twoOutPa) : "-", type: "obp", className: "game-context-chip" },
+    { label: "2-Out Hit", value: line.twoOutH, type: "count", className: "game-context-chip" },
+    { label: "2-Out RBI", value: line.twoOutRbi, type: "count", className: "game-context-chip" }
   ];
 }
 
@@ -4304,9 +4369,14 @@ function batterDetailHtml() {
   const rates = calcStats(stats);
   const advanced = advancedStats(stats);
   const batterPillRows = batterHudPills(stats, rates, advanced);
+  const batterScope = selectedHudStatScope("batter", player);
   const batterView = selectedHudStatView("batter");
   const currentContextPills = currentGameBatterSpecialPills(player.id);
   const visibleBatterRows = batterView === "advanced" ? batterPillRows[1] : batterPillRows[0];
+  const visibleBatterRowsHtml = visibleBatterRows
+    .map((row, index) => renderPillRow(row, `batter-season-row batter-${batterView}-row batter-row-${index + 1}`))
+    .join("");
+  const showCurrentContext = batterView === "advanced" && batterScope === "currentgame";
   const positionText = displayPosition(activeChart().lineupPositions?.[slot - 1] || player.position) || "POS --";
   const physicalText = [player.weight ? `Wt ${player.weight}` : "", player.height ? `Ht ${player.height}` : ""].filter(Boolean).join(" | ");
   const playerMeta = [positionText, player.classYear, physicalText].filter(Boolean).join(" | ");
@@ -4342,9 +4412,9 @@ function batterDetailHtml() {
         ${hudViewToggleHtml("batter", player.side || state.activeSide)}
       </div>
       <div class="compact-batter-line">
-        ${renderPillRow(visibleBatterRows, `batter-season-row batter-${batterView}-row`)}
+        ${visibleBatterRowsHtml}
       </div>
-      <div class="compact-analytics-line" ${batterView === "advanced" ? "" : "hidden"}>
+      <div class="compact-analytics-line" ${showCurrentContext ? "" : "hidden"}>
         ${currentContextPills.map(statPill).join("")}
       </div>
       <div class="compact-storyline-line">

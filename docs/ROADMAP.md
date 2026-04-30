@@ -17,6 +17,8 @@ Living backlog for post-live-test improvements.
 - [x] Add HUD Basic/Advanced view toggles for batter and pitcher cards.
 - [x] Add a `series` stat scope for charted workspace games, covering batting and pitching.
 - [x] Add a settings toggle for tappable stat explanations with formula and broadcast-style examples.
+- [x] Reshape batter HUD Basic/Advanced rows around PA, slash, power, speed, plate-discipline, and current-game leverage stats.
+- [x] Clarify that PrestoSports roster imports expect `.TRX` files with names in `First Last` order.
 
 ## Roster Workflow
 
@@ -40,6 +42,7 @@ Living backlog for post-live-test improvements.
 - Define the advanced batting and pitching metrics worth surfacing for broadcast prep.
 - Calculate advanced analytics live throughout the ballgame where the chart data supports it.
 - Add broadcast-friendly language for explaining notable advanced metrics.
+- Dynamically surface source-specific stats when uploaded data supports them, especially GameChanger-only QAB, C%, hard-hit, batted-ball, BA/RISP, two-out RBI, pitch mix, first-pitch strike, swing-and-miss, and Presto-only GO/FO or split report fields.
 
 ## End Of Game
 
