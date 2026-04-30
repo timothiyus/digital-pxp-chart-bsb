@@ -259,7 +259,14 @@
             <form id="playerForm" class="panel player-form">
               <div class="panel-heading">
                 <h2>Add / Edit Player</h2>
-                <button id="newPlayerButton" type="button">New</button>
+                <div class="player-form-actions">
+                  <button id="newPlayerButton" type="button">New</button>
+                  <div class="player-modal-actions">
+                    <button id="prevPlayerButton" type="button" class="muted">Previous</button>
+                    <button id="nextPlayerButton" type="button" class="muted">Next</button>
+                    <button id="closePlayerModalButton" type="button" class="muted">Close</button>
+                  </div>
+                </div>
               </div>
               <input id="editingId" type="hidden" />
               <div class="form-grid">
@@ -293,6 +300,7 @@
                 <label>IP <input id="statIP" type="number" min="0" step="any" /></label>
                 <label>ERA <input id="statERA" type="number" min="0" step="any" /></label>
                 <label>WHIP <input id="statWHIP" type="number" min="0" step="any" /></label>
+                <label>App <input id="statP_GP" type="number" min="0" /></label>
                 <label>W <input id="statW" type="number" min="0" /></label>
                 <label>L <input id="statL" type="number" min="0" /></label>
                 <label>GS <input id="statGS" type="number" min="0" /></label>

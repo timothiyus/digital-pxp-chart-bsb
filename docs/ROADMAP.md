@@ -8,15 +8,19 @@ Living backlog for post-live-test improvements.
 - Audit cloud sync so workspace pushes/pulls are predictable and visible.
 - Keep local saves resilient when the workspace grows large from imported data, multi-game series, and team metadata.
 
+## Completed
+
+- [x] Add a roster edit modal from roster cards/table rows so edits do not force scrolling back to the top form.
+- [x] Add previous/next player controls inside the roster edit modal for fast roster cleanup.
+- [x] Auto-populate the defense chart from lineup position entries while preserving dropdown overrides.
+- [x] First-pass pitcher stat pipeline audit: add manual App editing and make pitcher appearances fall back from imported/live pitching data instead of showing 0 apps for pitchers with mound stats.
+
 ## Roster Workflow
 
-- Add an edit-player modal from roster cards so edits do not force scrolling back to the top form.
-- Add previous/next player controls inside the edit flow for fast roster cleanup.
 - Keep the existing new-player workflow, but make roster-card editing the primary fast path during game prep.
 
 ## Defense Workflow
 
-- Auto-populate the defense chart from lineup position entries.
 - Preserve the defense chart as editable dropdowns so live defensive adjustments and substitutions can override the default.
 - Reuse the existing substitution mechanics where possible, since substitution updates already feed the defensive view.
 
@@ -31,7 +35,6 @@ Living backlog for post-live-test improvements.
   - Conference.
   - Non-conference.
 - Add the same scope structure for pitcher HUD stats.
-- Audit pitcher stat pipelines where players show as not having appeared despite imported/game data.
 - Keep the main HUD readable and let deeper analytics appear only when selected.
 
 ## Series Stats

@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v15";
+const APP_VERSION = "v16";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -150,6 +150,9 @@ const els = {
   playerTable: document.querySelector("#playerTable"),
   playerForm: document.querySelector("#playerForm"),
   newPlayerButton: document.querySelector("#newPlayerButton"),
+  prevPlayerButton: document.querySelector("#prevPlayerButton"),
+  nextPlayerButton: document.querySelector("#nextPlayerButton"),
+  closePlayerModalButton: document.querySelector("#closePlayerModalButton"),
   editingId: document.querySelector("#editingId"),
   rosterCards: document.querySelector("#rosterCards"),
   rosterSummary: document.querySelector("#rosterSummary"),
@@ -958,6 +961,9 @@ function displayPosition(value) {
 function sortedPlayers() {
   return playersForSide(state.activeSide);
 }
+
+let rosterEditModalOpen = false;
+let rosterEditPlayerId = "";
 
 function parseCsv(text) {
   const rows = [];
@@ -3580,15 +3586,14 @@ function formatPitchingStatsLineValue(key, value) {
   return value || 0;
 }
 
-function hasBattingLineStats(stats = {}) {
-  return ["PA", "AB", "H", "BB", "SO", "HBP", "SF", "RBI", "R", "SB", "CS"].some((key) => toNumber(stats[key]) > 0);
-}
-
 function pitcherAppearanceCount(stats = {}) {
   const explicitApps = toNumber(stats.P_GP);
   if (explicitApps > 0) return explicitApps;
-  if (hasPitchingStats(stats) && !hasBattingLineStats(stats) && toNumber(stats.GP) > 0) return toNumber(stats.GP);
-  return toNumber(stats.GS) || 0;
+  const starts = toNumber(stats.GS);
+  const battingGames = toNumber(stats.GP);
+  if (!hasPitchingStats(stats)) return starts || 0;
+  if (battingGames > 0) return Math.max(battingGames, starts);
+  return Math.max(starts, 1);
 }
 
 function pitchingStatsLine(stats = {}) {
@@ -4874,10 +4879,43 @@ function renderChartHud() {
 }
 
 const defensePositions = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"];
+const defensivePositionSet = new Set(defensePositions);
 
 function defensePlayerLabel(playerId) {
   const player = state.players.find((item) => item.id === playerId);
   return player ? `#${player.number} ${fullName(player)}` : "--";
+}
+
+function fieldPositionFromText(value) {
+  const tokens = String(value || "")
+    .toUpperCase()
+    .split(/[\/,\s-]+/)
+    .map((token) => positionLabels[token] || token)
+    .filter(Boolean);
+  return tokens.find((token) => defensivePositionSet.has(token)) || "";
+}
+
+function autoDefenseAssignments() {
+  const fieldingChart = activeGame().charts[oppositeSide()] || newChartState();
+  const assignments = {};
+  (fieldingChart.lineup || []).forEach((playerId, index) => {
+    if (!playerId) return;
+    const player = state.players.find((item) => item.id === playerId);
+    const pos = fieldPositionFromText(fieldingChart.lineupPositions?.[index] || player?.position || "");
+    if (!pos || pos === "P" || assignments[pos]) return;
+    assignments[pos] = playerId;
+  });
+  return assignments;
+}
+
+function defenseSelectionForPosition(pos, autoDefense = autoDefenseAssignments()) {
+  if (pos === "P") return activeChart().activePitcherId;
+  return activeChart().hud.defense[pos] || autoDefense[pos] || "";
+}
+
+function clearManualDefenseAssignments() {
+  const chart = activeChart();
+  chart.hud.defense = { ...newChartState().hud.defense };
 }
 
 function defenseOptionsHtml(selected) {
@@ -4890,13 +4928,15 @@ function defenseOptionsHtml(selected) {
 function defenseDiamondHtml({ editable = false } = {}) {
   const chart = activeChart();
   const activePitcher = chart.activePitcherId;
+  const autoDefense = autoDefenseAssignments();
   return `
     <div class="defense-diamond ${editable ? "editable" : "display"}">
       ${defensePositions.map((pos) => {
-        const selected = pos === "P" ? activePitcher : chart.hud.defense[pos];
+        const selected = defenseSelectionForPosition(pos, autoDefense);
+        const isAuto = pos !== "P" && !chart.hud.defense[pos] && autoDefense[pos];
         const label = pos === "P" ? defensePlayerLabel(activePitcher) : defensePlayerLabel(selected);
         return `
-          <label class="def-pos pos-${pos.replace("1", "one").replace("2", "two").replace("3", "three")}">
+          <label class="def-pos pos-${pos.replace("1", "one").replace("2", "two").replace("3", "three")} ${isAuto ? "is-auto" : ""}">
             ${pos}
             ${editable && pos !== "P"
               ? `<select data-defense-pos="${pos}">${defenseOptionsHtml(selected)}</select>`
@@ -4913,7 +4953,8 @@ function renderDefense() {
   els.defenseEditor.innerHTML = `
     <div class="defense-editor-head">
       <strong>${escapeHtml(sideLabel(oppositeSide()))} in the field</strong>
-      <span>Pitcher follows the active pitcher selected on the Pitching tab.</span>
+      <span>Lineup positions auto-fill the chart; dropdowns override spots when needed.</span>
+      <button type="button" class="muted" data-reset-defense-auto>Use lineup positions</button>
     </div>
     ${defenseDiamondHtml({ editable: true })}
     <label>Defense notes<textarea data-chart-hud-field="defenseNotes" rows="4">${escapeHtml(activeChart().hud.defenseNotes)}</textarea></label>
@@ -5419,6 +5460,7 @@ function showAppPrompt({
 function fillPlayerForm(player) {
   const stats = player?.stats || emptyStats();
   els.editingId.value = player?.id || "";
+  rosterEditPlayerId = player?.id || "";
   document.querySelector("#playerNumber").value = player?.number || "";
   document.querySelector("#playerFirst").value = player?.first || "";
   document.querySelector("#playerLast").value = player?.last || "";
@@ -5432,21 +5474,63 @@ function fillPlayerForm(player) {
   ["AB", "H", "2B", "3B", "HR", "BB", "HBP", "SF", "RBI", "SO", "SB", "CS"].forEach((key) => {
     document.querySelector(`#stat${CSS.escape(key)}`).value = stats[key] || 0;
   });
-  ["IP", "ERA", "WHIP", "W", "L", "GS", "BF", "P_H", "P_R", "P_ER", "P_HR", "P_BB", "P_SO", "P_HBP", "P_WP", "P_BK", "BAA", "Pitches"].forEach((key) => {
+  ["IP", "ERA", "WHIP", "P_GP", "W", "L", "GS", "BF", "P_H", "P_R", "P_ER", "P_HR", "P_BB", "P_SO", "P_HBP", "P_WP", "P_BK", "BAA", "Pitches"].forEach((key) => {
     const input = document.querySelector(`#stat${CSS.escape(key)}`);
     if (input) input.value = stats[key] || 0;
   });
+  updateRosterModalControls();
+}
+
+function rosterEditList() {
+  return sortedPlayers();
+}
+
+function updateRosterModalControls() {
+  if (!els.playerForm) return;
+  els.playerForm.classList.toggle("is-modal-edit", rosterEditModalOpen);
+  document.body.classList.toggle("player-modal-open", rosterEditModalOpen);
+  const list = rosterEditList();
+  const currentIndex = list.findIndex((player) => player.id === rosterEditPlayerId);
+  const hasCycle = rosterEditModalOpen && list.length > 1 && currentIndex >= 0;
+  if (els.prevPlayerButton) els.prevPlayerButton.disabled = !hasCycle;
+  if (els.nextPlayerButton) els.nextPlayerButton.disabled = !hasCycle;
+  if (els.closePlayerModalButton) els.closePlayerModalButton.disabled = !rosterEditModalOpen;
+}
+
+function openPlayerEditModal(playerId) {
+  const player = state.players.find((item) => item.id === playerId);
+  if (!player) return;
+  rosterEditModalOpen = true;
+  fillPlayerForm(player);
+  document.querySelector('[data-view="rosterView"]')?.click();
+  window.setTimeout(() => document.querySelector("#playerNumber")?.focus(), 0);
+}
+
+function closePlayerEditModal() {
+  rosterEditModalOpen = false;
+  rosterEditPlayerId = "";
+  updateRosterModalControls();
+}
+
+function cycleRosterEditPlayer(direction) {
+  if (!rosterEditModalOpen) return;
+  const list = rosterEditList();
+  if (!list.length) return;
+  const currentIndex = Math.max(0, list.findIndex((player) => player.id === rosterEditPlayerId));
+  const nextIndex = (currentIndex + direction + list.length) % list.length;
+  fillPlayerForm(list[nextIndex]);
 }
 
 function savePlayerFromForm(event) {
   event.preventDefault();
+  const closeAfterSave = rosterEditModalOpen;
   const id = els.editingId.value || uid("player");
   const existing = state.players.find((player) => player.id === id);
   const stats = { ...(existing?.stats || emptyStats()) };
   ["AB", "H", "2B", "3B", "HR", "BB", "HBP", "SF", "RBI", "SO", "SB", "CS"].forEach((key) => {
     stats[key] = toNumber(document.querySelector(`#stat${CSS.escape(key)}`).value);
   });
-  ["IP", "ERA", "WHIP", "W", "L", "GS", "BF", "P_H", "P_R", "P_ER", "P_HR", "P_BB", "P_SO", "P_HBP", "P_WP", "P_BK", "BAA", "Pitches"].forEach((key) => {
+  ["IP", "ERA", "WHIP", "P_GP", "W", "L", "GS", "BF", "P_H", "P_R", "P_ER", "P_HR", "P_BB", "P_SO", "P_HBP", "P_WP", "P_BK", "BAA", "Pitches"].forEach((key) => {
     const input = document.querySelector(`#stat${CSS.escape(key)}`);
     if (input) stats[key] = toNumber(input.value);
   });
@@ -5473,6 +5557,7 @@ function savePlayerFromForm(event) {
   else state.players.push(player);
 
   saveState();
+  if (closeAfterSave) closePlayerEditModal();
   fillPlayerForm(null);
   render();
 }
@@ -6483,6 +6568,13 @@ function setupEvents() {
   });
 
   if (els.defenseEditor) {
+    els.defenseEditor.addEventListener("click", (event) => {
+      if (!event.target.closest("[data-reset-defense-auto]")) return;
+      clearManualDefenseAssignments();
+      saveState();
+      renderDefense();
+      renderDefensePopup();
+    });
     els.defenseEditor.addEventListener("input", (event) => {
       const defensePos = event.target.dataset.defensePos;
       const chartHudField = event.target.dataset.chartHudField;
@@ -7053,6 +7145,8 @@ function setupEvents() {
     }
     saveState();
     renderScorecard();
+    renderDefense();
+    renderDefensePopup();
   });
 
   els.lineupSlots.addEventListener("click", (event) => {
@@ -7071,7 +7165,16 @@ function setupEvents() {
   els.spotlightSelect.addEventListener("change", renderSpotlight);
   els.playerSearch?.addEventListener("input", renderPlayerTable);
   els.playerForm.addEventListener("submit", savePlayerFromForm);
-  els.newPlayerButton.addEventListener("click", () => fillPlayerForm(null));
+  els.newPlayerButton.addEventListener("click", () => {
+    closePlayerEditModal();
+    fillPlayerForm(null);
+  });
+  els.prevPlayerButton?.addEventListener("click", () => cycleRosterEditPlayer(-1));
+  els.nextPlayerButton?.addEventListener("click", () => cycleRosterEditPlayer(1));
+  els.closePlayerModalButton?.addEventListener("click", () => closePlayerEditModal());
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && rosterEditModalOpen) closePlayerEditModal();
+  });
 
   document.body.addEventListener("click", (event) => {
     const editId = event.target.dataset.editPlayer;
@@ -7079,11 +7182,7 @@ function setupEvents() {
     const deleteEventId = event.target.dataset.deleteEvent;
 
     if (editId) {
-      const player = state.players.find((item) => item.id === editId);
-      if (player) {
-        fillPlayerForm(player);
-        document.querySelector('[data-view="rosterView"]').click();
-      }
+      openPlayerEditModal(editId);
     }
 
     if (deleteId && confirm("Delete this player?")) {
@@ -7091,7 +7190,12 @@ function setupEvents() {
       state.games.forEach((entry) => {
         Object.values(entry.charts).forEach((chart) => {
           chart.lineup = chart.lineup.map((id) => id === deleteId ? "" : id);
+          Object.keys(chart.hud?.defense || {}).forEach((pos) => {
+            if (chart.hud.defense[pos] === deleteId) chart.hud.defense[pos] = "";
+          });
           if (chart.activePitcherId === deleteId) chart.activePitcherId = "";
+          if (chart.startingPitcherId === deleteId) chart.startingPitcherId = "";
+          chart.bullpenIds = (chart.bullpenIds || []).filter((id) => id !== deleteId);
         });
       });
       saveState();
