@@ -67,6 +67,8 @@ You can keep the bridge running on a home PC and reach the app from any device o
 
 The browser auto-detects the URL: locally it talks directly to `127.0.0.1:8766`; remotely it uses `/api` on the same origin (which `tailscale serve` proxies to the bridge). No config changes needed in the app.
 
+The same bridge also backs up PrestoSports XML imports. If the iPad browser blocks a pasted XML box-score link because of CORS, the app retries through `/api/fetch-xml` and imports the response as a series box score.
+
 **Optional override** if you run the bridge on a different host or path: in the browser console,
 ```
 localStorage.setItem('pxp.pdfBridgeUrl', 'https://other-host.ts.net:9000');

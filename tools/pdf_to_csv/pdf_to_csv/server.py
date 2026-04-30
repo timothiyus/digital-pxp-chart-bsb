@@ -12,6 +12,7 @@ Or from the repo root:
 
 Endpoints:
     GET  /health        liveness probe used by the Data tab status pill
+    GET  /fetch-xml     fetches a public XML URL for browser-blocked imports
     POST /parse         multipart upload; returns JSON {csv, kind, source, rows, warnings}
 
 CORS is wide open because this binds to localhost only and exists solely to
@@ -26,6 +27,9 @@ import logging
 import os
 import sys
 from typing import Optional
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 
 # When the server is launched via pythonw.exe (no console window — used by
@@ -72,6 +76,50 @@ _KIND_FLAG = {
     "box_score": "box_score",
     "roster": "roster",
 }
+
+MAX_XML_BYTES = 5_000_000
+
+
+@app.get("/fetch-xml")
+def fetch_xml(url: str) -> dict:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="url must start with http:// or https://")
+    if not parsed.netloc:
+        raise HTTPException(status_code=400, detail="url is missing a host")
+
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (compatible; PxP Baseball Bridge; +local)",
+            "Accept": "application/xml,text/xml,text/plain,*/*",
+        },
+    )
+    try:
+        with urlopen(request, timeout=15) as response:
+            raw = response.read(MAX_XML_BYTES + 1)
+            content_type = response.headers.get("content-type", "")
+    except HTTPError as exc:
+        raise HTTPException(status_code=exc.code, detail=f"remote HTTP {exc.code}") from exc
+    except URLError as exc:
+        raise HTTPException(status_code=502, detail=f"remote fetch failed: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="remote fetch timed out") from exc
+
+    if len(raw) > MAX_XML_BYTES:
+        raise HTTPException(status_code=413, detail="XML response is too large")
+
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    return {
+        "url": url,
+        "content_type": content_type,
+        "bytes": len(raw),
+        "text": text,
+    }
 
 
 @app.post("/parse")

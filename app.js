@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v31";
+const APP_VERSION = "v32";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -2545,13 +2545,37 @@ async function importPrestoSeriesXmlUrls(value) {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       imported.push(importPrestoSeriesXmlText(await response.text(), url));
     } catch (error) {
-      failures.push(`${url}: ${error.message}`);
+      try {
+        imported.push(importPrestoSeriesXmlText(await fetchPrestoXmlViaBridge(url), url));
+      } catch (bridgeError) {
+        failures.push(`${url}: browser fetch ${error.message}; bridge fetch ${bridgeError.message}`);
+      }
     }
   }
   if (failures.length && !imported.length) {
-    throw new Error(`Could not import the XML link${urls.length === 1 ? "" : "s"}. ${failures.join(" ")} If the host blocks browser fetch, download the XML and use Import XML File or paste the raw XML.`);
+    throw new Error(`Could not import the XML link${urls.length === 1 ? "" : "s"}. ${failures.join(" ")} Start the PDF/XML bridge or open the app through its Tailscale URL, then try the same XML link again.`);
   }
   return { imported, failures };
+}
+
+async function fetchPrestoXmlViaBridge(url) {
+  if (!PDF_BRIDGE_URL) {
+    throw new Error("not configured");
+  }
+  const response = await fetch(`${PDF_BRIDGE_URL}/fetch-xml?url=${encodeURIComponent(url)}`, { cache: "no-store" });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      const body = await response.json();
+      detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+    } catch (_) { /* keep statusText */ }
+    throw new Error(`${response.status}: ${detail}`);
+  }
+  const payload = await response.json();
+  if (!String(payload.text || "").trim()) {
+    throw new Error("empty XML response");
+  }
+  return payload.text;
 }
 
 function resolvePdfBridgeUrl() {
