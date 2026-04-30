@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v34";
+const APP_VERSION = "v35";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -2829,6 +2829,7 @@ function resultLabel(result) {
     strikeout: "Strikeout",
     out: "Out in play",
     sacFly: "Sac fly",
+    sacBunt: "Sac bunt",
     reachedError: "Reached on error",
     fieldersChoice: "Fielder's choice"
   }[result] || result;
@@ -2844,12 +2845,13 @@ const notationStatMap = {
 
 const notationSuggestions = [
   "1B", "2B", "3B", "HR", "BB", "IBB", "HBP", "K", "Kc", "K PB", "K WP", "BI", "CI", "BK",
-  "ROE", "E", "FC", "SF", "SAC", "SH",
+  "ROE", "E", "FC", "SF", "SAC", "SH", "B1", "B2", "B3",
   "F7", "F8", "F9", "L7", "L8", "L9",
   "G1", "G3", "G4", "G5", "G6",
   "P3", "P4", "P5", "P6",
   "1-3", "3-1", "3-U", "4-3", "5-3", "6-3", "U-3",
   "6-4-3", "4-6-3", "5-4-3", "DP", "TP",
+  "SB 1-3", "SB DP", "SB TP",
   "SB2", "SB3", "SB H",
   "CS2", "CS3", "CS H",
   "WP", "PB", "BK", "PO",
@@ -2882,9 +2884,26 @@ function isBattedOutNotation(text) {
     || /^[1-9]$/.test(compact);
 }
 
+function buntReachActionKey(text) {
+  const compact = compactPlayNotation(text).replace(/\s+/g, "");
+  if (/^B(?:1|1B)$/.test(compact)) return "1B";
+  if (/^B(?:2|2B)$/.test(compact)) return "2B";
+  if (/^B(?:3|3B)$/.test(compact)) return "3B";
+  if (/^B(?:H|HR)$/.test(compact)) return "HR";
+  return "";
+}
+
+function isSacrificeBuntOutNotation(text) {
+  const compact = compactPlayNotation(text).replace(/\s+/g, "");
+  return /^SB(?:DP|TP)$/.test(compact) || /^SB(?:[1-9U](?:-[1-9U])+)$/.test(compact);
+}
+
 function notationActionKey(text) {
   const normalized = normalizedNotation(text);
   const compact = compactPlayNotation(text);
+  const buntReach = buntReachActionKey(compact);
+  if (buntReach) return buntReach;
+  if (isSacrificeBuntOutNotation(compact)) return "SACB";
   if (/^FC\b/.test(normalized)) return "FC";
   if (/^E[1-9]?\b/.test(normalized)) return "ROE";
   if (isBattedOutNotation(compact)) return "OUT";
@@ -2911,6 +2930,7 @@ const chartActions = {
   CI: { label: "CI", result: "catcherInterference", notation: "CI", pitcher: { BF: 1 } },
   BALK: { label: "Balk", result: "balk", notation: "BK", pitcher: {}, noPlateAppearance: true, advanceBatter: false },
   SF: { label: "SF", result: "sacFly", notation: "SF", pitcher: { BF: 1 } },
+  SACB: { label: "SB", result: "sacBunt", notation: "SB", pitcher: { BF: 1 } },
   ROE: { label: "ROE", result: "reachedError", notation: "ROE", pitcher: { BF: 1 }, inning: { E: 1 } },
   ERR: { label: "E", result: "out", notation: "E", pitcher: {}, inning: { E: 1 } },
   FC: { label: "FC", result: "fieldersChoice", notation: "FC", pitcher: { BF: 1 } }
@@ -4363,7 +4383,7 @@ function currentInningOuts(inning = activeChart().currentInning) {
   return Object.entries(chart.scorecard || {}).reduce((outs, [key, cell]) => {
     const { inning: cellColumn } = parseScoreCellKey(key);
     if (cellActualInning(cell, cellColumn) !== Number(inning)) return outs;
-    if (cell.outOverlay || ["OUT", "K", "Kc", "SF", "BI"].includes(cell.result) || ["OUT", "K", "KC", "SF", "BI"].includes(cell.actionKey)) return outs + 1;
+    if (cell.outOverlay || ["OUT", "K", "Kc", "SF", "BI", "SB"].includes(cell.result) || ["OUT", "K", "KC", "SF", "SACB", "BI"].includes(cell.actionKey)) return outs + 1;
     return outs;
   }, 0);
 }
@@ -4934,7 +4954,7 @@ function scoreCellSortChronological(left, right) {
 }
 
 function cellRecordsOut(cell) {
-  return Boolean(cell && (cell.outOverlay || ["OUT", "K", "Kc", "SF", "BI"].includes(cell.result) || ["OUT", "K", "KC", "SF", "BI"].includes(cell.actionKey)));
+  return Boolean(cell && (cell.outOverlay || ["OUT", "K", "Kc", "SF", "BI", "SB"].includes(cell.result) || ["OUT", "K", "KC", "SF", "SACB", "BI"].includes(cell.actionKey)));
 }
 
 function emptyBatterLeverageLine() {
@@ -6592,6 +6612,8 @@ const notationDocsData = [
   { token: "ROE", desc: "Reached on error", stat: true },
   { token: "E / ERR", desc: "Error (out, no AB credit on E charged)", stat: true },
   { token: "FC", desc: "Fielder's choice", stat: true },
+  { token: "B1 / B2 / B3", desc: "Bunt reach to first, second, or third", stat: true },
+  { token: "SB 1-3 / SB DP / SB TP", desc: "Sacrifice bunt out, double play, or triple play", stat: true },
   { token: "SF / SAC", desc: "Sacrifice fly / bunt", stat: true },
   { token: "F1-F9 / L1-L9 / G1-G9", desc: "Fly / line / ground out, by position", stat: true },
   { token: "P3-P6", desc: "Popup, by position", stat: true },
@@ -6600,8 +6622,7 @@ const notationDocsData = [
   { token: "DP / TP", desc: "Double play / triple play modifier", stat: true },
   { token: "SB2 / SB3 / SB H", desc: "Stolen base — 2nd, 3rd, home", stat: false },
   { token: "CS2 / CS3 / CS H", desc: "Caught stealing", stat: false },
-  { token: "WP / PB / BK", desc: "Wild pitch / passed ball / balk", stat: false },
-  { token: "SAC bunt 1-3", desc: "Free-form annotation; anything not in the list above is recorded as flavor text only", stat: false }
+  { token: "WP / PB / BK", desc: "Wild pitch / passed ball / balk", stat: false }
 ];
 
 function renderDataView() {
@@ -7267,7 +7288,7 @@ function applyChartAction(cellKey, actionKey, options = {}) {
   cell.notation = action.notation;
   cell.actionKey = actionKey;
   cell.gameType = gameType;
-  cell.outOverlay = ["OUT", "K", "KC", "SF", "BI"].includes(actionKey);
+  cell.outOverlay = ["OUT", "K", "KC", "SF", "SACB", "BI"].includes(actionKey);
   cell.baseStateBefore = baseStateBefore;
   cell.bases = emptyDiamondPath();
   (basePathForResult[actionKey] || []).forEach((base) => {
@@ -7324,7 +7345,7 @@ function applyChartAction(cellKey, actionKey, options = {}) {
   }
 
   const pitcherUpdates = { ...(action.pitcher || {}) };
-  if (["OUT", "K", "KC", "SF", "BI"].includes(actionKey)) pitcherUpdates.outs = (pitcherUpdates.outs || 0) + 1;
+  if (["OUT", "K", "KC", "SF", "SACB", "BI"].includes(actionKey)) pitcherUpdates.outs = (pitcherUpdates.outs || 0) + 1;
   if (event) {
     const chargedRuns = pitcherRunsForAction(actionKey, event.rbi);
     const earnedRuns = pitcherEarnedRunsForAction(actionKey, event.rbi);
@@ -8595,7 +8616,10 @@ function setupEvents() {
         return;
       }
       applyChartAction(cellEl.dataset.scoreCell, actionKey);
-      getScoreCellFromKey(cellEl.dataset.scoreCell).notation = typedNotation;
+      const updatedCell = getScoreCellFromKey(cellEl.dataset.scoreCell);
+      updatedCell.notation = typedNotation;
+      updatedCell.result = typedNotation;
+      updateCellEventContext(updatedCell, typedNotation);
       saveState();
       render();
       return;
