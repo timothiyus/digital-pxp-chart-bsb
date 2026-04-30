@@ -2573,26 +2573,27 @@ textarea {
   font-size: 0.5rem;
   font-weight: 950;
   pointer-events: auto;
+  transform: translate(-50%, -50%);
 }
 
 .runner-lane-toFirst {
-  right: -48px;
-  top: 58%;
+  left: 71%;
+  top: 71%;
 }
 
 .runner-lane-toSecond {
-  right: 14px;
-  top: -18px;
+  left: 71%;
+  top: 29%;
 }
 
 .runner-lane-toThird {
-  left: -48px;
-  top: 58%;
+  left: 29%;
+  top: 29%;
 }
 
 .runner-lane-toHome {
-  left: 14px;
-  bottom: -18px;
+  left: 29%;
+  top: 71%;
 }
 
 .score-cell.is-out {
@@ -6284,24 +6285,6 @@ tr:hover td {
     height: 20px;
     padding: 1px 3px;
     font-size: 0.44rem;
-  }
-
-  .runner-lane-toFirst {
-    right: -40px;
-  }
-
-  .runner-lane-toSecond {
-    right: 10px;
-    top: -16px;
-  }
-
-  .runner-lane-toThird {
-    left: -40px;
-  }
-
-  .runner-lane-toHome {
-    left: 10px;
-    bottom: -16px;
   }
 }
 
