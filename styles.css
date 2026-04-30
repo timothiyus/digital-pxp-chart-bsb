@@ -2554,6 +2554,47 @@ textarea {
   border-color: color-mix(in srgb, var(--active-team-primary, var(--accent)) 64%, var(--line));
 }
 
+.runner-lane-selects {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.runner-lane-select {
+  position: absolute;
+  width: 74px;
+  max-width: 74px;
+  min-height: 22px;
+  height: 22px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 254, 250, 0.95);
+  font-size: 0.5rem;
+  font-weight: 950;
+  pointer-events: auto;
+}
+
+.runner-lane-toFirst {
+  right: -48px;
+  top: 58%;
+}
+
+.runner-lane-toSecond {
+  right: 14px;
+  top: -18px;
+}
+
+.runner-lane-toThird {
+  left: -48px;
+  top: 58%;
+}
+
+.runner-lane-toHome {
+  left: 14px;
+  bottom: -18px;
+}
+
 .score-cell.is-out {
   background: linear-gradient(180deg, #fff4f2 0%, #ffffff 100%);
 }
@@ -3538,6 +3579,10 @@ textarea {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.pitch-button-row-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .pitch-buttons button {
   width: 100%;
   min-height: 30px;
@@ -3548,6 +3593,17 @@ textarea {
   color: var(--accent-strong);
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+}
+
+.pitch-buttons button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.pitch-buttons .undo-pitch-button {
+  background: #fffefa;
+  border-color: color-mix(in srgb, var(--active-team-primary, var(--accent)) 54%, var(--line));
+  color: var(--active-team-primary, var(--accent-strong));
 }
 
 .result-buttons {
@@ -6217,6 +6273,35 @@ tr:hover td {
   .runner-btn {
     min-height: 30px;
     font-size: 0.6rem;
+  }
+}
+
+@media (max-width: 1180px) and (orientation: portrait) {
+  .runner-lane-select {
+    width: 62px;
+    max-width: 62px;
+    min-height: 20px;
+    height: 20px;
+    padding: 1px 3px;
+    font-size: 0.44rem;
+  }
+
+  .runner-lane-toFirst {
+    right: -40px;
+  }
+
+  .runner-lane-toSecond {
+    right: 10px;
+    top: -16px;
+  }
+
+  .runner-lane-toThird {
+    left: -40px;
+  }
+
+  .runner-lane-toHome {
+    left: 10px;
+    bottom: -16px;
   }
 }
 
