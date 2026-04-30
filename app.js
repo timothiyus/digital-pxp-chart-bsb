@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v21";
+const APP_VERSION = "v22";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -4396,7 +4396,7 @@ function batterDetailHtml() {
   const batterView = selectedHudStatView("batter");
   let visibleBatterRows = batterView === "advanced" ? batterPillRows[1] : batterPillRows[0];
   if (batterView === "advanced" && batterScope === "currentgame") {
-    visibleBatterRows = batterLeverageRows(player.id, "currentgame");
+    visibleBatterRows = [...visibleBatterRows, ...batterLeverageRows(player.id, "currentgame")];
   } else if (batterView === "advanced" && batterScope === "series") {
     visibleBatterRows = [...visibleBatterRows, ...batterLeverageRows(player.id, "series")];
   }
