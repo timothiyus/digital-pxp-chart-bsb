@@ -1020,6 +1020,8 @@ textarea {
   box-shadow: 0 18px 42px rgba(21, 35, 30, 0.26);
   color: var(--ink);
   font-size: 0.82rem;
+  max-height: min(420px, calc(100vh - 16px));
+  overflow: auto;
 }
 
 .stat-explanation-popover strong {
@@ -1031,6 +1033,19 @@ textarea {
   margin: 0;
   color: var(--muted);
   line-height: 1.35;
+}
+
+.stat-explanation-popover ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 17px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.stat-explanation-popover li {
+  padding-left: 2px;
 }
 
 .stat-explanation-popover b {
@@ -1448,8 +1463,9 @@ textarea {
   grid-column: 1;
   grid-row: 1 / 4;
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 5px;
-  align-content: start;
+  align-content: stretch;
   justify-items: start;
   min-width: 0;
   padding: 8px 10px;
@@ -1459,9 +1475,16 @@ textarea {
   text-align: left;
 }
 
+.stat-hud[data-hud-mode="compact"] .compact-player-name-block {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  min-width: 0;
+}
+
 .stat-hud[data-hud-mode="compact"] .compact-player-identity strong {
   color: var(--ink);
-  font-size: 1.02rem;
+  font-size: 1.18rem;
   font-weight: 950;
   overflow: visible;
   text-overflow: clip;
@@ -1472,14 +1495,23 @@ textarea {
   display: none;
 }
 
-.stat-hud[data-hud-mode="compact"] .compact-player-identity span {
+.stat-hud[data-hud-mode="compact"] .compact-player-name-block span {
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-player-name-block .compact-pronunciation {
+  min-height: 0.9rem;
+  color: var(--team-primary, var(--active-team-primary, var(--accent-strong)));
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-player-name-block .compact-pronunciation.is-empty {
+  opacity: 0;
 }
 
 .stat-hud[data-hud-mode="compact"] .compact-player-identity .hud-scope-toggle,
@@ -1498,11 +1530,13 @@ textarea {
 
 .stat-hud[data-hud-mode="compact"] .compact-player-identity .hud-control-row {
   align-self: stretch;
+  align-items: end;
 }
 
 .stat-hud[data-hud-mode="compact"] .compact-batter-line span,
 .stat-hud[data-hud-mode="compact"] .compact-analytics-line span,
-.stat-hud[data-hud-mode="compact"] .compact-storyline-line span {
+.stat-hud[data-hud-mode="compact"] .compact-storyline-line span,
+.stat-hud[data-hud-mode="compact"] .compact-storyline-line .hud-context-chip {
   min-width: 0;
   padding: 3px 5px;
   border: 1px solid var(--line);
@@ -1511,6 +1545,45 @@ textarea {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-storyline-line .hud-context-chip {
+  display: grid;
+  gap: 1px;
+  align-content: center;
+  min-height: 31px;
+  color: var(--team-primary, var(--active-team-primary, var(--accent-strong)));
+  appearance: none;
+  font-family: inherit;
+  font-weight: 850;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-storyline-line .hud-context-chip:hover,
+.stat-hud[data-hud-mode="compact"] .compact-storyline-line .hud-context-chip:focus {
+  border-color: var(--team-primary, var(--active-team-primary, var(--accent)));
+  outline: none;
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-storyline-line .hud-context-chip b,
+.stat-hud[data-hud-mode="compact"] .compact-storyline-line .hud-context-chip i {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-storyline-line .hud-context-chip b {
+  color: var(--ink);
+  font-size: 0.52rem;
+}
+
+.stat-hud[data-hud-mode="compact"] .compact-storyline-line .hud-context-chip i {
+  color: var(--muted);
+  font-size: 0.46rem;
 }
 
 .stat-hud[data-hud-mode="compact"] .compact-notes-box {
@@ -5341,12 +5414,12 @@ body.player-modal-open::before {
   }
 
   .stat-hud[data-hud-mode="compact"] .compact-player-identity strong {
-    font-size: 0.9rem;
+    font-size: 0.98rem;
     line-height: 1.02;
   }
 
   .stat-hud[data-hud-mode="compact"] .compact-player-identity span {
-    font-size: 0.58rem;
+    font-size: 0.64rem;
   }
 
   .stat-hud[data-hud-mode="compact"] .compact-batter-line {
@@ -5369,7 +5442,8 @@ body.player-modal-open::before {
 
   .stat-hud[data-hud-mode="compact"] .compact-batter-line span,
   .stat-hud[data-hud-mode="compact"] .compact-analytics-line span,
-  .stat-hud[data-hud-mode="compact"] .compact-storyline-line span {
+  .stat-hud[data-hud-mode="compact"] .compact-storyline-line span,
+  .stat-hud[data-hud-mode="compact"] .compact-storyline-line .hud-context-chip {
     padding: 3px 4px;
   }
 
@@ -5639,7 +5713,7 @@ body.player-modal-open::before {
   }
 
   .stat-hud[data-hud-mode="compact"] .compact-player-identity strong {
-    font-size: 0.86rem;
+    font-size: 0.98rem;
   }
 
   .stat-hud[data-hud-mode="compact"] .compact-batter-line {
@@ -6115,11 +6189,11 @@ body.player-modal-open::before {
   }
 
   .stat-hud[data-hud-mode="compact"] .compact-player-identity strong {
-    font-size: 0.96rem;
+    font-size: 1.08rem;
   }
 
   .stat-hud[data-hud-mode="compact"] .compact-player-identity span {
-    font-size: 0.68rem;
+    font-size: 0.72rem;
   }
 
   .stat-hud[data-hud-mode="compact"] .compact-batter-line {
@@ -6147,7 +6221,8 @@ body.player-modal-open::before {
 
   .stat-hud[data-hud-mode="compact"] .compact-batter-line span,
   .stat-hud[data-hud-mode="compact"] .compact-analytics-line span,
-  .stat-hud[data-hud-mode="compact"] .compact-storyline-line span {
+  .stat-hud[data-hud-mode="compact"] .compact-storyline-line span,
+  .stat-hud[data-hud-mode="compact"] .compact-storyline-line .hud-context-chip {
     padding: 3px 5px;
   }
 

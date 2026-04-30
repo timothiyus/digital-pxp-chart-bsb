@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v24";
+const APP_VERSION = "v25";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -3642,6 +3642,107 @@ function recentPaText(events, limit = 4) {
   return items.length ? items.join(" / ") : "No PA yet";
 }
 
+function inningOrdinal(value) {
+  const n = Math.max(1, Number(value || 1));
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th");
+  return `${n}${suffix} inning`;
+}
+
+function scoreCellPitchTotal(cell = {}) {
+  return (cell.pitchDeltas || []).filter((pitch) => pitch.type !== "balk").length;
+}
+
+function scoreCellPlayText(cell = {}, event = {}) {
+  const contextText = String(event.context || "").split(": ").pop();
+  return cell.notation || cell.result || contextText || resultLabel(event.result) || "PA";
+}
+
+function completedPaItemsForPlayer(playerId, game = activeGame()) {
+  if (!playerId || !game) return [];
+  const eventsById = new Map((state.events || []).filter((event) => eventBelongsToGame(event, game.id)).map((event) => [event.id, event]));
+  return Object.values(game.charts || {})
+    .flatMap((chart) => chartEventCells(chart, eventsById).filter((item) => item.event?.playerId === playerId))
+    .sort(scoreCellSortChronological);
+}
+
+function paDetailText(item) {
+  const parsed = parseScoreCellKey(item.key);
+  const inning = cellActualInning(item.cell, parsed.inning);
+  const details = [];
+  const count = item.cell?.count || item.event?.count || "";
+  const pitches = scoreCellPitchTotal(item.cell);
+  const rbi = toNumber(item.event?.rbi || item.cell?.rbi);
+  if (count) details.push(`${count} count`);
+  if (pitches) details.push(`${pitches} total ${pitches === 1 ? "pitch" : "pitches"}`);
+  if (rbi) details.push(`${rbi} RBI`);
+  if (item.cell?.runnerNote) details.push(item.cell.runnerNote);
+  return `${inningOrdinal(inning)}: ${scoreCellPlayText(item.cell, item.event)}${details.length ? `, ${details.join(", ")}` : ""}`;
+}
+
+function batterLineSummary(line = {}) {
+  const extras = [];
+  if (line.RBI) extras.push(`${line.RBI} RBI`);
+  if (line.BB) extras.push(`${line.BB} BB`);
+  if (line.HBP) extras.push(`${line.HBP} HBP`);
+  if (line.SO) extras.push(`${line.SO} K`);
+  return `${line.H || 0}/${line.AB || 0}${extras.length ? `, ${extras.join(", ")}` : ""}, ${line.PA || 0} PA`;
+}
+
+function currentPaDetailForPlayer(player) {
+  if (!player || playerAtSlot(getCurrentSlot())?.id !== player.id) return "This player is not the active batter right now.";
+  const location = getActiveCellLocation();
+  const cell = activeChart().scorecard[location.key] || {};
+  const details = [`Count ${cell.count || "0-0"}`];
+  const pitches = scoreCellPitchTotal(cell);
+  details.push(`${pitches} total ${pitches === 1 ? "pitch" : "pitches"}`);
+  if (cell.notation || cell.result) details.unshift(scoreCellPlayText(cell, {}));
+  if (toNumber(cell.rbi)) details.push(`${toNumber(cell.rbi)} RBI selected`);
+  return details.join(", ");
+}
+
+function recentGameDetailText(item) {
+  const line = item.line || {};
+  const opponentText = item.opponent ? ` vs ${item.opponent}` : "";
+  const extras = [];
+  if (line.RBI) extras.push(`${line.RBI} RBI`);
+  if (line.BB) extras.push(`${line.BB} BB`);
+  if (line.SO) extras.push(`${line.SO} K`);
+  if (line.HR) extras.push(`${line.HR} HR`);
+  if (line.SB) extras.push(`${line.SB} SB`);
+  if (line.CS) extras.push(`${line.CS} CS`);
+  return `${item.label}${opponentText}: ${line.H || 0}/${line.AB || 0}${extras.length ? `, ${extras.join(", ")}` : ""}`;
+}
+
+function hudContextInfo(playerId, type) {
+  const player = playerById(playerId);
+  const { line } = tonightLineForPlayer(playerId);
+  const paItems = completedPaItemsForPlayer(playerId, activeGame());
+  if (type === "current") {
+    return {
+      title: "Current PA Info",
+      summary: `Today: ${batterLineSummary(line)}.`,
+      items: [
+        currentPaDetailForPlayer(player),
+        ...(paItems.length ? paItems.map(paDetailText) : ["No completed PA in this game yet."])
+      ]
+    };
+  }
+  if (type === "previous") {
+    const previous = paItems.slice(-6);
+    return {
+      title: "Previous At-Bat Info",
+      summary: previous.length ? "Most recent completed plate appearances in this game." : "No previous completed plate appearance in this game yet.",
+      items: previous.length ? previous.map(paDetailText) : ["Once a result is entered, this will show inning, play, count, pitch total, RBI, and runner notes."]
+    };
+  }
+  const recentGames = recentGamesForPlayer(playerId).slice(0, 6);
+  return {
+    title: "Recent Game Info",
+    summary: recentGames.length ? "Recent charted games and imported box-score lines." : "No recent game line is available yet.",
+    items: recentGames.length ? recentGames.map(recentGameDetailText) : ["Chart another game or import a box score to populate this view."]
+  };
+}
+
 function hudStatClass(value, type = "neutral") {
   if (value === undefined || value === null || value === "" || value === "-" || String(value).includes("--")) return "stat-neutral";
   const n = toNumber(value);
@@ -3652,6 +3753,16 @@ function hudStatClass(value, type = "neutral") {
   if (type === "iso") return n >= 0.18 ? "stat-good" : n >= 0.1 ? "stat-average" : "stat-bad";
   if (type === "bbp") return n >= 10 ? "stat-good" : n >= 6 ? "stat-average" : "stat-bad";
   if (type === "kp") return n <= 15 ? "stat-good" : n <= 25 ? "stat-average" : "stat-bad";
+  if (type === "pkp") return n >= 25 ? "stat-good" : n >= 18 ? "stat-average" : "stat-bad";
+  if (type === "pkbbp") return n >= 18 ? "stat-good" : n >= 10 ? "stat-average" : "stat-bad";
+  if (type === "pbbp") return n <= 6 ? "stat-good" : n <= 10 ? "stat-average" : "stat-bad";
+  if (type === "pk9") return n >= 9 ? "stat-good" : n >= 6 ? "stat-average" : "stat-bad";
+  if (type === "pbb9") return n <= 3 ? "stat-good" : n <= 5 ? "stat-average" : "stat-bad";
+  if (type === "ph9") return n <= 7 ? "stat-good" : n <= 10 ? "stat-average" : "stat-bad";
+  if (type === "phr9") return n <= 0.8 ? "stat-good" : n <= 1.5 ? "stat-average" : "stat-bad";
+  if (type === "strikep") return n >= 64 ? "stat-good" : n >= 58 ? "stat-average" : "stat-bad";
+  if (type === "ballp") return n <= 32 ? "stat-good" : n <= 38 ? "stat-average" : "stat-bad";
+  if (type === "ratioHigh") return n >= 3 ? "stat-good" : n >= 1.8 ? "stat-average" : "stat-bad";
   if (type === "era") return n <= 3 ? "stat-good" : n <= 5 ? "stat-average" : "stat-bad";
   if (type === "whip") return n <= 1.25 ? "stat-good" : n <= 1.6 ? "stat-average" : "stat-bad";
   if (type === "baa") return n <= 0.23 ? "stat-good" : n <= 0.3 ? "stat-average" : "stat-bad";
@@ -3755,7 +3866,28 @@ const statExplanationData = {
   ONE23I: { title: "1-2-3 Inning", formula: "A pitcher faces three batters in an inning and allows no traffic.", example: "Example: three up, three down adds one 123I." },
   TR: { title: "Traffic Rate", formula: "Baserunners allowed divided by innings pitched.", example: "Example: 6 baserunners in 4 IP is a 1.50 traffic rate." },
   PSBF: { title: "P/S/B/F", formula: "Total pitches, strikes, balls, and fouls in the current game.", example: "Example: 72/45/27/12 means 72 pitches, 45 strikes, 27 balls, 12 fouls." },
-  IP: { title: "IP", formula: "Innings pitched, shown as innings.outs.", example: "Example: 5.2 means five innings and two outs, not five and two-thirds as a decimal." }
+  IP: { title: "IP", formula: "Innings pitched, shown as innings.outs.", example: "Example: 5.2 means five innings and two outs, not five and two-thirds as a decimal." },
+  PLAYERS: { title: "Players", formula: "Number of roster players currently included for that team.", example: "Example: 31 roster cards gives 31 players." },
+  STAFFERA: { title: "Staff ERA", formula: "Team earned runs allowed times 9, divided by team innings pitched.", example: "Example: 12 ER in 36 IP gives a 3.00 staff ERA." },
+  PAVG: { title: "P AVG", formula: "Opponent batting average against the pitching staff.", example: "Example: 40 hits allowed in 160 at-bats against is .250." },
+  SV: { title: "SV", formula: "Pitching saves.", example: "Example: closing a qualifying win while preserving the lead adds one save." },
+  CG: { title: "CG", formula: "Complete games pitched.", example: "Example: one pitcher throwing every inning of a regulation game adds one CG." },
+  SHO: { title: "SHO", formula: "Shutouts pitched or credited in the imported pitching stats.", example: "Example: a complete game with no runs allowed can add one SHO." },
+  BK: { title: "BK", formula: "Balks charged to the pitcher or pitching staff.", example: "Example: a balk that advances runners adds one BK." },
+  CS: { title: "CS", formula: "Times caught stealing as a runner.", example: "Example: thrown out trying to steal second adds one CS." },
+  SBA: { title: "SBA", formula: "Stolen-base attempts against the defense or catcher, depending on the imported source.", example: "Example: if opponents try to steal 12 times, SBA is 12." },
+  RCS: { title: "RCS", formula: "Runners caught stealing by the defense or catcher.", example: "Example: throwing out three attempted steals gives 3 RCS." },
+  RCSP: { title: "RCS%", formula: "Runners caught stealing divided by stolen-base attempts against.", example: "Example: 3 caught stealing on 12 attempts against is 25.0%." },
+  FPCT: { title: "F%", formula: "(Total chances minus errors) divided by total chances.", example: "Example: 100 chances and 4 errors gives a .960 fielding percentage." },
+  TC: { title: "TC", formula: "Total chances: putouts plus assists plus errors.", example: "Example: 40 PO, 55 A, and 5 E gives 100 TC." },
+  PO: { title: "PO", formula: "Putouts recorded by the fielder or team.", example: "Example: catching a fly ball adds one PO." },
+  ASSIST: { title: "A", formula: "Fielding assists.", example: "Example: a shortstop throw to first on a groundout adds one assist." },
+  FIELDERR: { title: "E", formula: "Fielding errors.", example: "Example: a misplay that allows a batter or runner to advance can add one E." },
+  FDP: { title: "DP", formula: "Double plays turned by the fielder or team.", example: "Example: a 6-4-3 double play adds one DP." },
+  PB: { title: "PB", formula: "Passed balls charged to the catcher or team.", example: "Example: a catchable pitch that gets by and advances a runner can add one PB." },
+  FCI: { title: "CI", formula: "Catcher interference.", example: "Example: batter awarded first on catcher interference adds one CI." },
+  SFA: { title: "SFA", formula: "Sacrifice flies allowed by a pitcher or staff.", example: "Example: a fly ball that scores a runner and is scored SF adds one SFA." },
+  SHA: { title: "SHA", formula: "Sacrifice hits or bunts allowed by a pitcher or staff.", example: "Example: a scored sacrifice bunt against the pitcher adds one SHA." }
 };
 
 function statExplanationKey(label) {
@@ -3818,6 +3950,27 @@ function statExplanationKey(label) {
     HBP: "HBP",
     WP: "WP",
     BK: "BK",
+    PLAYERS: "PLAYERS",
+    STAFFERA: "STAFFERA",
+    PAVG: "PAVG",
+    SV: "SV",
+    CG: "CG",
+    SHO: "SHO",
+    CS: "CS",
+    SBA: "SBA",
+    RCS: "RCS",
+    RCSPCT: "RCSP",
+    FPCT: "FPCT",
+    F: "FPCT",
+    TC: "TC",
+    PO: "PO",
+    A: "ASSIST",
+    E: "FIELDERR",
+    DP: "FDP",
+    PB: "PB",
+    CI: "FCI",
+    SFA: "SFA",
+    SHA: "SHA",
     PIP: "PIP",
     PBF: "PBF",
     K9: "K9",
@@ -4205,15 +4358,15 @@ function livePitcherAdvancedRows(line, context) {
   const outs = pitchingOuts(line);
   const traffic = toNumber(context.traffic) || toNumber(line.H) + toNumber(line.BB) + toNumber(line.HBP);
   const pills = [
-    { label: "K%", value: pitchingPercentage(line.K, line.BF), type: "kp", explain: "PKP" },
-    { label: "BB%", value: pitchingPercentage(line.BB, line.BF), type: "bbp", explain: "PBBP" },
-    { label: "K-BB%", value: pitchingPercentageDiff(line.K, line.BF, line.BB, line.BF), type: "kp", explain: "KBBP" },
+    { label: "K%", value: pitchingPercentage(line.K, line.BF), type: "pkp", explain: "PKP" },
+    { label: "BB%", value: pitchingPercentage(line.BB, line.BF), type: "pbbp", explain: "PBBP" },
+    { label: "K-BB%", value: pitchingPercentageDiff(line.K, line.BF, line.BB, line.BF), type: "pkbbp", explain: "KBBP" },
     { label: "P/IP", value: formatPerInning(line.pitches, outs), explain: "PIP" },
     { label: "P/BF", value: formatRatioValue(line.pitches, line.BF), explain: "PBF" },
-    { label: "Strike%", value: pitchingPercentage(line.strikes, line.pitches), type: "kp", explain: "STRIKEP" },
-    { label: "Ball%", value: pitchingPercentage(line.balls, line.pitches), explain: "BALLP" },
+    { label: "Strike%", value: pitchingPercentage(line.strikes, line.pitches), type: "strikep", explain: "STRIKEP" },
+    { label: "Ball%", value: pitchingPercentage(line.balls, line.pitches), type: "ballp", explain: "BALLP" },
     { label: "Foul%", value: pitchingPercentage(line.fouls, line.pitches), explain: "FOULP" },
-    { label: "2-Strike Pitch%", value: pitchingPercentage(line.twoStrikePitches, line.pitches), explain: "G2STR" },
+    { label: "2-Strike Pitch%", value: pitchingPercentage(line.twoStrikePitches, line.pitches), type: "strikep", explain: "G2STR" },
     { label: "LRA", value: `${context.lra || 0}/${context.lraOpps || 0}`, explain: "LRA" },
     { label: "FBoIR", value: `${context.fboir || 0}/${context.fboirOpps || 0}`, explain: "FBOIR" },
     { label: "123I", value: context.oneTwoThree || 0, explain: "ONE23I" },
@@ -4230,7 +4383,7 @@ function seasonPitcherBasicRows(stats) {
     [
       { label: "IP", value: formatIpValue(stats.IP) },
       { label: "ERA", value: hasIp ? formatFixed(stats.ERA, 2) : "-", type: "era" },
-      { label: "W/L", value: `${stats.W || 0}/${stats.L || 0}` },
+      { label: "W/L", value: `${stats.W || 0}/${stats.L || 0}`, explain: "WL" },
       { label: "App/GS", value: `${apps}/${stats.GS || 0}`, explain: "APP" },
       { label: "H", value: stats.P_H || 0, explain: "PH" },
       { label: "R", value: stats.P_R || 0, explain: "PR" },
@@ -4252,24 +4405,16 @@ function seasonPitcherBasicRows(stats) {
 
 function seasonPitcherAdvancedRows(stats) {
   const outs = ipToOuts(stats.IP);
-  const hasPitchTotals = toNumber(stats.Pitches) > 0;
   const pills = [
-    { label: "K/9", value: formatPerNine(stats.P_SO, outs), type: "kp", explain: "K9" },
-    { label: "BB/9", value: formatPerNine(stats.P_BB, outs), type: "bbp", explain: "BB9" },
-    { label: "H/9", value: formatPerNine(stats.P_H, outs), explain: "H9" },
-    { label: "HR/9", value: formatPerNine(stats.P_HR, outs), explain: "HR9" },
-    { label: "K%", value: pitchingPercentage(stats.P_SO, stats.BF), type: "kp", explain: "PKP" },
-    { label: "BB%", value: pitchingPercentage(stats.P_BB, stats.BF), type: "bbp", explain: "PBBP" },
-    { label: "K/BB", value: formatRatioValue(stats.P_SO, stats.P_BB), explain: "KBB" }
+    { label: "K/9", value: formatPerNine(stats.P_SO, outs), type: "pk9", explain: "K9" },
+    { label: "BB/9", value: formatPerNine(stats.P_BB, outs), type: "pbb9", explain: "BB9" },
+    { label: "H/9", value: formatPerNine(stats.P_H, outs), type: "ph9", explain: "H9" },
+    { label: "HR/9", value: formatPerNine(stats.P_HR, outs), type: "phr9", explain: "HR9" },
+    { label: "K%", value: pitchingPercentage(stats.P_SO, stats.BF), type: "pkp", explain: "PKP" },
+    { label: "BB%", value: pitchingPercentage(stats.P_BB, stats.BF), type: "pbbp", explain: "PBBP" },
+    { label: "K/BB", value: formatRatioValue(stats.P_SO, stats.P_BB), type: "ratioHigh", explain: "KBB" }
   ];
-  if (hasPitchTotals) {
-    pills.push(
-      { label: "P/IP", value: formatPerInning(stats.Pitches, outs), explain: "PIP" },
-      { label: "P/BF", value: formatRatioValue(stats.Pitches, stats.BF), explain: "PBF" },
-      { label: "Strike%", value: pitchingPercentage(stats.Strikes, stats.Pitches), type: "kp", explain: "STRIKEP" }
-    );
-  }
-  return chunkPills(pills, 5);
+  return [pills.slice(0, 3), pills.slice(3)];
 }
 
 function pitcherHudRows({ scope, view, liveLine, pitcherStats, pitcherId }) {
@@ -4461,7 +4606,7 @@ function teamSnapshotGroups(side) {
     {
       title: "Batting",
       pills: [
-        { label: "Players", value: players.length },
+        { label: "Players", value: players.length, explain: "PLAYERS" },
         { label: "AVG", value: stats.AB ? battingRates.AVG : "-", type: "avg" },
         { label: "OBP", value: obpDenom ? battingRates.OBP : "-", type: "obp" },
         { label: "SLG%", value: stats.AB ? battingRates.SLG : "-", type: "slg" },
@@ -4470,12 +4615,12 @@ function teamSnapshotGroups(side) {
         { label: "AB", value: stats.AB },
         { label: "R", value: stats.R, type: "count" },
         { label: "H", value: stats.H, type: "count" },
-        { label: "2B", value: stats["2B"], type: "count" },
-        { label: "3B", value: stats["3B"], type: "count" },
-        { label: "HR", value: stats.HR, type: "count" },
+        { label: "2B", value: stats["2B"], type: "count", explain: "TWOB" },
+        { label: "3B", value: stats["3B"], type: "count", explain: "THREEB" },
+        { label: "HR", value: stats.HR, type: "count", explain: "HRCOUNT" },
         { label: "RBI", value: stats.RBI, type: "count" },
         { label: "BB", value: stats.BB },
-        { label: "SO", value: stats.SO },
+        { label: "SO", value: stats.SO, explain: "KCOUNT" },
         { label: "HBP", value: stats.HBP },
         { label: "K%", value: pa ? percentValue(stats.SO, pa) : "-", type: "kp" },
         { label: "BB%", value: pa ? percentValue(stats.BB, pa) : "-", type: "bbp" },
@@ -4486,45 +4631,45 @@ function teamSnapshotGroups(side) {
       title: "Pitching",
       pills: [
         { label: "IP", value: hasStaffPitching ? formatIpValue(stats.IP) : "-" },
-        { label: "Staff ERA", value: hasStaffPitching && ipToOuts(stats.IP) ? formatFixed(stats.ERA, 2) : "-", type: "era" },
+        { label: "Staff ERA", value: hasStaffPitching && ipToOuts(stats.IP) ? formatFixed(stats.ERA, 2) : "-", type: "era", explain: "STAFFERA" },
         { label: "WHIP", value: hasStaffPitching && ipToOuts(stats.IP) ? formatFixed(stats.WHIP, 2) : "-", type: "whip" },
-        { label: "P AVG", value: hasStaffPitching && (stats.P_AB || stats.BF) ? formatRate(toNumber(stats.BAA)) : "-", type: "baa" },
-        { label: "SV", value: stats.SV || 0 },
-        { label: "CG", value: stats.CG || 0 },
-        { label: "SHO", value: stats.SHO || 0 },
-        { label: "H", value: stats.P_H || 0 },
-        { label: "R", value: stats.P_R || 0 },
-        { label: "ER", value: stats.P_ER || 0 },
-        { label: "BB", value: stats.P_BB || 0 },
-        { label: "SO", value: stats.P_SO || 0 },
-        { label: "HR", value: stats.P_HR || 0 },
-        { label: "HBP", value: stats.P_HBP || 0 },
-        { label: "WP", value: stats.P_WP || 0 },
-        { label: "BK", value: stats.P_BK || 0 }
+        { label: "P AVG", value: hasStaffPitching && (stats.P_AB || stats.BF) ? formatRate(toNumber(stats.BAA)) : "-", type: "baa", explain: "PAVG" },
+        { label: "SV", value: stats.SV || 0, explain: "SV" },
+        { label: "CG", value: stats.CG || 0, explain: "CG" },
+        { label: "SHO", value: stats.SHO || 0, explain: "SHO" },
+        { label: "H", value: stats.P_H || 0, explain: "PH" },
+        { label: "R", value: stats.P_R || 0, explain: "PR" },
+        { label: "ER", value: stats.P_ER || 0, explain: "ER" },
+        { label: "BB", value: stats.P_BB || 0, explain: "PBB" },
+        { label: "SO", value: stats.P_SO || 0, explain: "PSO" },
+        { label: "HR", value: stats.P_HR || 0, explain: "PHR" },
+        { label: "HBP", value: stats.P_HBP || 0, explain: "PHBP" },
+        { label: "WP", value: stats.P_WP || 0, explain: "PWP" },
+        { label: "BK", value: stats.P_BK || 0, explain: "PBK" }
       ]
     },
     {
       title: "Base Running",
       pills: [
-        { label: "SB", value: stats.SB || 0 },
-        { label: "CS", value: stats.CS || 0 },
-        { label: "SB%", value: sbAttempts ? percentValue(stats.SB, sbAttempts) : "-" },
-        { label: "SBA", value: stats.SBA || 0 },
-        { label: "RCS", value: stats.RCS || 0 },
-        { label: "RCS%", value: caughtStealAttempts ? percentValue(stats.RCS, caughtStealAttempts) : "-" }
+        { label: "SB", value: stats.SB || 0, explain: "SBCOUNT" },
+        { label: "CS", value: stats.CS || 0, explain: "CS" },
+        { label: "SB%", value: sbAttempts ? percentValue(stats.SB, sbAttempts) : "-", explain: "SBP" },
+        { label: "SBA", value: stats.SBA || 0, explain: "SBA" },
+        { label: "RCS", value: stats.RCS || 0, explain: "RCS" },
+        { label: "RCS%", value: caughtStealAttempts ? percentValue(stats.RCS, caughtStealAttempts) : "-", explain: "RCSP" }
       ]
     },
     {
       title: "Fielding",
       pills: [
-        { label: "F%", value: fieldingPct },
-        { label: "TC", value: stats.TC || 0 },
-        { label: "PO", value: stats.PO || 0 },
-        { label: "A", value: stats.A || 0 },
-        { label: "E", value: errors },
-        { label: "DP", value: stats.DP || 0 },
-        { label: "PB", value: stats.PB || 0 },
-        { label: "CI", value: stats.CI || 0 }
+        { label: "F%", value: fieldingPct, explain: "FPCT" },
+        { label: "TC", value: stats.TC || 0, explain: "TC" },
+        { label: "PO", value: stats.PO || 0, explain: "PO" },
+        { label: "A", value: stats.A || 0, explain: "ASSIST" },
+        { label: "E", value: errors, explain: "FIELDERR" },
+        { label: "DP", value: stats.DP || 0, explain: "FDP" },
+        { label: "PB", value: stats.PB || 0, explain: "PB" },
+        { label: "CI", value: stats.CI || 0, explain: "FCI" }
       ]
     }
   ];
@@ -4609,6 +4754,7 @@ function applyHudStatScopeFromEvent(event) {
   const scope = button.dataset.hudStatScope;
   if (!["batter", "pitcher"].includes(kind) || !["overall", "conference", "nonconference", "currentgame", "series"].includes(scope)) return false;
   closeStatExplanation();
+  closeHudContextPopover();
   state.hudStatScopes = state.hudStatScopes || { batter: "overall", pitcher: "overall" };
   state.hudStatScopes[kind] = scope;
   saveState();
@@ -4624,6 +4770,7 @@ function applyHudStatViewFromEvent(event) {
   const view = button.dataset.hudStatView;
   if (!["batter", "pitcher"].includes(kind) || !["basic", "advanced"].includes(view)) return false;
   closeStatExplanation();
+  closeHudContextPopover();
   state.hudStatViews = state.hudStatViews || { batter: "basic", pitcher: "basic" };
   state.hudStatViews[kind] = view;
   saveState();
@@ -4636,6 +4783,25 @@ function limitWords(text, limit = 250) {
   const words = String(text || "").trim().split(/\s+/).filter(Boolean);
   if (!words.length) return "No notes provided";
   return words.length > limit ? `${words.slice(0, limit).join(" ")}...` : words.join(" ");
+}
+
+function hudContextButtonsHtml(player, tonightSummary, events, recentGameText) {
+  const playerId = escapeHtml(player?.id || "");
+  const previousSummary = recentPaText(events, 2);
+  return `
+    <button type="button" class="hud-context-chip" data-hud-context="current" data-player-id="${playerId}" title="See current PA info">
+      <b>See current PA info</b>
+      <i>${escapeHtml(tonightSummary)}</i>
+    </button>
+    <button type="button" class="hud-context-chip" data-hud-context="previous" data-player-id="${playerId}" title="See previous at-bat info">
+      <b>See previous at-bat info</b>
+      <i>${escapeHtml(previousSummary)}</i>
+    </button>
+    <button type="button" class="hud-context-chip" data-hud-context="recent" data-player-id="${playerId}" title="See recent game info">
+      <b>See recent game info</b>
+      <i>${escapeHtml(recentGameText)}</i>
+    </button>
+  `;
 }
 
 function batterDetailHtml() {
@@ -4689,23 +4855,24 @@ function batterDetailHtml() {
   const tonightSummary = line.PA > 0
     ? `${line.H}/${line.AB}, ${line.RBI} RBI, ${line.BB} BB, ${line.SO} K`
     : `0 PA tonight`;
+  const contextButtons = hudContextButtonsHtml(player, tonightSummary, events, recentGameText);
 
   return `
     <div class="batter-detail-card" style="${teamColorStyle(player.side || state.activeSide)}">
       <div class="compact-player-identity">
-        <strong>${escapeHtml(displayName)}</strong>
-        ${player.pronunciation ? `<span>${escapeHtml(player.pronunciation)}</span>` : ""}
-        <span>${escapeHtml(playerMeta)}</span>
-        <span>${escapeHtml(player.hometown || "No hometown provided")}</span>
+        <div class="compact-player-name-block">
+          <strong>${escapeHtml(displayName)}</strong>
+          ${player.pronunciation ? `<span class="compact-pronunciation">${escapeHtml(player.pronunciation)}</span>` : `<span class="compact-pronunciation is-empty">&nbsp;</span>`}
+          <span>${escapeHtml(playerMeta)}</span>
+          <span>${escapeHtml(player.hometown || "No hometown provided")}</span>
+        </div>
         ${hudControlsHtml("batter", player, player.side || state.activeSide)}
       </div>
       <div class="compact-batter-line">
         ${visibleBatterRowsHtml}
       </div>
       <div class="compact-storyline-line">
-        <span class="hud-context-chip">Today: ${escapeHtml(tonightSummary)}</span>
-        <span class="hud-context-chip">Prev: ${escapeHtml(recentPaText(events))}</span>
-        <span class="hud-context-chip">Recent: ${escapeHtml(recentGameText)}</span>
+        ${contextButtons}
       </div>
       <div class="compact-notes-box">${escapeHtml(limitWords(player.notes, 250))}</div>
       <div class="batter-detail-head">
@@ -6705,18 +6872,25 @@ function importWorkspaceJson(text, filename = "workspace JSON") {
 }
 
 let activeStatExplanationAnchor = null;
+let activeHudContextAnchor = null;
 
 function closeStatExplanation() {
   document.querySelector("#statExplanationPopover")?.remove();
   activeStatExplanationAnchor = null;
 }
 
+function closeHudContextPopover() {
+  document.querySelector("#hudContextPopover")?.remove();
+  activeHudContextAnchor = null;
+}
+
 function positionStatExplanation(popover, anchor) {
   const rect = anchor.getBoundingClientRect();
   const width = Math.min(320, window.innerWidth - 16);
   const left = Math.min(window.innerWidth - width - 8, Math.max(8, rect.left));
-  const top = rect.bottom + 8 > window.innerHeight - 160
-    ? Math.max(8, rect.top - 142)
+  const height = Math.min(popover.offsetHeight || 160, window.innerHeight - 16);
+  const top = rect.bottom + 8 + height > window.innerHeight
+    ? Math.max(8, rect.top - height - 8)
     : rect.bottom + 8;
   popover.style.left = `${left}px`;
   popover.style.top = `${top}px`;
@@ -6733,6 +6907,7 @@ function toggleStatExplanation(anchor) {
     return true;
   }
   closeStatExplanation();
+  closeHudContextPopover();
   const popover = document.createElement("div");
   popover.id = "statExplanationPopover";
   popover.className = "stat-explanation-popover";
@@ -6744,6 +6919,34 @@ function toggleStatExplanation(anchor) {
   `;
   document.body.appendChild(popover);
   activeStatExplanationAnchor = anchor;
+  positionStatExplanation(popover, anchor);
+  return true;
+}
+
+function toggleHudContextPopover(anchor) {
+  const playerId = anchor?.dataset?.playerId;
+  const type = anchor?.dataset?.hudContext;
+  if (!playerId || !type) return false;
+  const existing = document.querySelector("#hudContextPopover");
+  if (existing && activeHudContextAnchor === anchor) {
+    closeHudContextPopover();
+    return true;
+  }
+  closeHudContextPopover();
+  closeStatExplanation();
+  const info = hudContextInfo(playerId, type);
+  const popover = document.createElement("div");
+  popover.id = "hudContextPopover";
+  popover.className = "stat-explanation-popover hud-context-popover";
+  popover.innerHTML = `
+    <strong>${escapeHtml(info.title)}</strong>
+    <p>${escapeHtml(info.summary)}</p>
+    <ul>
+      ${info.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+    </ul>
+  `;
+  document.body.appendChild(popover);
+  activeHudContextAnchor = anchor;
   positionStatExplanation(popover, anchor);
   return true;
 }
@@ -7236,6 +7439,11 @@ function setupEvents() {
   });
 
   els.chartHud.addEventListener("click", (event) => {
+    const hudContext = event.target.closest("[data-hud-context]");
+    if (hudContext) {
+      toggleHudContextPopover(hudContext);
+      return;
+    }
     const statExplain = event.target.closest("[data-stat-explain]");
     if (statExplain) {
       toggleStatExplanation(statExplain);
@@ -7275,6 +7483,11 @@ function setupEvents() {
   });
 
   els.inningTotals.addEventListener("click", (event) => {
+    const hudContext = event.target.closest("[data-hud-context]");
+    if (hudContext) {
+      toggleHudContextPopover(hudContext);
+      return;
+    }
     const statExplain = event.target.closest("[data-stat-explain]");
     if (statExplain) {
       toggleStatExplanation(statExplain);
@@ -7809,6 +8022,7 @@ function setupEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && rosterEditModalOpen) closePlayerEditModal();
     if (event.key === "Escape") closeStatExplanation();
+    if (event.key === "Escape") closeHudContextPopover();
     const statExplain = event.target.closest?.("[data-stat-explain]");
     if (statExplain && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
@@ -7819,6 +8033,9 @@ function setupEvents() {
   document.body.addEventListener("click", (event) => {
     if (!event.target.closest("[data-stat-explain]") && !event.target.closest("#statExplanationPopover")) {
       closeStatExplanation();
+    }
+    if (!event.target.closest("[data-hud-context]") && !event.target.closest("#hudContextPopover")) {
+      closeHudContextPopover();
     }
     const editId = event.target.dataset.editPlayer;
     const deleteId = event.target.dataset.deletePlayer;
