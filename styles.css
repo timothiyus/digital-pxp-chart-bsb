@@ -5310,7 +5310,7 @@ body.player-modal-open::before {
   }
 
   .stat-hud[data-hud-mode="compact"] .compact-batter-line {
-    grid-template-rows: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
     gap: 3px;
     font-size: 0.56rem;
   }
@@ -5603,7 +5603,7 @@ body.player-modal-open::before {
   }
 
   .stat-hud[data-hud-mode="compact"] .compact-batter-line {
-    grid-template-rows: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
   }
 
   .stat-hud[data-hud-mode="compact"] .compact-analytics-line {

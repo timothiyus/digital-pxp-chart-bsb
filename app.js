@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v20";
+const APP_VERSION = "v21";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -3760,6 +3760,14 @@ function calculatedPercentPill(label, numerator, denominator, type = "neutral", 
   };
 }
 
+function chunkPills(pills, size) {
+  const rows = [];
+  for (let i = 0; i < pills.length; i += size) {
+    rows.push(pills.slice(i, i + size));
+  }
+  return rows;
+}
+
 const batterStatKeys = ["GP", "PA", "AB", "H", "2B", "3B", "HR", "RBI", "R", "BB", "SO", "HBP", "SF", "SB", "CS", "TB"];
 const pitcherStatKeys = ["P_GP", "IP", "ERA", "WHIP", "W", "L", "GS", "BF", "BAA", "Pitches", "P_H", "P_R", "P_ER", "P_HR", "P_BB", "P_SO", "P_BK", "P_HBP", "P_WP"];
 const nonConferenceSubtractKeys = [
@@ -3846,47 +3854,40 @@ function batterHudPills(stats, rates, advanced) {
   const singles = battingSingles(stats);
   const xbh = battingExtraBaseHits(stats);
   const totalBases = battingTotalBases(stats);
-  return [
-    [
-      [
-        { label: "PA", value: pa },
-        { label: "AB", value: stats.AB || 0 },
-        { label: "AVG", value: stats.AB > 0 ? rates.AVG : "-", type: "avg" },
-        { label: "OBP", value: obpDenom > 0 ? rates.OBP : "-", type: "obp" },
-        { label: "SLG%", value: stats.AB > 0 ? rates.SLG : "-", type: "slg" },
-        { label: "OPS", value: obpDenom > 0 && stats.AB > 0 ? rates.OPS : "-", type: "ops" },
-        { label: "R", value: stats.R, type: "count" },
-        { label: "H", value: stats.H, type: "count" },
-        { label: "1B", value: singles, type: "count", explain: "ONEB" },
-        { label: "2B", value: stats["2B"], type: "count" }
-      ],
-      [
-        { label: "3B", value: stats["3B"], type: "count" },
-        { label: "HR", value: stats.HR, type: "count" },
-        { label: "RBI", value: stats.RBI, type: "count" },
-        { label: "TB", value: totalBases, type: "count" },
-        { label: "XBH", value: xbh, type: "count", explain: "XBHCOUNT" },
-        { label: "BB", value: stats.BB },
-        { label: "HBP", value: stats.HBP },
-        { label: "SO/K", value: stats.SO },
-        { label: "SB/CS", value: `${stats.SB || 0}/${stats.CS || 0}`, explain: "SB/CS" },
-        calculatedPercentPill("SB%", stats.SB, sbAttempts, "count")
-      ]
-    ],
-    [
-      [
-        { label: "K%", value: pa > 0 ? advanced.KP : "-", type: "kp" },
-        { label: "BB%", value: pa > 0 ? advanced.BBP : "-", type: "bbp" },
-        { label: "BB/K", value: advanced.BBK },
-        { label: "ISO", value: stats.AB > 0 ? advanced.ISO : "-", type: "iso" },
-        calculatedPercentPill("XBH%", xbh, stats.H, "iso"),
-        calculatedPercentPill("XBH/PA", xbh, pa, "iso"),
-        calculatedPercentPill("HR/PA", stats.HR, pa, "iso"),
-        { label: "BABIP", value: stats.AB > 0 ? advanced.BABIP : "-", type: "avg" },
-        { label: "R+RBI-HR", value: advanced.RUN_PRODUCTION, type: "count" }
-      ]
-    ]
+  const basicPills = [
+    { label: "PA", value: pa },
+    { label: "AB", value: stats.AB || 0 },
+    { label: "AVG", value: stats.AB > 0 ? rates.AVG : "-", type: "avg" },
+    { label: "OBP", value: obpDenom > 0 ? rates.OBP : "-", type: "obp" },
+    { label: "SLG%", value: stats.AB > 0 ? rates.SLG : "-", type: "slg" },
+    { label: "OPS", value: obpDenom > 0 && stats.AB > 0 ? rates.OPS : "-", type: "ops" },
+    { label: "R", value: stats.R, type: "count" },
+    { label: "H", value: stats.H, type: "count" },
+    { label: "1B", value: singles, type: "count", explain: "ONEB" },
+    { label: "2B", value: stats["2B"], type: "count" },
+    { label: "3B", value: stats["3B"], type: "count" },
+    { label: "HR", value: stats.HR, type: "count" },
+    { label: "RBI", value: stats.RBI, type: "count" },
+    { label: "TB", value: totalBases, type: "count" },
+    { label: "XBH", value: xbh, type: "count", explain: "XBHCOUNT" },
+    { label: "BB", value: stats.BB },
+    { label: "HBP", value: stats.HBP },
+    { label: "SO/K", value: stats.SO },
+    { label: "SB/CS", value: `${stats.SB || 0}/${stats.CS || 0}`, explain: "SB/CS" },
+    calculatedPercentPill("SB%", stats.SB, sbAttempts, "count")
   ];
+  const advancedPills = [
+    { label: "K%", value: pa > 0 ? advanced.KP : "-", type: "kp" },
+    { label: "BB%", value: pa > 0 ? advanced.BBP : "-", type: "bbp" },
+    { label: "BB/K", value: advanced.BBK },
+    { label: "ISO", value: stats.AB > 0 ? advanced.ISO : "-", type: "iso" },
+    calculatedPercentPill("XBH%", xbh, stats.H, "iso"),
+    calculatedPercentPill("XBH/PA", xbh, pa, "iso"),
+    calculatedPercentPill("HR/PA", stats.HR, pa, "iso"),
+    { label: "BABIP", value: stats.AB > 0 ? advanced.BABIP : "-", type: "avg" },
+    { label: "R+RBI-HR", value: advanced.RUN_PRODUCTION, type: "count" }
+  ];
+  return [chunkPills(basicPills, 5), chunkPills(advancedPills, 3)];
 }
 
 function scoreCellSortChronological(left, right) {
@@ -3901,15 +3902,8 @@ function cellRecordsOut(cell) {
   return Boolean(cell && (cell.outOverlay || ["OUT", "K", "Kc", "SF", "BI"].includes(cell.result) || ["OUT", "K", "KC", "SF", "BI"].includes(cell.actionKey)));
 }
 
-function currentGameBatterSpecialPills(playerId) {
-  const chart = activeChart();
-  const eventsById = new Map(activeGameEvents().map((event) => [event.id, event]));
-  const eventCells = Object.entries(chart.scorecard || {})
-    .map(([key, cell]) => ({ key, cell, event: eventsById.get(cell.eventId) }))
-    .filter((item) => item.event)
-    .sort(scoreCellSortChronological);
-  const outsByInning = {};
-  const line = {
+function emptyBatterLeverageLine() {
+  return {
     rispAb: 0,
     rispH: 0,
     twoOutH: 0,
@@ -3918,8 +3912,19 @@ function currentGameBatterSpecialPills(playerId) {
     twoOutObpEvents: 0,
     twoOutRbi: 0
   };
+}
 
-  eventCells.forEach((item) => {
+function chartEventCells(chart, eventsById) {
+  const eventCells = Object.entries(chart.scorecard || {})
+    .map(([key, cell]) => ({ key, cell, event: eventsById.get(cell.eventId) }))
+    .filter((item) => item.event)
+    .sort(scoreCellSortChronological);
+  return eventCells;
+}
+
+function addChartBatterLeverage(line, chart, eventsById, playerId) {
+  const outsByInning = {};
+  chartEventCells(chart, eventsById).forEach((item) => {
     const parsed = parseScoreCellKey(item.key);
     const inning = cellActualInning(item.cell, parsed.inning);
     const outsBefore = outsByInning[inning] || 0;
@@ -3941,7 +3946,20 @@ function currentGameBatterSpecialPills(playerId) {
     }
     if (cellRecordsOut(item.cell)) outsByInning[inning] = outsBefore + 1;
   });
+}
 
+function batterLeveragePills(playerId, scope = "currentgame") {
+  const line = emptyBatterLeverageLine();
+  if (!playerId) return [];
+  if (scope === "series") {
+    const eventsById = new Map((state.events || []).map((event) => [event.id, event]));
+    (state.games || []).forEach((game) => {
+      Object.values(game.charts || {}).forEach((chart) => addChartBatterLeverage(line, chart, eventsById, playerId));
+    });
+  } else {
+    const eventsById = new Map(activeGameEvents().map((event) => [event.id, event]));
+    addChartBatterLeverage(line, activeChart(), eventsById, playerId);
+  }
   return [
     { label: "AVG w/RISP", value: line.rispAb ? formatRate(line.rispH / line.rispAb) : "-", type: "avg", className: "game-context-chip" },
     { label: "2-Out PA", value: line.twoOutPa, className: "game-context-chip" },
@@ -3950,6 +3968,10 @@ function currentGameBatterSpecialPills(playerId) {
     { label: "2-Out Hit", value: line.twoOutH, type: "count", className: "game-context-chip" },
     { label: "2-Out RBI", value: line.twoOutRbi, type: "count", className: "game-context-chip" }
   ];
+}
+
+function batterLeverageRows(playerId, scope = "currentgame") {
+  return chunkPills(batterLeveragePills(playerId, scope), 3);
 }
 
 function currentPitcherPills(line) {
@@ -4372,14 +4394,15 @@ function batterDetailHtml() {
   const batterPillRows = batterHudPills(stats, rates, advanced);
   const batterScope = selectedHudStatScope("batter", player);
   const batterView = selectedHudStatView("batter");
-  const visibleBatterRows = batterView === "advanced" ? batterPillRows[1] : batterPillRows[0];
+  let visibleBatterRows = batterView === "advanced" ? batterPillRows[1] : batterPillRows[0];
+  if (batterView === "advanced" && batterScope === "currentgame") {
+    visibleBatterRows = batterLeverageRows(player.id, "currentgame");
+  } else if (batterView === "advanced" && batterScope === "series") {
+    visibleBatterRows = [...visibleBatterRows, ...batterLeverageRows(player.id, "series")];
+  }
   const visibleBatterRowsHtml = visibleBatterRows
     .map((row, index) => renderPillRow(row, `batter-season-row batter-${batterView}-row batter-row-${index + 1}`))
     .join("");
-  const showCurrentContext = batterView === "advanced" && batterScope === "currentgame";
-  const currentContextHtml = showCurrentContext
-    ? `<div class="compact-analytics-line">${currentGameBatterSpecialPills(player.id).map(statPill).join("")}</div>`
-    : "";
   const positionText = displayPosition(activeChart().lineupPositions?.[slot - 1] || player.position) || "POS --";
   const physicalText = [player.weight ? `Wt ${player.weight}` : "", player.height ? `Ht ${player.height}` : ""].filter(Boolean).join(" | ");
   const playerMeta = [positionText, player.classYear, physicalText].filter(Boolean).join(" | ");
@@ -4417,7 +4440,6 @@ function batterDetailHtml() {
       <div class="compact-batter-line">
         ${visibleBatterRowsHtml}
       </div>
-      ${currentContextHtml}
       <div class="compact-storyline-line">
         <span class="hud-context-chip">Today: ${escapeHtml(tonightSummary)}</span>
         <span class="hud-context-chip">Prev: ${escapeHtml(recentPaText(events))}</span>
