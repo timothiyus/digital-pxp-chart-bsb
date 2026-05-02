@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v38";
+const APP_VERSION = "v39";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -5593,12 +5593,11 @@ function hudNoteButtonHtml(target, { player = null, label = "Notes", buttonText 
   const noteText = target === "chart"
     ? String(activeChart().hud.chartNotes || "").trim()
     : String(player?.notes || "").trim();
-  if (!noteText) return "";
   const playerId = player?.id || "";
   const isActive = activeHudNotesOverlay?.target === target
     && (target === "chart" || activeHudNotesOverlay.playerId === playerId);
   const playerAttr = playerId ? ` data-player-id="${escapeHtml(playerId)}"` : "";
-  const preview = target === "chart" ? `<span>${escapeHtml(notePreviewText(noteText))}</span>` : "";
+  const preview = target === "chart" ? `<span>${escapeHtml(notePreviewText(noteText) || "No HUD notes yet")}</span>` : "";
   return `
     <button type="button" class="hud-note-button ${className} ${isActive ? "active" : ""}" data-hud-note-target="${escapeHtml(target)}"${playerAttr} aria-label="Open ${escapeHtml(label)}" aria-pressed="${isActive ? "true" : "false"}" title="Open ${escapeHtml(label)}">
       <strong>${escapeHtml(buttonText)}</strong>
@@ -7779,26 +7778,27 @@ function hudNotesOverlayData(target = activeHudNotesOverlay?.target, playerId = 
   if (!normalizedTarget) return null;
   if (normalizedTarget === "chart") {
     const text = String(activeChart().hud.chartNotes || "").trim();
-    if (!text) return null;
     return {
       target: "chart",
       playerId: "",
       title: "HUD Notes",
       subtitle: activeSideName(),
       text,
+      placeholder: "No HUD notes entered yet.",
       side: state.activeSide
     };
   }
 
   const player = state.players.find((item) => item.id === playerId);
   const text = String(player?.notes || "").trim();
-  if (!player || !text) return null;
+  if (!player) return null;
   return {
     target: normalizedTarget,
     playerId: player.id,
     title: normalizedTarget === "pitcher" ? "Pitcher Notes" : "Batter Notes",
     subtitle: `#${player.number || "--"} ${fullName(player)}`,
     text,
+    placeholder: `No ${normalizedTarget === "pitcher" ? "pitcher" : "batter"} notes entered yet.`,
     side: player.side || state.activeSide
   };
 }
@@ -7844,7 +7844,7 @@ function hudNotesOverlayHtml() {
         </div>
         <button type="button" class="muted" data-close-hud-notes>Close</button>
       </div>
-      <textarea readonly spellcheck="false" aria-label="${escapeHtml(data.title)} text">${escapeHtml(data.text)}</textarea>
+      <textarea readonly spellcheck="false" aria-label="${escapeHtml(data.title)} text" placeholder="${escapeHtml(data.placeholder || "")}">${escapeHtml(data.text)}</textarea>
     </div>
   `;
 }
