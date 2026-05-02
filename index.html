@@ -286,6 +286,9 @@
                 <label>Class <input id="playerClass" type="text" placeholder="Fr., So., Jr." /></label>
                 <label>Height <input id="playerHeight" type="text" placeholder="6-1" /></label>
                 <label>Weight <input id="playerWeight" type="text" placeholder="185" /></label>
+                <label>B/T <input id="playerBatsThrows" type="text" placeholder="R/R" /></label>
+                <label>High school <input id="playerHighSchool" type="text" placeholder="Garden City HS" /></label>
+                <label>Previous school <input id="playerPreviousSchool" type="text" placeholder="Previous college / transfer" /></label>
               </div>
               <div class="form-grid stats-edit">
                 <h3>Batting Stats</h3>
@@ -393,6 +396,7 @@
             <button class="data-tab active" type="button" data-data-section="gameChangerSection">GameChanger</button>
             <button class="data-tab" type="button" data-data-section="prestoSection">PrestoSports</button>
             <button class="data-tab" type="button" data-data-section="boxScoreSection">Box Scores</button>
+            <button class="data-tab" type="button" data-data-section="researchSection">Broadcast Research</button>
             <button class="data-tab" type="button" data-data-section="resourcesSection">Resources</button>
             <button class="data-tab" type="button" data-data-section="exportSection">Export</button>
             <button class="data-tab" type="button" data-data-section="maintenanceSection">Maintenance</button>
@@ -535,6 +539,25 @@
                 </label>
               </form>
               <div id="boxScoreList" class="source-list"></div>
+            </div>
+          </section>
+
+          <section id="researchSection" class="data-section">
+            <div class="panel">
+              <div class="panel-heading">
+                <h2>Broadcast Research Import</h2>
+                <span>Layered team and player notes for the HUD</span>
+              </div>
+              <p class="meta">Import one CSV per team from your research project. Rows marked <code>PLAYER</code> attach the five player layers to batter/pitcher NOTE buttons; rows marked <code>TEAM</code> attach the five team layers to the wide HUD Notes button. Leave <code>side</code> blank to import into the currently selected team, or use <code>home</code>/<code>away</code>.</p>
+              <div class="data-actions">
+                <label class="file-button">
+                  Import Research CSV
+                  <input id="researchCsvInput" type="file" accept=".csv,text/csv" />
+                </label>
+                <button id="researchTemplateButton" type="button">Download Research CSV Template</button>
+              </div>
+              <p class="meta">Core headers: <code>row_type</code>, <code>side</code>, <code>team_name</code>, <code>number</code>, <code>first</code>, <code>last</code>, five <code>layer_*</code> columns, <code>broadcast_notes</code>, <code>one_liner</code>, <code>abstract_hook</code>, <code>confidence</code>, and <code>follow_up</code>.</p>
+              <div id="researchSourceList" class="source-list"></div>
             </div>
           </section>
 

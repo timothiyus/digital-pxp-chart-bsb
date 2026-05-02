@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v39";
+const APP_VERSION = "v40";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -174,6 +174,9 @@ const els = {
   dataSourceList: document.querySelector("#dataSourceList"),
   boxScoreInput: document.querySelector("#boxScoreInput"),
   boxScoreTxtInput: document.querySelector("#boxScoreTxtInput"),
+  researchCsvInput: document.querySelector("#researchCsvInput"),
+  researchTemplateButton: document.querySelector("#researchTemplateButton"),
+  researchSourceList: document.querySelector("#researchSourceList"),
   pdfBridgeStatus: document.querySelector("#pdfBridgeStatus"),
   pdfBridgeUrlInput: document.querySelector("#pdfBridgeUrlInput"),
   pdfBridgeSaveButton: document.querySelector("#pdfBridgeSaveButton"),
@@ -216,6 +219,142 @@ function defaultGameInfo() {
     umpires: emptyUmpires(),
     notes: ""
   };
+}
+
+const broadcastResearchLayerDefinitions = [
+  {
+    key: "layer1",
+    label: "Layer 1 - Basic Player Information",
+    aliases: ["layer_1_basic_player_info", "layer_1_basic_player_information", "layer1", "layer_1", "basic_player_info", "basic_player_information"]
+  },
+  {
+    key: "layer2",
+    label: "Layer 2 - Team Role and Roster Function",
+    aliases: ["layer_2_team_role_roster_function", "layer_2_team_role_and_roster_function", "layer2", "layer_2", "team_role", "roster_function"]
+  },
+  {
+    key: "layer3",
+    label: "Layer 3 - Cross-Team and Matchup Intelligence",
+    aliases: ["layer_3_cross_team_matchup_intelligence", "layer_3_cross_team_and_matchup_intelligence", "layer3", "layer_3", "matchup_intelligence", "cross_roster_connections"]
+  },
+  {
+    key: "layer4",
+    label: "Layer 4 - Broadcast Storyline Construction",
+    aliases: ["layer_4_broadcast_storyline_construction", "layer_4_broadcast_storylines", "layer4", "layer_4", "broadcast_storylines", "storylines"]
+  },
+  {
+    key: "layer5",
+    label: "Layer 5 - Abstract Association and Color Research",
+    aliases: ["layer_5_abstract_color_research", "layer_5_abstract_association_and_color_commentary_research", "layer5", "layer_5", "abstract_color_research", "slow_inning_color"]
+  }
+];
+
+const broadcastResearchExtraDefinitions = [
+  {
+    key: "oneLiner",
+    label: "Ready-To-Say / One-Liner",
+    aliases: ["one_liner", "one_liners", "ready_to_say", "ready_to_say_sentence", "ready_to_say_sentences", "toss"]
+  },
+  {
+    key: "abstractHook",
+    label: "Possible Abstract Story Hook",
+    aliases: ["abstract_hook", "story_hook", "possible_abstract_story_hook", "color_hook", "slow_inning_hook"]
+  },
+  {
+    key: "confidence",
+    label: "Confidence",
+    aliases: ["confidence", "confidence_level", "research_confidence"]
+  },
+  {
+    key: "followUp",
+    label: "Research Follow-Up",
+    aliases: ["follow_up", "followup", "research_follow_up", "research_followup", "pronunciation_checks", "research_leads"]
+  }
+];
+
+const broadcastResearchTemplateHeaders = [
+  "row_type",
+  "side",
+  "team_name",
+  "number",
+  "first",
+  "last",
+  "name",
+  "position",
+  "class_year",
+  "height",
+  "weight",
+  "bats_throws",
+  "hometown",
+  "high_school",
+  "previous_school",
+  "pronunciation",
+  "layer_1_basic_player_info",
+  "layer_2_team_role_roster_function",
+  "layer_3_cross_team_matchup_intelligence",
+  "layer_4_broadcast_storylines",
+  "layer_5_abstract_color_research",
+  "broadcast_notes",
+  "one_liner",
+  "abstract_hook",
+  "confidence",
+  "follow_up"
+];
+
+function emptyBroadcastResearch() {
+  const layers = {};
+  const extras = {};
+  broadcastResearchLayerDefinitions.forEach(({ key }) => { layers[key] = ""; });
+  broadcastResearchExtraDefinitions.forEach(({ key }) => { extras[key] = ""; });
+  return { layers, extras };
+}
+
+function normalizeBroadcastResearch(research = {}) {
+  const normalized = emptyBroadcastResearch();
+  const sourceLayers = research?.layers || research || {};
+  const sourceExtras = research?.extras || research || {};
+  broadcastResearchLayerDefinitions.forEach(({ key }) => {
+    normalized.layers[key] = String(sourceLayers[key] ?? research?.[key] ?? "").trim();
+  });
+  broadcastResearchExtraDefinitions.forEach(({ key }) => {
+    normalized.extras[key] = String(sourceExtras[key] ?? research?.[key] ?? "").trim();
+  });
+  return normalized;
+}
+
+function mergeBroadcastResearch(target = {}, incoming = {}) {
+  const merged = normalizeBroadcastResearch(target);
+  const next = normalizeBroadcastResearch(incoming);
+  broadcastResearchLayerDefinitions.forEach(({ key }) => {
+    if (next.layers[key]) merged.layers[key] = next.layers[key];
+  });
+  broadcastResearchExtraDefinitions.forEach(({ key }) => {
+    if (next.extras[key]) merged.extras[key] = next.extras[key];
+  });
+  return merged;
+}
+
+function broadcastResearchHasText(research = {}) {
+  const normalized = normalizeBroadcastResearch(research);
+  return broadcastResearchLayerDefinitions.some(({ key }) => normalized.layers[key])
+    || broadcastResearchExtraDefinitions.some(({ key }) => normalized.extras[key]);
+}
+
+function appendTextSection(sections, title, text) {
+  const value = String(text || "").trim();
+  if (value) sections.push(`${title}\n${value}`);
+}
+
+function broadcastResearchTextSections(research = {}) {
+  const normalized = normalizeBroadcastResearch(research);
+  const sections = [];
+  broadcastResearchLayerDefinitions.forEach(({ key, label }) => appendTextSection(sections, label, normalized.layers[key]));
+  broadcastResearchExtraDefinitions.forEach(({ key, label }) => appendTextSection(sections, label, normalized.extras[key]));
+  return sections;
+}
+
+function broadcastResearchText(research = {}) {
+  return broadcastResearchTextSections(research).join("\n\n");
 }
 
 function newGameEntry(label) {
@@ -354,6 +493,7 @@ function emptyTeamMeta() {
     showSnapshot: true,
     showRecords: true,
     showCoaches: true,
+    research: emptyBroadcastResearch(),
     records: [],
     coaches: []
   };
@@ -458,6 +598,7 @@ function normalizeTeamMeta(teamMeta) {
       image: "",
       ...coach
     }));
+    result[side].research = normalizeBroadcastResearch(result[side].research);
   });
   return result;
 }
@@ -497,6 +638,7 @@ function mergeTeamMetaCandidate(target, candidate) {
     if ((normalized[side]?.coaches || []).length) {
       target[side].coaches = normalized[side].coaches.map((coach) => ({ ...coach }));
     }
+    target[side].research = mergeBroadcastResearch(target[side].research, normalized[side].research);
   });
 }
 
@@ -655,6 +797,11 @@ function normalizeState() {
     player.height = player.height || "";
     player.weight = player.weight || "";
     player.handedness = player.handedness || "";
+    player.batsThrows = player.batsThrows || "";
+    player.highSchool = player.highSchool || "";
+    player.previousSchool = player.previousSchool || "";
+    player.previousStarts = player.previousStarts || "";
+    player.research = normalizeBroadcastResearch(player.research);
     player.stats = { ...emptyStats(), ...(player.stats || {}) };
     player.confStats = { ...emptyStats(), ...(player.confStats || {}) };
   });
@@ -1183,6 +1330,359 @@ function valueFromFirst(row, headers, lookups) {
   return "";
 }
 
+function compactResearchHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9#]/g, "");
+}
+
+function researchHeaderIndex(headers, aliases = []) {
+  const targets = aliases.map(compactResearchHeader);
+  return headers.findIndex((header) => targets.includes(compactResearchHeader(header)));
+}
+
+function researchValue(row, headers, aliases = []) {
+  const index = researchHeaderIndex(headers, aliases);
+  return index >= 0 ? String(row[index] ?? "").trim() : "";
+}
+
+const broadcastResearchHeaderAliases = {
+  rowType: ["row_type", "record_type", "type", "entity", "entity_type"],
+  side: ["side", "team_side", "hud_side"],
+  teamName: ["team_name", "team", "school", "program", "opponent", "team_full_name"],
+  number: ["number", "#", "no", "num", "jersey", "jersey_number", "player_number"],
+  first: ["first", "first_name", "firstname"],
+  last: ["last", "last_name", "lastname"],
+  name: ["name", "player", "player_name", "full_name", "fullname"],
+  position: ["position", "pos"],
+  classYear: ["class_year", "class", "year", "yr"],
+  height: ["height", "ht"],
+  weight: ["weight", "wt"],
+  batsThrows: ["bats_throws", "bats/throws", "b/t", "bt", "bats_throws_hand", "handedness"],
+  hometown: ["hometown", "home_town", "city_state", "home"],
+  highSchool: ["high_school", "highschool", "hs", "high_school_previous"],
+  previousSchool: ["previous_school", "previous_college", "previous_stop", "transfer_from", "prev_school"],
+  pronunciation: ["pronunciation", "pronunciation_note", "pronunciation_notes"],
+  broadcastNotes: ["broadcast_notes", "notes", "hud_notes", "player_notes", "team_notes", "producer_notes"]
+};
+
+function researchLayerAliases(definition) {
+  return [definition.key, ...definition.aliases];
+}
+
+function researchExtraAliases(definition) {
+  return [definition.key, ...definition.aliases];
+}
+
+function isResearchCsvHeaderRow(row = []) {
+  const headers = row.map(compactResearchHeader);
+  const hasLayer = broadcastResearchLayerDefinitions.some((definition) => (
+    researchLayerAliases(definition).some((alias) => headers.includes(compactResearchHeader(alias)))
+  ));
+  const hasIdentity = [
+    ...broadcastResearchHeaderAliases.rowType,
+    ...broadcastResearchHeaderAliases.number,
+    ...broadcastResearchHeaderAliases.name,
+    ...broadcastResearchHeaderAliases.teamName
+  ].some((alias) => headers.includes(compactResearchHeader(alias)));
+  return hasLayer && hasIdentity;
+}
+
+function researchFromRow(row, headers) {
+  const research = emptyBroadcastResearch();
+  broadcastResearchLayerDefinitions.forEach((definition) => {
+    research.layers[definition.key] = researchValue(row, headers, researchLayerAliases(definition));
+  });
+  broadcastResearchExtraDefinitions.forEach((definition) => {
+    research.extras[definition.key] = researchValue(row, headers, researchExtraAliases(definition));
+  });
+  return research;
+}
+
+function normalizeResearchSide(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (["home", "h", "home team"].includes(raw)) return "home";
+  if (["away", "a", "visitor", "visitors", "opponent", "road"].includes(raw)) return "away";
+  return "";
+}
+
+function teamSideFromResearchName(value) {
+  const wanted = normalizeBoxScoreName(value);
+  if (!wanted) return "";
+  return ["home", "away"].find((side) => {
+    const meta = teamMetaForSide(side);
+    return [
+      sideLabel(side),
+      teamAbbreviation(side),
+      meta.mascot,
+      meta.location
+    ].some((candidate) => normalizeBoxScoreName(candidate) === wanted);
+  }) || "";
+}
+
+function researchSideFromRow(row, headers) {
+  const explicitSide = normalizeResearchSide(researchValue(row, headers, broadcastResearchHeaderAliases.side));
+  if (explicitSide) return explicitSide;
+  const matchedSide = teamSideFromResearchName(researchValue(row, headers, broadcastResearchHeaderAliases.teamName));
+  return matchedSide || state.activeSide || "away";
+}
+
+function researchRowType(row, headers) {
+  const explicit = String(researchValue(row, headers, broadcastResearchHeaderAliases.rowType) || "").trim().toLowerCase();
+  if (/team|school|program/.test(explicit)) return "team";
+  if (/player|batter|pitcher|roster/.test(explicit)) return "player";
+  const number = researchValue(row, headers, broadcastResearchHeaderAliases.number);
+  const name = researchValue(row, headers, broadcastResearchHeaderAliases.name);
+  const first = researchValue(row, headers, broadcastResearchHeaderAliases.first);
+  const last = researchValue(row, headers, broadcastResearchHeaderAliases.last);
+  if (number || name || first || last) return "player";
+  if (researchValue(row, headers, broadcastResearchHeaderAliases.teamName) || broadcastResearchHasText(researchFromRow(row, headers))) return "team";
+  return "";
+}
+
+function splitResearchName(name, first = "", last = "") {
+  if (String(first || "").trim() || String(last || "").trim()) {
+    return { first: String(first || "").trim(), last: String(last || "").trim() };
+  }
+  const parsed = splitBoxScoreName(name);
+  return { first: parsed.first, last: parsed.last };
+}
+
+function findResearchPlayer(side, identity = {}) {
+  const number = cleanBoxScoreNumber(identity.number);
+  const candidate = {
+    side,
+    number,
+    first: identity.first,
+    last: identity.last
+  };
+  const players = state.players.filter((player) => (player.side || "home") === side);
+  if (number) {
+    const sameNumber = players.filter((player) => cleanBoxScoreNumber(player.number) === number);
+    const compatible = sameNumber.find((player) => playersNameCompatible(player, candidate));
+    if (compatible) return compatible;
+    if (sameNumber.length === 1) return sameNumber[0];
+  }
+  const keys = playerNameMergeKeys(candidate);
+  if (keys.length) {
+    return players.find((player) => {
+      const playerKeys = new Set(playerNameMergeKeys(player));
+      return keys.some((key) => playerKeys.has(key));
+    }) || null;
+  }
+  return null;
+}
+
+function createResearchPlayer(side, identity = {}) {
+  const player = {
+    id: uid("player"),
+    number: cleanBoxScoreNumber(identity.number) || String(identity.number || "").trim(),
+    first: identity.first || "",
+    last: identity.last || "",
+    pronunciation: "",
+    position: "",
+    hometown: "",
+    classYear: "",
+    height: "",
+    weight: "",
+    notes: "",
+    handedness: "",
+    batsThrows: "",
+    highSchool: "",
+    previousSchool: "",
+    previousStarts: "",
+    research: emptyBroadcastResearch(),
+    side,
+    stats: emptyStats(),
+    confStats: emptyStats()
+  };
+  state.players.push(player);
+  return player;
+}
+
+function applyResearchPlayerRow(row, headers, summary) {
+  const side = researchSideFromRow(row, headers);
+  const { first, last } = splitResearchName(
+    researchValue(row, headers, broadcastResearchHeaderAliases.name),
+    researchValue(row, headers, broadcastResearchHeaderAliases.first),
+    researchValue(row, headers, broadcastResearchHeaderAliases.last)
+  );
+  const identity = {
+    number: researchValue(row, headers, broadcastResearchHeaderAliases.number),
+    first,
+    last
+  };
+  if (!identity.number && !identity.first && !identity.last) {
+    summary.skipped += 1;
+    return;
+  }
+  let player = findResearchPlayer(side, identity);
+  if (!player) {
+    player = createResearchPlayer(side, identity);
+    summary.created += 1;
+  }
+
+  const fieldMap = {
+    number: broadcastResearchHeaderAliases.number,
+    first: broadcastResearchHeaderAliases.first,
+    last: broadcastResearchHeaderAliases.last,
+    position: broadcastResearchHeaderAliases.position,
+    classYear: broadcastResearchHeaderAliases.classYear,
+    height: broadcastResearchHeaderAliases.height,
+    weight: broadcastResearchHeaderAliases.weight,
+    batsThrows: broadcastResearchHeaderAliases.batsThrows,
+    hometown: broadcastResearchHeaderAliases.hometown,
+    highSchool: broadcastResearchHeaderAliases.highSchool,
+    previousSchool: broadcastResearchHeaderAliases.previousSchool,
+    pronunciation: broadcastResearchHeaderAliases.pronunciation,
+    notes: broadcastResearchHeaderAliases.broadcastNotes
+  };
+  Object.entries(fieldMap).forEach(([field, aliases]) => {
+    const value = field === "first" ? identity.first : field === "last" ? identity.last : researchValue(row, headers, aliases);
+    if (String(value || "").trim()) player[field] = String(value).trim();
+  });
+  if (player.batsThrows && !player.handedness) {
+    const match = player.batsThrows.match(/[RLS]/i);
+    if (match) player.handedness = match[0].toUpperCase();
+  }
+  player.research = mergeBroadcastResearch(player.research, researchFromRow(row, headers));
+  summary.players += 1;
+}
+
+function applyResearchTeamRow(row, headers, summary) {
+  const side = researchSideFromRow(row, headers);
+  const meta = teamMetaForSide(side);
+  const teamName = researchValue(row, headers, broadcastResearchHeaderAliases.teamName);
+  const chart = activeGame().charts[side] || activeChart();
+  if (teamName) {
+    if (side === "home") activeGame().game.teamName = teamName;
+    if (side === "away") activeGame().game.opponentName = teamName;
+  }
+  const notes = researchValue(row, headers, broadcastResearchHeaderAliases.broadcastNotes);
+  if (notes) chart.hud.chartNotes = notes;
+  meta.research = mergeBroadcastResearch(meta.research, researchFromRow(row, headers));
+  summary.teams += 1;
+}
+
+function importBroadcastResearchFromCsv(text, filename) {
+  const rows = parseCsv(text);
+  const headerRowIndex = rows.findIndex(isResearchCsvHeaderRow);
+  if (headerRowIndex < 0) {
+    throw new Error("Could not find a broadcast research header row. Use the template with row_type, side, team_name, and layer columns.");
+  }
+  const headers = rows[headerRowIndex].map((header) => String(header).trim());
+  const summary = { players: 0, teams: 0, created: 0, skipped: 0 };
+
+  rows.slice(headerRowIndex + 1).forEach((row) => {
+    const type = researchRowType(row, headers);
+    if (type === "player") applyResearchPlayerRow(row, headers, summary);
+    else if (type === "team") applyResearchTeamRow(row, headers, summary);
+    else summary.skipped += 1;
+  });
+
+  if (!summary.players && !summary.teams) {
+    throw new Error("No player or team research rows were found in that CSV.");
+  }
+
+  state.sources.unshift({
+    id: uid("source"),
+    type: "csv",
+    name: filename,
+    importedAt: new Date().toISOString(),
+    detail: `${summary.players} player row${summary.players === 1 ? "" : "s"}, ${summary.teams} team row${summary.teams === 1 ? "" : "s"}${summary.created ? `, ${summary.created} new player${summary.created === 1 ? "" : "s"}` : ""}`,
+    source: "research",
+    scope: state.activeSide,
+    variant: "broadcast-layers"
+  });
+
+  normalizeState();
+  saveState();
+  render();
+  alert(`Imported ${filename}: ${summary.players} player row${summary.players === 1 ? "" : "s"} and ${summary.teams} team row${summary.teams === 1 ? "" : "s"}.`);
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function rowsToCsv(rows) {
+  return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
+}
+
+function broadcastResearchTemplateRows() {
+  return [
+    broadcastResearchTemplateHeaders,
+    [
+      "TEAM",
+      "away",
+      "Opponent College",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "Game capsule, records, conference context, recent form, main stakes.",
+      "Offensive identity, pitching identity, strengths, weaknesses, what they need today.",
+      "Cross-roster ties, shared hometowns, opponent strengths vs weaknesses.",
+      "Pregame, first-inning, midgame, late-game, and team identity storylines.",
+      "Slow-inning color tied to team location, mascot, ballpark, region, or history.",
+      "Short HUD note for the bottom HUD Notes button.",
+      "One sentence that frames this team today.",
+      "One clean slow-inning team hook.",
+      "Verified / Likely / Speculative / Color-Only",
+      "Pronunciations, missing records, local leads, coach details to confirm."
+    ],
+    [
+      "PLAYER",
+      "away",
+      "Opponent College",
+      "12",
+      "Avery",
+      "Stone",
+      "",
+      "SS",
+      "So.",
+      "6-0",
+      "185",
+      "R/R",
+      "Garden City, KS",
+      "Garden City HS",
+      "",
+      "AY-vree STONE",
+      "Basic bio, season stats, recent box score production, awards, pronunciation.",
+      "Role on roster with statistical or usage reason.",
+      "Matchup notes, same hometown/high school/state ties, hitter-vs-pitcher angles.",
+      "Player story capsule and ready game situations for using it.",
+      "Tethered color hook from hometown, name, school, previous college, or region.",
+      "Short manual note that also appears at the top of the player NOTE overlay.",
+      "Ready-to-say sentence for live use.",
+      "Odd but usable hook tied back to the player.",
+      "Verified",
+      "Any uncertain facts or pronunciation questions."
+    ]
+  ];
+}
+
+function downloadBroadcastResearchTemplate() {
+  const blob = new Blob([rowsToCsv(broadcastResearchTemplateRows())], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "baseball-broadcast-research-template.csv";
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function gameChangerStatsFromRow(row, headers) {
   const pitchesRaw = toNumber(valueFromFirst(row, headers, ["#P", "NumberOfPitches", "Number Of Pitches", "Pitches", "NP"]));
   const strikePctRaw = toNumber(valueFrom(row, headers, "S%", 1));
@@ -1276,10 +1776,13 @@ function importPlayersFromCsv(text, filename, scope = "overall") {
       pronunciation: "",
       position: "",
       hometown: valueFrom(row, headers, "Hometown").trim(),
-      classYear: "",
+      classYear: valueFromFirst(row, headers, ["Class", "Yr", "Year"]).trim(),
       height: valueFrom(row, headers, "Height").trim() || valueFrom(row, headers, "Ht").trim(),
       weight: valueFrom(row, headers, "Weight").trim() || valueFrom(row, headers, "Wt").trim(),
       notes: "",
+      batsThrows: valueFromFirst(row, headers, ["B/T", "BT", "Bats/Throws", "Bats Throws", "Bats_Throws"]).trim(),
+      highSchool: valueFromFirst(row, headers, ["High School", "HighSchool", "HS"]).trim(),
+      previousSchool: valueFromFirst(row, headers, ["Previous School", "Previous College", "Transfer From"]).trim(),
       side: state.activeSide,
       stats: bucket === "stats" ? parsedStats : {},
       confStats: bucket === "confStats" ? parsedStats : {}
@@ -1331,6 +1834,7 @@ function mergePlayers(imported) {
     if (existing) {
       const mergedStats = { ...existing.stats, ...(player.stats || {}) };
       const mergedConf = { ...(existing.confStats || emptyStats()), ...(player.confStats || {}) };
+      const mergedResearch = mergeBroadcastResearch(existing.research, player.research);
       Object.assign(existing, {
         ...player,
         id: existing.id,
@@ -1340,8 +1844,13 @@ function mergePlayers(imported) {
         classYear: existing.classYear || player.classYear || "",
         height: existing.height || player.height || "",
         weight: existing.weight || player.weight || "",
-        notes: existing.notes || "",
+        notes: player.notes || existing.notes || "",
         handedness: existing.handedness || player.handedness || "",
+        batsThrows: existing.batsThrows || player.batsThrows || "",
+        highSchool: existing.highSchool || player.highSchool || "",
+        previousSchool: existing.previousSchool || player.previousSchool || "",
+        previousStarts: existing.previousStarts || player.previousStarts || "",
+        research: mergedResearch,
         stats: mergedStats,
         confStats: mergedConf
       });
@@ -1351,6 +1860,7 @@ function mergePlayers(imported) {
     } else {
       const filled = {
         ...player,
+        research: normalizeBroadcastResearch(player.research),
         stats: { ...emptyStats(), ...(player.stats || {}) },
         confStats: { ...emptyStats(), ...(player.confStats || {}) }
       };
@@ -1417,7 +1927,8 @@ function playerNumberMergeKey(player = {}) {
 
 function playerDataWeight(player = {}) {
   const statWeight = (line) => Object.values(line || {}).reduce((sum, value) => sum + (toNumber(value) ? 1 : 0), 0);
-  return statWeight(player.stats) + statWeight(player.confStats) + [player.number, player.position, player.hometown, player.height, player.weight, player.handedness, player.notes].filter(Boolean).length;
+  const researchWeight = broadcastResearchHasText(player.research) ? 5 : 0;
+  return statWeight(player.stats) + statWeight(player.confStats) + researchWeight + [player.number, player.position, player.hometown, player.height, player.weight, player.handedness, player.batsThrows, player.highSchool, player.previousSchool, player.previousStarts, player.notes].filter(Boolean).length;
 }
 
 function referencedPlayerIds() {
@@ -1463,9 +1974,10 @@ function mergeDuplicateStatLine(target = {}, source = {}) {
 }
 
 function mergePlayerIdentity(target, source) {
-  ["number", "first", "last", "pronunciation", "position", "hometown", "classYear", "height", "weight", "handedness", "notes"].forEach((field) => {
+  ["number", "first", "last", "pronunciation", "position", "hometown", "classYear", "height", "weight", "handedness", "batsThrows", "highSchool", "previousSchool", "previousStarts", "notes"].forEach((field) => {
     if (!String(target[field] || "").trim() && String(source[field] || "").trim()) target[field] = source[field];
   });
+  target.research = mergeBroadcastResearch(target.research, source.research);
   target.stats = mergeDuplicateStatLine(target.stats, source.stats);
   target.confStats = mergeDuplicateStatLine(target.confStats, source.confStats);
 }
@@ -5589,10 +6101,37 @@ function hudViewToggleHtml(kind, side = state.activeSide) {
   `;
 }
 
+function buildPlayerHudNoteText(player) {
+  if (!player) return "";
+  const sections = [];
+  appendTextSection(sections, "Broadcast Notes", player.notes);
+  const identityLines = [
+    player.batsThrows ? `B/T: ${player.batsThrows}` : "",
+    player.highSchool ? `High school: ${player.highSchool}` : "",
+    player.previousSchool ? `Previous school: ${player.previousSchool}` : "",
+    player.pronunciation ? `Pronunciation: ${player.pronunciation}` : "",
+    player.hometown ? `Hometown: ${player.hometown}` : ""
+  ].filter(Boolean).join("\n");
+  appendTextSection(sections, "Imported Basics", identityLines);
+  broadcastResearchTextSections(player.research).forEach((section) => sections.push(section));
+  appendTextSection(sections, "Previous Starts / Pitcher Notes", player.previousStarts);
+  return sections.join("\n\n");
+}
+
+function buildTeamHudNoteText(side = state.activeSide) {
+  const chart = activeGame().charts[side] || activeChart();
+  const meta = teamMetaForSide(side);
+  const sections = [];
+  appendTextSection(sections, "HUD Notes", chart?.hud?.chartNotes);
+  appendTextSection(sections, "Institution Info", meta.institutionInfo);
+  broadcastResearchTextSections(meta.research).forEach((section) => sections.push(section));
+  return sections.join("\n\n");
+}
+
 function hudNoteButtonHtml(target, { player = null, label = "Notes", buttonText = label, className = "" } = {}) {
   const noteText = target === "chart"
-    ? String(activeChart().hud.chartNotes || "").trim()
-    : String(player?.notes || "").trim();
+    ? buildTeamHudNoteText(state.activeSide)
+    : buildPlayerHudNoteText(player);
   const playerId = player?.id || "";
   const isActive = activeHudNotesOverlay?.target === target
     && (target === "chart" || activeHudNotesOverlay.playerId === playerId);
@@ -6659,7 +7198,7 @@ function renderPlayerTable() {
   if (!els.playerSearch || !els.playerTable) return;
   const query = els.playerSearch.value.trim().toLowerCase();
   const rows = sortedPlayers().filter((player) => {
-    const haystack = `${player.number} ${fullName(player)} ${player.pronunciation} ${player.notes}`.toLowerCase();
+    const haystack = `${player.number} ${fullName(player)} ${player.pronunciation} ${player.hometown} ${player.highSchool} ${player.previousSchool} ${player.notes} ${broadcastResearchText(player.research)}`.toLowerCase();
     return haystack.includes(query);
   });
 
@@ -6692,12 +7231,14 @@ function renderRosterCards() {
     const pitchingLine = hasPitchingStats(player.stats)
       ? `<p class="meta roster-pitching-line">${escapeHtml(pitchingStatsLine(player.stats))}</p>`
       : "";
+    const bioLine = [player.batsThrows ? `B/T ${player.batsThrows}` : "", player.hometown, player.highSchool, player.previousSchool].filter(Boolean).join(" - ");
     return `
       <article class="roster-card">
         <div class="number-badge">${escapeHtml(player.number || "-")}</div>
         <div class="card-main">
           <h3>${escapeHtml(fullName(player))}</h3>
           <p>${escapeHtml([player.position, player.classYear, player.pronunciation].filter(Boolean).join(" - ") || "No profile details yet")}</p>
+          ${bioLine ? `<p class="meta">${escapeHtml(bioLine)}</p>` : ""}
           <p class="meta">BAT ${rates.AVG}/${rates.OBP}/${rates.SLG} - ${player.stats.H} H, ${player.stats.RBI} RBI, ${player.stats.BB} BB, ${player.stats.SO} K</p>
           ${pitchingLine}
         </div>
@@ -6790,6 +7331,20 @@ function renderDataView() {
       `).join("");
     } else {
       els.boxScoreList.innerHTML = `<p class="meta">No box scores imported for this side yet. Use the form above to import a per-game CSV or TXT.</p>`;
+    }
+  }
+
+  if (els.researchSourceList) {
+    const researchSources = state.sources.filter((s) => s.source === "research");
+    if (researchSources.length) {
+      els.researchSourceList.innerHTML = researchSources.map((source) => `
+        <div class="source-item">
+          <strong>${escapeHtml(source.name)}</strong>
+          <p class="meta">${escapeHtml((source.variant || source.type || "csv").toUpperCase())} &middot; ${escapeHtml(source.detail || "")} &middot; ${new Date(source.importedAt).toLocaleString()}</p>
+        </div>
+      `).join("");
+    } else {
+      els.researchSourceList.innerHTML = `<p class="meta">No broadcast research CSVs imported yet.</p>`;
     }
   }
 
@@ -7090,6 +7645,9 @@ function fillPlayerForm(player) {
   document.querySelector("#playerClass").value = player?.classYear || "";
   document.querySelector("#playerHeight").value = player?.height || "";
   document.querySelector("#playerWeight").value = player?.weight || "";
+  document.querySelector("#playerBatsThrows").value = player?.batsThrows || "";
+  document.querySelector("#playerHighSchool").value = player?.highSchool || "";
+  document.querySelector("#playerPreviousSchool").value = player?.previousSchool || "";
   document.querySelector("#playerNotes").value = player?.notes || "";
   ["AB", "H", "2B", "3B", "HR", "BB", "HBP", "SF", "RBI", "SO", "SB", "CS"].forEach((key) => {
     document.querySelector(`#stat${CSS.escape(key)}`).value = stats[key] || 0;
@@ -7166,9 +7724,14 @@ function savePlayerFromForm(event) {
     classYear: document.querySelector("#playerClass").value.trim(),
     height: document.querySelector("#playerHeight").value.trim(),
     weight: document.querySelector("#playerWeight").value.trim(),
+    batsThrows: document.querySelector("#playerBatsThrows").value.trim(),
+    highSchool: document.querySelector("#playerHighSchool").value.trim(),
+    previousSchool: document.querySelector("#playerPreviousSchool").value.trim(),
     notes: document.querySelector("#playerNotes").value.trim(),
     handedness: existing?.handedness || "",
     side: existing?.side || state.activeSide,
+    previousStarts: existing?.previousStarts || "",
+    research: normalizeBroadcastResearch(existing?.research),
     stats,
     confStats: existing?.confStats || emptyStats()
   };
@@ -7777,7 +8340,7 @@ function hudNotesOverlayData(target = activeHudNotesOverlay?.target, playerId = 
   const normalizedTarget = normalizeHudNoteTarget(target);
   if (!normalizedTarget) return null;
   if (normalizedTarget === "chart") {
-    const text = String(activeChart().hud.chartNotes || "").trim();
+    const text = buildTeamHudNoteText(state.activeSide);
     return {
       target: "chart",
       playerId: "",
@@ -7790,8 +8353,8 @@ function hudNotesOverlayData(target = activeHudNotesOverlay?.target, playerId = 
   }
 
   const player = state.players.find((item) => item.id === playerId);
-  const text = String(player?.notes || "").trim();
   if (!player) return null;
+  const text = buildPlayerHudNoteText(player);
   return {
     target: normalizedTarget,
     playerId: player.id,
@@ -8193,6 +8756,24 @@ function setupEvents() {
         event.target.value = "";
       }
     });
+  }
+
+  if (els.researchCsvInput) {
+    els.researchCsvInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        importBroadcastResearchFromCsv(await file.text(), file.name);
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        event.target.value = "";
+      }
+    });
+  }
+
+  if (els.researchTemplateButton) {
+    els.researchTemplateButton.addEventListener("click", downloadBroadcastResearchTemplate);
   }
 
   const prestoRosterInput = document.querySelector("#prestoRosterInput");
