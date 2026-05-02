@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v37";
+const APP_VERSION = "v38";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -5589,7 +5589,7 @@ function hudViewToggleHtml(kind, side = state.activeSide) {
   `;
 }
 
-function hudNoteButtonHtml(target, { player = null, label = "Notes", className = "" } = {}) {
+function hudNoteButtonHtml(target, { player = null, label = "Notes", buttonText = label, className = "" } = {}) {
   const noteText = target === "chart"
     ? String(activeChart().hud.chartNotes || "").trim()
     : String(player?.notes || "").trim();
@@ -5600,8 +5600,8 @@ function hudNoteButtonHtml(target, { player = null, label = "Notes", className =
   const playerAttr = playerId ? ` data-player-id="${escapeHtml(playerId)}"` : "";
   const preview = target === "chart" ? `<span>${escapeHtml(notePreviewText(noteText))}</span>` : "";
   return `
-    <button type="button" class="hud-note-button ${className} ${isActive ? "active" : ""}" data-hud-note-target="${escapeHtml(target)}"${playerAttr} aria-pressed="${isActive ? "true" : "false"}" title="Open ${escapeHtml(label)}">
-      <strong>${escapeHtml(label)}</strong>
+    <button type="button" class="hud-note-button ${className} ${isActive ? "active" : ""}" data-hud-note-target="${escapeHtml(target)}"${playerAttr} aria-label="Open ${escapeHtml(label)}" aria-pressed="${isActive ? "true" : "false"}" title="Open ${escapeHtml(label)}">
+      <strong>${escapeHtml(buttonText)}</strong>
       ${preview}
     </button>
   `;
@@ -5610,7 +5610,7 @@ function hudNoteButtonHtml(target, { player = null, label = "Notes", className =
 function hudPlayerNoteButtonHtml(kind, player) {
   if (!player) return "";
   const label = kind === "pitcher" ? "Pitcher Notes" : "Batter Notes";
-  return hudNoteButtonHtml(kind, { player, label, className: "hud-player-note-button" });
+  return hudNoteButtonHtml(kind, { player, label, buttonText: "NOTE", className: "hud-player-note-button" });
 }
 
 function hudChartNoteButtonHtml() {
