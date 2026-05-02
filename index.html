@@ -548,13 +548,14 @@
                 <h2>Broadcast Research Import</h2>
                 <span>Layered team and player notes for the HUD</span>
               </div>
-              <p class="meta">Import one CSV per team from your research project. Rows marked <code>PLAYER</code> attach the five player layers to batter/pitcher NOTE buttons; rows marked <code>TEAM</code> attach the five team layers to the wide HUD Notes button. Leave <code>side</code> blank to import into the currently selected team, or use <code>home</code>/<code>away</code>.</p>
+              <p class="meta">Import one CSV per team from your research project. Rows marked <code>PLAYER</code> attach the five player layers to batter/pitcher NOTE buttons; rows marked <code>TEAM</code> attach the five team layers to the wide HUD Notes button. Leave <code>side</code> blank to import into the currently selected team, or use <code>home</code>/<code>away</code>. Remove Research Data clears only those imported research packets and source records.</p>
               <div class="data-actions">
                 <label class="file-button">
                   Import Research CSV
                   <input id="researchCsvInput" type="file" accept=".csv,text/csv" />
                 </label>
                 <button id="researchTemplateButton" type="button">Download Research CSV Template</button>
+                <button id="clearResearchButton" type="button" class="danger">Remove Research Data</button>
               </div>
               <p class="meta">Core headers: <code>row_type</code>, <code>side</code>, <code>team_name</code>, <code>number</code>, <code>first</code>, <code>last</code>, five <code>layer_*</code> columns, <code>broadcast_notes</code>, <code>one_liner</code>, <code>abstract_hook</code>, <code>confidence</code>, and <code>follow_up</code>.</p>
               <div id="researchSourceList" class="source-list"></div>

@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v40";
+const APP_VERSION = "v41";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -176,6 +176,7 @@ const els = {
   boxScoreTxtInput: document.querySelector("#boxScoreTxtInput"),
   researchCsvInput: document.querySelector("#researchCsvInput"),
   researchTemplateButton: document.querySelector("#researchTemplateButton"),
+  clearResearchButton: document.querySelector("#clearResearchButton"),
   researchSourceList: document.querySelector("#researchSourceList"),
   pdfBridgeStatus: document.querySelector("#pdfBridgeStatus"),
   pdfBridgeUrlInput: document.querySelector("#pdfBridgeUrlInput"),
@@ -250,6 +251,11 @@ const broadcastResearchLayerDefinitions = [
 ];
 
 const broadcastResearchExtraDefinitions = [
+  {
+    key: "broadcastNotes",
+    label: "Imported Broadcast Notes",
+    aliases: ["broadcast_notes", "notes", "hud_notes", "player_notes", "team_notes", "producer_notes"]
+  },
   {
     key: "oneLiner",
     label: "Ready-To-Say / One-Liner",
@@ -1363,8 +1369,7 @@ const broadcastResearchHeaderAliases = {
   hometown: ["hometown", "home_town", "city_state", "home"],
   highSchool: ["high_school", "highschool", "hs", "high_school_previous"],
   previousSchool: ["previous_school", "previous_college", "previous_stop", "transfer_from", "prev_school"],
-  pronunciation: ["pronunciation", "pronunciation_note", "pronunciation_notes"],
-  broadcastNotes: ["broadcast_notes", "notes", "hud_notes", "player_notes", "team_notes", "producer_notes"]
+  pronunciation: ["pronunciation", "pronunciation_note", "pronunciation_notes"]
 };
 
 function researchLayerAliases(definition) {
@@ -1535,8 +1540,7 @@ function applyResearchPlayerRow(row, headers, summary) {
     hometown: broadcastResearchHeaderAliases.hometown,
     highSchool: broadcastResearchHeaderAliases.highSchool,
     previousSchool: broadcastResearchHeaderAliases.previousSchool,
-    pronunciation: broadcastResearchHeaderAliases.pronunciation,
-    notes: broadcastResearchHeaderAliases.broadcastNotes
+    pronunciation: broadcastResearchHeaderAliases.pronunciation
   };
   Object.entries(fieldMap).forEach(([field, aliases]) => {
     const value = field === "first" ? identity.first : field === "last" ? identity.last : researchValue(row, headers, aliases);
@@ -1554,13 +1558,10 @@ function applyResearchTeamRow(row, headers, summary) {
   const side = researchSideFromRow(row, headers);
   const meta = teamMetaForSide(side);
   const teamName = researchValue(row, headers, broadcastResearchHeaderAliases.teamName);
-  const chart = activeGame().charts[side] || activeChart();
   if (teamName) {
     if (side === "home") activeGame().game.teamName = teamName;
     if (side === "away") activeGame().game.opponentName = teamName;
   }
-  const notes = researchValue(row, headers, broadcastResearchHeaderAliases.broadcastNotes);
-  if (notes) chart.hud.chartNotes = notes;
   meta.research = mergeBroadcastResearch(meta.research, researchFromRow(row, headers));
   summary.teams += 1;
 }
@@ -1600,6 +1601,39 @@ function importBroadcastResearchFromCsv(text, filename) {
   saveState();
   render();
   alert(`Imported ${filename}: ${summary.players} player row${summary.players === 1 ? "" : "s"} and ${summary.teams} team row${summary.teams === 1 ? "" : "s"}.`);
+}
+
+function clearTeamMetaResearch(teamMeta) {
+  const normalized = normalizeTeamMeta(teamMeta);
+  ["home", "away"].forEach((side) => {
+    normalized[side].research = emptyBroadcastResearch();
+  });
+  return normalized;
+}
+
+function clearBroadcastResearchData() {
+  const sourceCount = state.sources.filter((source) => source.source === "research").length;
+  const playerCount = state.players.filter((player) => broadcastResearchHasText(player.research)).length;
+  const teamCount = ["home", "away"].filter((side) => broadcastResearchHasText(teamMetaForSide(side).research)).length;
+  if (!sourceCount && !playerCount && !teamCount) {
+    alert("No broadcast research data to clear.");
+    return;
+  }
+  if (!confirm(`Remove ${sourceCount} research import source${sourceCount === 1 ? "" : "s"}, ${playerCount} player research packet${playerCount === 1 ? "" : "s"}, and ${teamCount} team research packet${teamCount === 1 ? "" : "s"}? Stats, box scores, lineups, scorecard data, and manual roster/HUD notes will stay in place.`)) return;
+
+  state.sources = state.sources.filter((source) => source.source !== "research");
+  state.players.forEach((player) => {
+    player.research = emptyBroadcastResearch();
+  });
+  state.teamMeta = clearTeamMetaResearch(state.teamMeta);
+  (state.games || []).forEach((entry) => {
+    entry.teamMeta = clearTeamMetaResearch(entry.teamMeta);
+  });
+  closeHudNotesOverlay({ rerender: false });
+  normalizeState();
+  saveState();
+  render();
+  alert("Broadcast research data cleared. You can import the replacement CSVs now.");
 }
 
 function csvCell(value) {
@@ -6104,7 +6138,7 @@ function hudViewToggleHtml(kind, side = state.activeSide) {
 function buildPlayerHudNoteText(player) {
   if (!player) return "";
   const sections = [];
-  appendTextSection(sections, "Broadcast Notes", player.notes);
+  appendTextSection(sections, "Manual Roster Notes", player.notes);
   const identityLines = [
     player.batsThrows ? `B/T: ${player.batsThrows}` : "",
     player.highSchool ? `High school: ${player.highSchool}` : "",
@@ -6122,7 +6156,7 @@ function buildTeamHudNoteText(side = state.activeSide) {
   const chart = activeGame().charts[side] || activeChart();
   const meta = teamMetaForSide(side);
   const sections = [];
-  appendTextSection(sections, "HUD Notes", chart?.hud?.chartNotes);
+  appendTextSection(sections, "HUD Setup Notes", chart?.hud?.chartNotes);
   appendTextSection(sections, "Institution Info", meta.institutionInfo);
   broadcastResearchTextSections(meta.research).forEach((section) => sections.push(section));
   return sections.join("\n\n");
@@ -8774,6 +8808,10 @@ function setupEvents() {
 
   if (els.researchTemplateButton) {
     els.researchTemplateButton.addEventListener("click", downloadBroadcastResearchTemplate);
+  }
+
+  if (els.clearResearchButton) {
+    els.clearResearchButton.addEventListener("click", clearBroadcastResearchData);
   }
 
   const prestoRosterInput = document.querySelector("#prestoRosterInput");
