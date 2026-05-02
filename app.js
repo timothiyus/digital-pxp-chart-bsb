@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v35";
+const APP_VERSION = "v36";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -102,6 +102,7 @@ const els = {
   clearImportsButton: document.querySelector("#clearImportsButton"),
   resetButton: document.querySelector("#resetButton"),
   saveState: document.querySelector("#saveState"),
+  swapHomeAwayButton: document.querySelector("#swapHomeAwayButton"),
   teamName: document.querySelector("#teamName"),
   opponentName: document.querySelector("#opponentName"),
   gameDate: document.querySelector("#gameDate"),
@@ -905,8 +906,94 @@ function activeSideName() {
   return teamAbbreviation(state.activeSide);
 }
 
+function flippedSide(side) {
+  return side === "home" ? "away" : side === "away" ? "home" : side;
+}
+
 function oppositeSide() {
   return state.activeSide === "home" ? "away" : "home";
+}
+
+function swapTeamMetaSides(teamMeta) {
+  const meta = cloneTeamMeta(teamMeta);
+  return {
+    home: meta.away,
+    away: meta.home
+  };
+}
+
+function swapBoxImportKeySide(key) {
+  const parts = String(key || "").split("|");
+  if (parts[0] === "home" || parts[0] === "away") {
+    parts[0] = flippedSide(parts[0]);
+  }
+  return parts.join("|");
+}
+
+function swapChargeKeySide(key) {
+  const parts = String(key || "").split("|");
+  if (parts[1] === "home" || parts[1] === "away") {
+    parts[1] = flippedSide(parts[1]);
+  }
+  return parts.join("|");
+}
+
+function swapChartSideReferences(chart) {
+  Object.values(chart?.scorecard || {}).forEach((cell) => {
+    ["defensiveInningSide", "runnerDefensiveInningSide"].forEach((field) => {
+      if (cell[field] === "home" || cell[field] === "away") {
+        cell[field] = flippedSide(cell[field]);
+      }
+    });
+    (cell.runnerPitcherDeltas || []).forEach((item) => {
+      Object.keys(item.dedupeKeys || {}).forEach((key) => {
+        item.dedupeKeys[key] = swapChargeKeySide(item.dedupeKeys[key]);
+      });
+    });
+  });
+}
+
+function swapHomeAwayData() {
+  const previousActiveSide = state.activeSide || "away";
+  const previousFullChartSide = state.fullChartSide || previousActiveSide;
+  const boxImportKeys = new Map();
+  state.games.forEach((entry) => {
+    entry.game = normalizeGameInfo(entry.game);
+    [entry.game.teamName, entry.game.opponentName] = [entry.game.opponentName, entry.game.teamName];
+    entry.charts = entry.charts || { home: newChartState(), away: newChartState() };
+    normalizeCharts(entry.charts);
+    Object.values(entry.charts).forEach(swapChartSideReferences);
+    [entry.charts.home, entry.charts.away] = [entry.charts.away, entry.charts.home];
+    entry.teamMeta = swapTeamMetaSides(entry.teamMeta || state.teamMeta);
+  });
+
+  state.teamMeta = swapTeamMetaSides(state.teamMeta);
+  (state.players || []).forEach((player) => {
+    player.side = flippedSide(player.side || "home");
+  });
+  (state.boxScores || []).forEach((box) => {
+    const oldKey = box.importKey || boxScoreImportKey(box);
+    box.side = flippedSide(box.side || "home");
+    box.importKey = boxScoreImportKey(box);
+    boxImportKeys.set(oldKey, box.importKey);
+  });
+  (state.sources || []).forEach((source) => {
+    if (source.boxImportKey) {
+      source.boxImportKey = boxImportKeys.get(source.boxImportKey) || swapBoxImportKeySide(source.boxImportKey);
+    }
+  });
+
+  state.activeSide = flippedSide(previousActiveSide);
+  state.fullChartSide = flippedSide(previousFullChartSide);
+  if (state.settings?.lineScoreExpandedTeam) {
+    state.settings.lineScoreExpandedTeam = flippedSide(state.settings.lineScoreExpandedTeam);
+  }
+  if (state.settings?.expandedTeamRecords) {
+    state.settings.expandedTeamRecords = {
+      home: Boolean(state.settings.expandedTeamRecords.away),
+      away: Boolean(state.settings.expandedTeamRecords.home)
+    };
+  }
 }
 
 function playersForSide(side) {
@@ -7780,6 +7867,14 @@ function setupEvents() {
       renderFullScorecard();
     });
   });
+
+  if (els.swapHomeAwayButton) {
+    els.swapHomeAwayButton.addEventListener("click", () => {
+      swapHomeAwayData();
+      saveState();
+      render();
+    });
+  }
 
   const gameFieldMap = {
     gameDate: "gameDate",

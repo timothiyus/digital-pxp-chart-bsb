@@ -303,6 +303,11 @@ textarea {
   margin-bottom: 12px;
 }
 
+.swap-home-away-button {
+  width: 100%;
+  margin: 0 0 12px;
+}
+
 .game-switcher {
   display: flex;
   align-items: center;
