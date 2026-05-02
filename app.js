@@ -3,7 +3,7 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v36";
+const APP_VERSION = "v37";
 const CLIENT_ID = (() => {
   let id = localStorage.getItem("pxp.clientId");
   if (!id) {
@@ -5589,11 +5589,40 @@ function hudViewToggleHtml(kind, side = state.activeSide) {
   `;
 }
 
+function hudNoteButtonHtml(target, { player = null, label = "Notes", className = "" } = {}) {
+  const noteText = target === "chart"
+    ? String(activeChart().hud.chartNotes || "").trim()
+    : String(player?.notes || "").trim();
+  if (!noteText) return "";
+  const playerId = player?.id || "";
+  const isActive = activeHudNotesOverlay?.target === target
+    && (target === "chart" || activeHudNotesOverlay.playerId === playerId);
+  const playerAttr = playerId ? ` data-player-id="${escapeHtml(playerId)}"` : "";
+  const preview = target === "chart" ? `<span>${escapeHtml(notePreviewText(noteText))}</span>` : "";
+  return `
+    <button type="button" class="hud-note-button ${className} ${isActive ? "active" : ""}" data-hud-note-target="${escapeHtml(target)}"${playerAttr} aria-pressed="${isActive ? "true" : "false"}" title="Open ${escapeHtml(label)}">
+      <strong>${escapeHtml(label)}</strong>
+      ${preview}
+    </button>
+  `;
+}
+
+function hudPlayerNoteButtonHtml(kind, player) {
+  if (!player) return "";
+  const label = kind === "pitcher" ? "Pitcher Notes" : "Batter Notes";
+  return hudNoteButtonHtml(kind, { player, label, className: "hud-player-note-button" });
+}
+
+function hudChartNoteButtonHtml() {
+  return hudNoteButtonHtml("chart", { label: "HUD Notes", className: "hud-note-button-wide" });
+}
+
 function hudControlsHtml(kind, player, side = player?.side || state.activeSide) {
   return `
     <div class="hud-control-row">
       ${hudScopeToggleHtml(kind, player)}
       ${hudViewToggleHtml(kind, side)}
+      ${hudPlayerNoteButtonHtml(kind, player)}
     </div>
   `;
 }
@@ -5633,6 +5662,12 @@ function applyHudStatViewFromEvent(event) {
 function limitWords(text, limit = 250) {
   const words = String(text || "").trim().split(/\s+/).filter(Boolean);
   if (!words.length) return "No notes provided";
+  return words.length > limit ? `${words.slice(0, limit).join(" ")}...` : words.join(" ");
+}
+
+function notePreviewText(text, limit = 18) {
+  const words = String(text || "").trim().replace(/\s+/g, " ").split(" ").filter(Boolean);
+  if (!words.length) return "";
   return words.length > limit ? `${words.slice(0, limit).join(" ")}...` : words.join(" ");
 }
 
@@ -5862,6 +5897,7 @@ function renderInningTotals() {
       </div>
       ${pitcherCard}
     </div>
+    ${hudNotesOverlayHtml()}
   `;
   els.inningTotals.style.setProperty("--innings", Number(activeGame().inningCount || 9) + 1);
 }
@@ -5979,6 +6015,7 @@ function renderUpNextStrip() {
   const onDeckSlot = slotAfter(currentSlot, 1);
   const inHoleSlot = slotAfter(currentSlot, 2);
   const inning = Number(activeChart().currentInning || 1);
+  const hudChartNoteButton = hudChartNoteButtonHtml();
 
   els.upNextStrip.innerHTML = `
     <div class="up-next-meta">
@@ -6005,6 +6042,7 @@ function renderUpNextStrip() {
       <button id="toggleDefenseButton" type="button" class="muted">${state.showDefensePopup ? "Hide Defense" : "Show Defense"}</button>
       <button id="toggleFullChartButton" type="button" class="muted">${els.fullScorecardPanel?.hidden === false ? "Hide Full Chart" : "Show Full Chart"}</button>
     </div>
+    ${hudChartNoteButton ? `<div class="hud-note-footer">${hudChartNoteButton}</div>` : ""}
   `;
 }
 
@@ -7720,6 +7758,7 @@ function importWorkspaceJson(text, filename = "workspace JSON") {
 
 let activeStatExplanationAnchor = null;
 let activeHudContextAnchor = null;
+let activeHudNotesOverlay = null;
 
 function closeStatExplanation() {
   document.querySelector("#statExplanationPopover")?.remove();
@@ -7729,6 +7768,85 @@ function closeStatExplanation() {
 function closeHudContextPopover() {
   document.querySelector("#hudContextPopover")?.remove();
   activeHudContextAnchor = null;
+}
+
+function normalizeHudNoteTarget(value) {
+  return ["batter", "pitcher", "chart"].includes(value) ? value : "";
+}
+
+function hudNotesOverlayData(target = activeHudNotesOverlay?.target, playerId = activeHudNotesOverlay?.playerId) {
+  const normalizedTarget = normalizeHudNoteTarget(target);
+  if (!normalizedTarget) return null;
+  if (normalizedTarget === "chart") {
+    const text = String(activeChart().hud.chartNotes || "").trim();
+    if (!text) return null;
+    return {
+      target: "chart",
+      playerId: "",
+      title: "HUD Notes",
+      subtitle: activeSideName(),
+      text,
+      side: state.activeSide
+    };
+  }
+
+  const player = state.players.find((item) => item.id === playerId);
+  const text = String(player?.notes || "").trim();
+  if (!player || !text) return null;
+  return {
+    target: normalizedTarget,
+    playerId: player.id,
+    title: normalizedTarget === "pitcher" ? "Pitcher Notes" : "Batter Notes",
+    subtitle: `#${player.number || "--"} ${fullName(player)}`,
+    text,
+    side: player.side || state.activeSide
+  };
+}
+
+function closeHudNotesOverlay({ rerender = true } = {}) {
+  if (!activeHudNotesOverlay) return;
+  activeHudNotesOverlay = null;
+  if (rerender) {
+    renderInningTotals();
+    renderUpNextStrip();
+  }
+}
+
+function toggleHudNotesOverlay(button) {
+  const target = normalizeHudNoteTarget(button?.dataset?.hudNoteTarget);
+  const playerId = button?.dataset?.playerId || "";
+  if (!target) return false;
+  const sameTarget = activeHudNotesOverlay?.target === target
+    && (target === "chart" || activeHudNotesOverlay.playerId === playerId);
+  if (sameTarget) {
+    closeHudNotesOverlay();
+    return true;
+  }
+  const overlayData = hudNotesOverlayData(target, playerId);
+  if (!overlayData) return false;
+  closeStatExplanation();
+  closeHudContextPopover();
+  activeHudNotesOverlay = { target, playerId };
+  renderInningTotals();
+  renderUpNextStrip();
+  return true;
+}
+
+function hudNotesOverlayHtml() {
+  const data = hudNotesOverlayData();
+  if (!data) return "";
+  return `
+    <div class="hud-notes-overlay" role="dialog" aria-label="${escapeHtml(data.title)}" style="${teamColorStyle(data.side)}">
+      <div class="hud-notes-overlay-header">
+        <div class="hud-notes-overlay-title">
+          <strong>${escapeHtml(data.title)}</strong>
+          <span>${escapeHtml(data.subtitle)}</span>
+        </div>
+        <button type="button" class="muted" data-close-hud-notes>Close</button>
+      </div>
+      <textarea readonly spellcheck="false" aria-label="${escapeHtml(data.title)} text">${escapeHtml(data.text)}</textarea>
+    </div>
+  `;
 }
 
 function positionStatExplanation(popover, anchor) {
@@ -8406,6 +8524,15 @@ function setupEvents() {
   });
 
   els.inningTotals.addEventListener("click", (event) => {
+    if (event.target.closest("[data-close-hud-notes]")) {
+      closeHudNotesOverlay();
+      return;
+    }
+    const hudNoteButton = event.target.closest("[data-hud-note-target]");
+    if (hudNoteButton) {
+      toggleHudNotesOverlay(hudNoteButton);
+      return;
+    }
     const hudContext = event.target.closest("[data-hud-context]");
     if (hudContext) {
       toggleHudContextPopover(hudContext);
@@ -8472,6 +8599,10 @@ function setupEvents() {
     els.upNextStrip.addEventListener("click", (event) => {
       const target = event.target.closest("button");
       if (!target) return;
+      if (target.dataset.hudNoteTarget) {
+        toggleHudNotesOverlay(target);
+        return;
+      }
       if (target.id === "nextAtBatButton") {
         advanceBatter();
         saveState();
@@ -8949,6 +9080,7 @@ function setupEvents() {
     if (event.key === "Escape" && rosterEditModalOpen) closePlayerEditModal();
     if (event.key === "Escape") closeStatExplanation();
     if (event.key === "Escape") closeHudContextPopover();
+    if (event.key === "Escape") closeHudNotesOverlay();
     const statExplain = event.target.closest?.("[data-stat-explain]");
     if (statExplain && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
