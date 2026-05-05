@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#167052" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <title>PxP Baseball Chart</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=42" />
     <script>
       window.PXP_SUPABASE_URL = "https://eznwqmmswkenkobtnvfz.supabase.co";
       window.PXP_SUPABASE_ANON_KEY = "sb_publishable_XQ2BPv3mHv4xqJLfoZxN2g_7dVRGVEB";
@@ -688,6 +688,92 @@
         </div>
       </div>
     </div>
-    <script src="./app.js"></script>
+    <script>
+      (function () {
+        var workspaceKey = "pxp-baseball-chart-v1";
+        var resetRequested = /(?:[?&]pxp-reset=1(?:&|$)|#pxp-reset(?:$|&))/.test(window.location.search + window.location.hash);
+
+        function hardResetWorkspace(done) {
+          try {
+            localStorage.removeItem(workspaceKey);
+            localStorage.removeItem(workspaceKey + ":savedAt");
+          } catch (_) {}
+
+          var tasks = [];
+          if (window.indexedDB && indexedDB.deleteDatabase) {
+            tasks.push(new Promise(function (resolve) {
+              var request = indexedDB.deleteDatabase("pxp-baseball-workspace");
+              request.onsuccess = request.onerror = request.onblocked = function () { resolve(); };
+            }));
+          }
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            tasks.push(navigator.serviceWorker.getRegistrations().then(function (registrations) {
+              return Promise.all(registrations.map(function (registration) { return registration.unregister(); }));
+            }).catch(function () {}));
+          }
+          if (window.caches && caches.keys) {
+            tasks.push(caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (key) { return caches.delete(key); }));
+            }).catch(function () {}));
+          }
+
+          Promise.all(tasks).then(done).catch(done);
+          setTimeout(done, 1200);
+        }
+
+        if (resetRequested) {
+          hardResetWorkspace(function () {
+            window.location.replace(window.location.origin + window.location.pathname);
+          });
+          return;
+        }
+
+        function closestButton(node, selector) {
+          while (node && node !== document) {
+            if (node.matches && node.matches(selector)) return node;
+            node = node.parentNode;
+          }
+          return null;
+        }
+
+        function activateBySelector(selector, activeNode) {
+          var nodes = document.querySelectorAll(selector);
+          for (var i = 0; i < nodes.length; i += 1) {
+            nodes[i].classList.toggle("active", nodes[i] === activeNode);
+          }
+        }
+
+        function activateView(viewId) {
+          var view = document.getElementById(viewId);
+          if (!view) return;
+          activateBySelector(".tab[data-view]", document.querySelector('.tab[data-view="' + viewId + '"]'));
+          var views = document.querySelectorAll(".view");
+          for (var i = 0; i < views.length; i += 1) {
+            views[i].classList.toggle("active", views[i] === view);
+          }
+        }
+
+        function activateDataSection(sectionId) {
+          var section = document.getElementById(sectionId);
+          if (!section) return;
+          activateBySelector(".data-tab[data-data-section]", document.querySelector('.data-tab[data-data-section="' + sectionId + '"]'));
+          var sections = document.querySelectorAll(".data-section");
+          for (var i = 0; i < sections.length; i += 1) {
+            sections[i].classList.toggle("active", sections[i] === section);
+          }
+        }
+
+        document.addEventListener("click", function (event) {
+          var tab = closestButton(event.target, ".tab[data-view]");
+          if (tab) activateView(tab.getAttribute("data-view"));
+          var dataTab = closestButton(event.target, ".data-tab[data-data-section]");
+          if (dataTab) activateDataSection(dataTab.getAttribute("data-data-section"));
+        }, true);
+
+        var appScript = document.createElement("script");
+        appScript.src = "./app.js?v=42";
+        document.body.appendChild(appScript);
+      })();
+    </script>
   </body>
 </html>

@@ -3,12 +3,50 @@ const STORAGE_META_KEY = `${STORAGE_KEY}:savedAt`;
 const STATE_DB_NAME = "pxp-baseball-workspace";
 const STATE_DB_STORE = "snapshots";
 const STATE_DB_RECORD_ID = "workspace";
-const APP_VERSION = "v41";
+const APP_VERSION = "v42";
+const LOCAL_STORAGE = (() => {
+  try {
+    return window.localStorage;
+  } catch (error) {
+    console.warn("Browser localStorage is unavailable:", error?.message || error);
+    return null;
+  }
+})();
+
+function safeLocalGet(key) {
+  try {
+    return LOCAL_STORAGE?.getItem(key) ?? null;
+  } catch (error) {
+    console.warn(`Could not read ${key} from localStorage:`, error?.message || error);
+    return null;
+  }
+}
+
+function safeLocalSet(key, value) {
+  try {
+    LOCAL_STORAGE?.setItem(key, value);
+    return Boolean(LOCAL_STORAGE);
+  } catch (error) {
+    console.warn(`Could not save ${key} to localStorage:`, error?.message || error);
+    return false;
+  }
+}
+
+function safeLocalRemove(key) {
+  try {
+    LOCAL_STORAGE?.removeItem(key);
+    return true;
+  } catch (error) {
+    console.warn(`Could not remove ${key} from localStorage:`, error?.message || error);
+    return false;
+  }
+}
+
 const CLIENT_ID = (() => {
-  let id = localStorage.getItem("pxp.clientId");
+  let id = safeLocalGet("pxp.clientId");
   if (!id) {
     id = `c-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
-    try { localStorage.setItem("pxp.clientId", id); } catch (_) { /* ignore */ }
+    safeLocalSet("pxp.clientId", id);
   }
   return id;
 })();
@@ -16,7 +54,7 @@ const SUPABASE_URL = window.PXP_SUPABASE_URL;
 const SUPABASE_ANON_KEY = window.PXP_SUPABASE_ANON_KEY;
 const supabaseClient = window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true, storage: window.localStorage },
+      auth: { persistSession: true, autoRefreshToken: true, storage: LOCAL_STORAGE || undefined },
     })
   : null;
 let supabaseSession = null;
@@ -83,8 +121,6 @@ const emptyStats = () => ({
   PB: 0,
   CI: 0
 });
-
-const state = loadState();
 
 function emptyBaseState() {
   return { first: "", second: "", third: "" };
@@ -363,6 +399,8 @@ function broadcastResearchText(research = {}) {
   return broadcastResearchTextSections(research).join("\n\n");
 }
 
+const state = loadState();
+
 function newGameEntry(label) {
   return {
     id: uid("game"),
@@ -380,17 +418,7 @@ function newGameEntry(label) {
   };
 }
 
-function loadState() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) {
-    try {
-      return JSON.parse(saved);
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(STORAGE_META_KEY);
-    }
-  }
-
+function freshWorkspaceState() {
   return {
     games: [newGameEntry("Game 1")],
     activeGameIndex: 0,
@@ -410,8 +438,22 @@ function loadState() {
   };
 }
 
+function loadState() {
+  const saved = safeLocalGet(STORAGE_KEY);
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch {
+      safeLocalRemove(STORAGE_KEY);
+      safeLocalRemove(STORAGE_META_KEY);
+    }
+  }
+
+  return freshWorkspaceState();
+}
+
 function localStateSavedAt() {
-  return toNumber(localStorage.getItem(STORAGE_META_KEY));
+  return toNumber(safeLocalGet(STORAGE_META_KEY));
 }
 
 function openStateDatabase() {
@@ -470,15 +512,35 @@ async function readStateFromIndexedDb() {
   }
 }
 
-function persistStateSnapshot(serialized, savedAt = Date.now()) {
-  let localSaved = false;
+async function clearIndexedDbStateBackup() {
   try {
-    localStorage.setItem(STORAGE_KEY, serialized);
-    localStorage.setItem(STORAGE_META_KEY, String(savedAt));
-    localSaved = true;
+    const db = await openStateDatabase();
+    if (!db) return false;
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STATE_DB_STORE, "readwrite");
+      tx.objectStore(STATE_DB_STORE).delete(STATE_DB_RECORD_ID);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+    db.close();
+    return true;
   } catch (error) {
-    console.warn("Could not save local state:", error?.message || error);
+    console.warn("Could not clear IndexedDB state backup:", error?.message || error);
+    return false;
   }
+}
+
+async function clearLocalWorkspaceStorage() {
+  safeLocalRemove(STORAGE_KEY);
+  safeLocalRemove(STORAGE_META_KEY);
+  await clearIndexedDbStateBackup();
+}
+
+function persistStateSnapshot(serialized, savedAt = Date.now()) {
+  const stateSaved = safeLocalSet(STORAGE_KEY, serialized);
+  const metaSaved = safeLocalSet(STORAGE_META_KEY, String(savedAt));
+  const localSaved = stateSaved && metaSaved;
   saveStateToIndexedDb(serialized, savedAt);
   return localSaved;
 }
@@ -590,20 +652,25 @@ function normalizeTeamMeta(teamMeta) {
     away: { ...emptyTeamMeta(), ...(teamMeta?.away || {}) }
   };
   ["home", "away"].forEach((side) => {
+    const records = Array.isArray(result[side].records) ? result[side].records : [];
     result[side].records = Array.from({ length: 10 }, (_, index) => ({
       season: "",
       overall: "",
       conference: "",
-      ...((result[side].records || [])[index] || {})
+      ...(records[index] || {})
     }));
-    result[side].coaches = (result[side].coaches || []).map((coach) => ({
-      id: coach.id || uid("coach"),
-      name: "",
-      title: "",
-      bio: "",
-      image: "",
-      ...coach
-    }));
+    const coaches = Array.isArray(result[side].coaches) ? result[side].coaches : [];
+    result[side].coaches = coaches.map((coach) => {
+      const source = coach && typeof coach === "object" && !Array.isArray(coach) ? coach : {};
+      return {
+        id: source.id || uid("coach"),
+        name: "",
+        title: "",
+        bio: "",
+        image: "",
+        ...source
+      };
+    });
     result[side].research = normalizeBroadcastResearch(result[side].research);
   });
   return result;
@@ -709,7 +776,7 @@ function normalizeState() {
   state.activeSide = state.activeSide || "away";
 
   // Migrate old single-game state format to games array
-  if (!state.games) {
+  if (!Array.isArray(state.games)) {
     const charts = state.charts || {
       home: {
         ...newChartState(),
@@ -736,14 +803,29 @@ function normalizeState() {
     delete state.scorecard;
   }
 
-  state.activeGameIndex = Math.min(state.activeGameIndex ?? 0, state.games.length - 1);
+  if (!Array.isArray(state.games) || !state.games.length) {
+    state.games = [newGameEntry("Game 1")];
+    state.activeGameIndex = 0;
+  }
+
+  state.games = Array.from(state.games, (entry, i) => (
+    entry && typeof entry === "object" && !Array.isArray(entry)
+      ? entry
+      : newGameEntry(`Game ${i + 1}`)
+  ));
+
+  const rawActiveIndex = Number(state.activeGameIndex);
+  const activeIndex = Number.isInteger(rawActiveIndex) ? rawActiveIndex : 0;
+  state.activeGameIndex = Math.min(Math.max(activeIndex, 0), state.games.length - 1);
 
   state.games.forEach((entry, i) => {
     entry.id = entry.id || uid("game");
     entry.label = entry.label || `Game ${i + 1}`;
     entry.game = normalizeGameInfo(entry.game);
     entry.inningCount = entry.inningCount || 9;
-    entry.charts = entry.charts || { home: newChartState(), away: newChartState() };
+    entry.charts = entry.charts && typeof entry.charts === "object" && !Array.isArray(entry.charts)
+      ? entry.charts
+      : { home: newChartState(), away: newChartState() };
     normalizeCharts(entry.charts);
     entry.teamMeta = normalizeTeamMeta(entry.teamMeta);
   });
@@ -751,9 +833,11 @@ function normalizeState() {
   state.teamMeta = consolidatedTeamMeta();
   syncSharedTeamMetaToGames();
 
-  state.sources = state.sources || [];
-  state.boxScores = state.boxScores || [];
-  state.events = state.events || [];
+  state.sources = Array.isArray(state.sources) ? state.sources : [];
+  state.boxScores = Array.isArray(state.boxScores) ? state.boxScores : [];
+  state.events = Array.isArray(state.events)
+    ? state.events.filter((event) => event && typeof event === "object" && !Array.isArray(event))
+    : [];
   const fallbackGameId = state.games[state.activeGameIndex ?? 0]?.id || state.games[0]?.id || "";
   state.events.forEach((event) => {
     event.gameId = event.gameId || fallbackGameId;
@@ -796,7 +880,9 @@ function normalizeState() {
     if (!["basic", "advanced"].includes(state.hudStatViews[kind])) state.hudStatViews[kind] = "basic";
   });
   state.pinStatHud = state.pinStatHud ?? Boolean(state.pinScorecard);
-  state.players = state.players || [];
+  state.players = Array.isArray(state.players)
+    ? state.players.filter((player) => player && typeof player === "object" && !Array.isArray(player))
+    : [];
   state.players.forEach((player) => {
     player.side = player.side || "home";
     player.hometown = player.hometown || "";
@@ -870,11 +956,30 @@ function formatIpValue(value) {
 }
 
 function activeGame() {
-  return state.games[state.activeGameIndex ?? 0];
+  if (!Array.isArray(state.games) || !state.games.length) {
+    state.games = [newGameEntry("Game 1")];
+    state.activeGameIndex = 0;
+  }
+  const rawIndex = Number(state.activeGameIndex);
+  const index = Math.min(
+    Math.max(Number.isInteger(rawIndex) ? rawIndex : 0, 0),
+    state.games.length - 1
+  );
+  if (state.activeGameIndex !== index) state.activeGameIndex = index;
+  if (!state.games[index] || typeof state.games[index] !== "object" || Array.isArray(state.games[index])) {
+    state.games[index] = newGameEntry(`Game ${index + 1}`);
+  }
+  return state.games[index];
 }
 
 function activeChart() {
-  return activeGame().charts[state.activeSide];
+  const game = activeGame();
+  if (!game.charts || typeof game.charts !== "object" || Array.isArray(game.charts)) {
+    game.charts = { home: newChartState(), away: newChartState() };
+  }
+  if (!game.charts.home || !game.charts.away) normalizeCharts(game.charts);
+  if (!["home", "away"].includes(state.activeSide)) state.activeSide = "away";
+  return game.charts[state.activeSide] || game.charts.away || game.charts.home;
 }
 
 function normalizeGameType(value) {
@@ -3225,7 +3330,7 @@ async function fetchPrestoXmlViaBridge(url) {
 
 function resolvePdfBridgeUrl() {
   try {
-    const override = localStorage.getItem("pxp.pdfBridgeUrl");
+    const override = safeLocalGet("pxp.pdfBridgeUrl");
     if (override && override.trim()) return override.trim().replace(/\/+$/, "");
   } catch (_) { /* localStorage may be blocked; fall through */ }
   const host = location.hostname;
@@ -3271,8 +3376,8 @@ function pdfBridgeOfflineHint() {
 function savePdfBridgeUrl(rawValue) {
   const trimmed = (rawValue || "").trim().replace(/\/+$/, "");
   try {
-    if (trimmed) localStorage.setItem("pxp.pdfBridgeUrl", trimmed);
-    else localStorage.removeItem("pxp.pdfBridgeUrl");
+    if (trimmed) safeLocalSet("pxp.pdfBridgeUrl", trimmed);
+    else safeLocalRemove("pxp.pdfBridgeUrl");
   } catch (_) { /* ignore storage errors */ }
   PDF_BRIDGE_URL = resolvePdfBridgeUrl();
   return refreshPdfBridgeStatus();
@@ -8344,8 +8449,7 @@ function importWorkspaceJson(text, filename = "workspace JSON") {
   if (!nextState || typeof nextState !== "object" || (!Array.isArray(nextState.games) && !Array.isArray(nextState.players))) {
     throw new Error("That JSON file does not look like a PxP Baseball workspace export.");
   }
-  Object.keys(state).forEach((key) => delete state[key]);
-  Object.assign(state, nextState);
+  replaceState(nextState);
   normalizeState();
   saveState();
   render();
@@ -8976,9 +9080,9 @@ function setupEvents() {
     });
   }
 
-  els.resetButton.addEventListener("click", () => {
+  els.resetButton.addEventListener("click", async () => {
     if (!confirm("Reset this local chart workspace?")) return;
-    localStorage.removeItem(STORAGE_KEY);
+    await clearLocalWorkspaceStorage();
     window.location.reload();
   });
 
@@ -9797,8 +9901,20 @@ function populateNotationDatalist() {
 
 let appEventsWired = false;
 
+function replaceState(nextState) {
+  Object.keys(state).forEach((key) => delete state[key]);
+  Object.assign(state, nextState);
+}
+
 function bootApp() {
-  normalizeState();
+  try {
+    normalizeState();
+  } catch (error) {
+    console.warn("Workspace state was invalid; starting a fresh local workspace:", error?.message || error);
+    replaceState(freshWorkspaceState());
+    normalizeState();
+    persistStateSnapshot(JSON.stringify(state));
+  }
   populateNotationDatalist();
   if (!appEventsWired) {
     setupEvents();
@@ -9820,12 +9936,15 @@ async function recoverIndexedDbState() {
     console.warn("IndexedDB state backup could not be parsed:", error?.message || error);
     return false;
   }
-  if (!recoveredState || typeof recoveredState !== "object" || !Array.isArray(recoveredState.games)) return false;
+  if (
+    !recoveredState
+    || typeof recoveredState !== "object"
+    || (!Array.isArray(recoveredState.games) && !Array.isArray(recoveredState.players))
+  ) return false;
 
-  Object.keys(state).forEach((key) => delete state[key]);
-  Object.assign(state, recoveredState);
-  persistStateSnapshot(record.serialized, indexedSavedAt || Date.now());
+  replaceState(recoveredState);
   bootApp();
+  persistStateSnapshot(JSON.stringify(state), indexedSavedAt || Date.now());
   setCloudSyncStatus("Recovered local workspace");
   schedulePushState();
   return true;
@@ -10047,12 +10166,11 @@ async function onSignedIn(session) {
 }
 
 function applyRemoteState(remote, updatedAt) {
-  Object.keys(state).forEach((k) => delete state[k]);
-  Object.assign(state, remote);
-  lastPushedSerialized = JSON.stringify(state);
+  replaceState(remote);
   lastSyncedAt = updatedAt ? new Date(updatedAt).getTime() : Date.now();
-  persistStateSnapshot(lastPushedSerialized, lastSyncedAt);
   bootApp();
+  lastPushedSerialized = JSON.stringify(state);
+  persistStateSnapshot(lastPushedSerialized, lastSyncedAt);
 }
 
 async function fetchCloudState() {
@@ -10223,7 +10341,7 @@ document.addEventListener("visibilitychange", () => {
 
 if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").then((registration) => {
+    navigator.serviceWorker.register(`./sw.js?${APP_VERSION}`).then((registration) => {
       setInterval(() => { registration.update().catch(() => {}); }, 60 * 1000);
     }).catch(() => {});
 
